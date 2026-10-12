@@ -1,0 +1,309 @@
+package my.spectrum.notify
+
+import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.Locale
+
+/** What kind of class a slot is. CLASS = could not tell. */
+enum class SlotKind(val label: String, val tag: String) {
+    LECTURE("Lecture", "LEC"),
+    TUTORIAL("Tutorial", "TUT"),
+    LAB("Lab", "LAB"),
+    CLASS("Class", "");
+
+    companion object {
+        fun parse(s: String?): SlotKind = values().firstOrNull { it.name == s } ?: CLASS
+    }
+}
+
+/** One weekly class. day: 1 = Monday ... 7 = Sunday. start/end: minutes after midnight. */
+data class Slot(
+    val key: String,
+    val course: String,
+    val title: String,
+    val day: Int,
+    val start: Int,
+    val end: Int,
+    val kind: SlotKind,
+    val manual: Boolean,
+    val note: String = "",
+    val grp: String = "",
+)
+
+/**
+ * Weekly timetable. Two sources:
+ *  - learned from Spectrum: attendance events in the cached calendar, grouped by course + weekday + time;
+ *  - added by the user (stored in the "timetable" preferences).
+ * Learned slots are remembered in state.json for a few weeks so the timetable does not empty out between calendar windows.
+ */
+object Timetable {
+    private const val KEEP_SECS = 42L * 86400
+
+    val DAYS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    val DAY_FULL = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+    // ------------------------------------------------------------ colours
+    private val PALETTE_DARK = intArrayOf(
+        0xFF7A9BFF.toInt(), 0xFF4ADE9A.toInt(), 0xFFFFC857.toInt(), 0xFFFF7A7A.toInt(), 0xFFB794FF.toInt(),
+        0xFF5CD6E6.toInt(), 0xFFFFA45C.toInt(), 0xFFF48FB1.toInt(), 0xFFA3E635.toInt(), 0xFF94A3B8.toInt(),
+    )
+    private val PALETTE_LIGHT = intArrayOf(
+        0xFF2F55E4.toInt(), 0xFF12805A.toInt(), 0xFF9A6700.toInt(), 0xFFC93636.toInt(), 0xFF6B46C8.toInt(),
+        0xFF0A7C8C.toInt(), 0xFFC25E0B.toInt(), 0xFFC2185B.toInt(), 0xFF4D7C0F.toInt(), 0xFF475569.toInt(),
+    )
+    val PALETTE_SIZE: Int get() = PALETTE_DARK.size
+
+    fun colorOf(idx: Int): Int {
+        val pal = if (Ui.dark) PALETTE_DARK else PALETTE_LIGHT
+        return pal[((idx % pal.size) + pal.size) % pal.size]
+    }
+
+    // ------------------------------------------------------------ detecting course and type
+    private val CODE_RE = Regex("""\b[A-Z]{2,4}\d{3,4}[A-Z]?\b""")
+    private val LAB_RE = Regex("""\b(?:lab|labs|laboratory|makmal|practical|amali)\b""", RegexOption.IGNORE_CASE)
+    private val TUT_RE = Regex("""\b(?:tutorial|tutorials|tut|tutor|t\d+)\b""", RegexOption.IGNORE_CASE)
+    private val LEC_RE = Regex("""\b(?:lecture|lectures|lec|kuliah|k\d+)\b""", RegexOption.IGNORE_CASE)
+    private val ATT_ONLY = Regex("""^(?:attendance|kehadiran)\W*$""", RegexOption.IGNORE_CASE)
+    private val TAGS = Regex("<[^>]*>")
+
+    /** "WIA2010" from the course's short or full name; falls back to whatever name there is. */
+    fun courseCode(c: JSONObject?): String {
+        val short = c?.str("shortname") ?: ""
+        val full = c?.str("fullname") ?: ""
+        for (t in listOf(short, full)) {
+            val m = CODE_RE.find(t.uppercase(Locale.ROOT))
+            if (m != null) return m.value
+        }
+        return short.ifEmpty { full }.trim().ifEmpty { "Class" }.take(20)
+    }
+
+    /** Looks for lecture / tutorial / lab words (English and Malay) in the texts, in order; the earliest word in a text wins. */
+    fun detectKind(vararg texts: String): SlotKind {
+        for (t in texts) {
+            val s = unesc(t)
+            val hits = ArrayList<Pair<Int, SlotKind>>()
+            LAB_RE.find(s)?.let { hits.add(Pair(it.range.first, SlotKind.LAB)) }
+            TUT_RE.find(s)?.let { hits.add(Pair(it.range.first, SlotKind.TUTORIAL)) }
+            LEC_RE.find(s)?.let { hits.add(Pair(it.range.first, SlotKind.LECTURE)) }
+            if (hits.isNotEmpty()) return hits.minByOrNull { it.first }!!.second
+        }
+        return SlotKind.CLASS
+    }
+
+    fun fmtMin(m: Int): String = String.format(Locale.ENGLISH, "%02d:%02d", m / 60, m % 60)
+
+    // ------------------------------------------------------------ learning from the Spectrum calendar
+    private class Acc(val course: String, val day: Int, val start: Int, val end: Int) {
+        val kinds = HashMap<SlotKind, Int>()
+        var title = ""
+        fun best(): SlotKind =
+            kinds.filter { it.key != SlotKind.CLASS }.maxByOrNull { it.value }?.key ?: SlotKind.CLASS
+    }
+
+    /** Groups the attendance events of the calendar into weekly slots. */
+    fun fromCalendar(cal: List<JSONObject>): List<Slot> {
+        val acc = LinkedHashMap<String, Acc>()
+        for (e in cal) {
+            if (!Checker.isAttEvent(e)) continue
+            val ts = e.optLong("timestart")
+            if (ts <= 0L) continue
+            val z = localDt(ts)
+            val dur = e.optLong("timeduration")
+            val start = z.hour * 60 + z.minute
+            val end = minOf(24 * 60, start + (if (dur > 0L) (dur / 60).toInt() else 60))
+            if (end <= start) continue
+            val course = courseCode(e.optJSONObject("course"))
+            val day = z.dayOfWeek.value
+            val key = "$course|$day|$start|$end"
+            val a = acc.getOrPut(key) { Acc(course, day, start, end) }
+            val name = e.str("name")
+            val desc = unesc(e.str("description").replace(TAGS, " ")).replace(Regex("\\s+"), " ").trim().take(200)
+            val kind = detectKind(name, desc)
+            a.kinds[kind] = (a.kinds[kind] ?: 0) + 1
+            if (a.title.isEmpty()) {
+                val t = clean(name, 40)
+                a.title = if (ATT_ONLY.matches(t)) "" else t
+            }
+        }
+        return acc.map { (key, a) -> Slot(key, a.course, a.title, a.day, a.start, a.end, a.best(), false) }
+    }
+
+    private class Stored(val slot: Slot, val seen: Long)
+
+    private fun readStored(st: State): List<Stored> =
+        (st.j.optJSONArray("tt_auto") ?: JSONArray()).objs().mapNotNull { o ->
+            val day = o.optInt("day")
+            val s = o.optInt("start")
+            val e = o.optInt("end")
+            if (day !in 1..7 || e <= s) return@mapNotNull null
+            Stored(Slot(o.str("key"), o.str("course"), o.str("title"), day, s, e, SlotKind.parse(o.str("kind")), false), o.optLong("seen"))
+        }
+
+    /** Current slots win; remembered ones are kept for a few weeks unless the schedule has moved them. */
+    private fun merge(stored: List<Stored>, cur: List<Slot>, now: Long): List<Stored> {
+        val old = stored.associateBy { it.slot.key }
+        val curKeys = cur.map { it.key }.toSet()
+        val curStarts = cur.map { "${it.course}|${it.day}|${it.start}" }.toSet()
+        val out = ArrayList<Stored>()
+        for (s in cur) {
+            val prev = old[s.key]?.slot
+            val kind = if (s.kind == SlotKind.CLASS && prev != null) prev.kind else s.kind
+            out.add(Stored(s.copy(kind = kind), now))
+        }
+        for (s in stored) {
+            if (s.slot.key in curKeys) continue
+            if ("${s.slot.course}|${s.slot.day}|${s.slot.start}" in curStarts) continue
+            if (now - s.seen > KEEP_SECS) continue
+            out.add(s)
+        }
+        return out
+    }
+
+    /** Called after each successful poll, before state is saved. */
+    fun remember(st: State, p: Prefs) {
+        val now = System.currentTimeMillis() / 1000
+        val cur = fromCalendar(Checker.myCalendar(st, p))
+        val merged = merge(readStored(st), cur, now)
+        val arr = JSONArray()
+        for (m in merged) {
+            val s = m.slot
+            arr.put(
+                JSONObject().put("key", s.key).put("course", s.course).put("title", s.title).put("day", s.day)
+                    .put("start", s.start).put("end", s.end).put("kind", s.kind.name).put("seen", m.seen)
+            )
+        }
+        st.j.put("tt_auto", arr)
+    }
+
+    private fun isSkipped(s: Slot, p: Prefs): Boolean {
+        val day = DAYS[s.day - 1].lowercase(Locale.ROOT)
+        val code = s.course.lowercase(Locale.ROOT)
+        return p.skipList.any { (c, d) -> code.contains(c) && (d.isEmpty() || d == day) }
+    }
+
+    // ------------------------------------------------------------ the user's own settings for the timetable
+    private fun sp(ctx: Context) = ctx.applicationContext.getSharedPreferences("timetable", Context.MODE_PRIVATE)
+
+    private fun readArr(ctx: Context, k: String): JSONArray =
+        try { JSONArray(sp(ctx).getString(k, "[]") ?: "[]") } catch (e: Exception) { JSONArray() }
+
+    private fun readObj(ctx: Context, k: String): JSONObject =
+        try { JSONObject(sp(ctx).getString(k, "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+
+    fun manual(ctx: Context): List<Slot> = readArr(ctx, "manual").objs().mapNotNull { o ->
+        val day = o.optInt("day")
+        val s = o.optInt("start")
+        val e = o.optInt("end")
+        if (day !in 1..7 || e <= s) return@mapNotNull null
+        val grp = o.str("grp")
+        Slot("m:$grp:$day", o.str("course"), o.str("title"), day, s, e, SlotKind.parse(o.str("kind")), true, o.str("note"), grp)
+    }
+
+    private fun writeManual(ctx: Context, list: List<Slot>) {
+        val arr = JSONArray()
+        for (s in list) {
+            arr.put(
+                JSONObject().put("grp", s.grp).put("course", s.course).put("title", s.title).put("day", s.day)
+                    .put("start", s.start).put("end", s.end).put("kind", s.kind.name).put("note", s.note)
+            )
+        }
+        sp(ctx).edit().putString("manual", arr.toString()).apply()
+    }
+
+    fun newGroup(): String = java.lang.Long.toString(System.currentTimeMillis(), 36)
+
+    fun manualGroup(ctx: Context, grp: String): List<Slot> = manual(ctx).filter { it.grp == grp }
+
+    /** Creates or replaces one own entry; it becomes one slot per chosen day. */
+    fun saveManual(ctx: Context, grp: String, course: String, title: String, days: Collection<Int>,
+                   start: Int, end: Int, kind: SlotKind, note: String) {
+        val rest = manual(ctx).filter { it.grp != grp }
+        val mine = days.sorted().map { d -> Slot("m:$grp:$d", course, title, d, start, end, kind, true, note, grp) }
+        writeManual(ctx, rest + mine)
+    }
+
+    fun deleteManual(ctx: Context, grp: String) {
+        writeManual(ctx, manual(ctx).filter { it.grp != grp })
+    }
+
+    private fun hiddenKeys(ctx: Context): MutableSet<String> = LinkedHashSet(readArr(ctx, "hidden").strs())
+
+    fun hiddenCount(ctx: Context): Int = hiddenKeys(ctx).size
+
+    fun hide(ctx: Context, key: String) {
+        val h = hiddenKeys(ctx)
+        h.add(key)
+        sp(ctx).edit().putString("hidden", jarr(h).toString()).apply()
+    }
+
+    fun restoreHidden(ctx: Context) {
+        sp(ctx).edit().remove("hidden").apply()
+    }
+
+    fun setKind(ctx: Context, key: String, kind: SlotKind) {
+        val o = readObj(ctx, "kinds")
+        o.put(key, kind.name)
+        sp(ctx).edit().putString("kinds", o.toString()).apply()
+    }
+
+    // ------------------------------------------------------------ colours per course
+    private fun colourMap(ctx: Context): LinkedHashMap<String, Int> {
+        val o = readObj(ctx, "colours")
+        val m = LinkedHashMap<String, Int>()
+        for (k in o.keys()) m[k] = o.optInt(k)
+        return m
+    }
+
+    private fun writeColours(ctx: Context, m: Map<String, Int>) {
+        val o = JSONObject()
+        for ((k, v) in m) o.put(k, v)
+        sp(ctx).edit().putString("colours", o.toString()).apply()
+    }
+
+    private fun nextFree(used: Collection<Int>): Int {
+        for (i in 0 until PALETTE_SIZE) if (i !in used) return i
+        return used.size % PALETTE_SIZE
+    }
+
+    /** Palette index already given to this course, or null. */
+    fun colourIndexOrNull(ctx: Context, course: String): Int? = colourMap(ctx)[course]
+
+    /** Index a new course would get next. */
+    fun nextColourIndex(ctx: Context): Int = nextFree(colourMap(ctx).values)
+
+    fun setColourIndex(ctx: Context, course: String, idx: Int) {
+        val m = colourMap(ctx)
+        m[course] = idx
+        writeColours(ctx, m)
+    }
+
+    /** One colour per course. Courses without a colour yet get the next unused one (in code order) and keep it. */
+    fun colours(ctx: Context, courses: Collection<String>): Map<String, Int> {
+        val m = colourMap(ctx)
+        var changed = false
+        for (c in courses.toSortedSet()) {
+            if (c !in m) { m[c] = nextFree(m.values); changed = true }
+        }
+        if (changed) writeColours(ctx, m)
+        val out = HashMap<String, Int>()
+        for (c in courses) out[c] = colorOf(m[c] ?: 0)
+        return out
+    }
+
+    // ------------------------------------------------------------ everything for the screen
+    /** Learned slots (minus hidden / ignored ones, with your type overrides) plus your own entries, by day and time. */
+    fun all(ctx: Context): List<Slot> {
+        val p = Prefs(ctx)
+        val st = State(ctx)
+        val now = System.currentTimeMillis() / 1000
+        val cur = fromCalendar(Checker.myCalendar(st, p))
+        val merged = merge(readStored(st), cur, now).map { it.slot }
+        val hidden = hiddenKeys(ctx)
+        val overrides = readObj(ctx, "kinds")
+        val auto = merged.filter { it.key !in hidden && !isSkipped(it, p) }.map { s ->
+            if (overrides.has(s.key)) s.copy(kind = SlotKind.parse(overrides.optString(s.key))) else s
+        }
+        return (auto + manual(ctx)).sortedWith(compareBy<Slot>({ it.day }, { it.start }, { it.course }))
+    }
+}

@@ -1,0 +1,136 @@
+package my.spectrum.notify
+
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.view.View
+import android.widget.Button
+import android.widget.EditText
+import android.widget.Toast
+
+class SettingsActivity : Activity() {
+    private lateinit var p: Prefs
+    private val fields = LinkedHashMap<String, EditText>()
+    private lateinit var alarmBtn: Button
+    private var alarmHelp: View? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        p = Prefs(this)
+        val col = screen("Settings")
+
+        fun add(key: String, title: String, help: String, value: String, hint: String = "", kind: Int = 0) {
+            fields[key] = col.setting(title, help, value, hint, kind)
+        }
+
+        col.label("Changes are saved automatically when you leave this screen.", 12f, Ui.DIM, 4)
+
+        col.section(
+            "QUIET HOURS",
+            "During these hours the app does not check Spectrum, so you are not woken up. Use the 24-hour clock: 0 = midnight, 13 = 1 pm."
+        )
+        add("quietStart", "Quiet from (hour)", "Start of the quiet period. Example: 1 means 1 am.", p.quietStart.toString(), "1", 1)
+        add("quietEnd", "Quiet until (hour)", "End of the quiet period. Example: 7 means 7 am.", p.quietEnd.toString(), "7", 1)
+
+        col.section("DAILY MESSAGES", "Two short messages each day. Type the time as HH:MM, for example 07:05. Leave a box empty to turn that message off.")
+        add("summaryTime", "Morning summary", "Sent once each morning with today's classes and deadlines.", p.summaryTime, "07:05", 2)
+        add("afternoonTime", "Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00", 2)
+
+        col.section("YOUR CLASSES")
+        add(
+            "skipClasses", "Classes to ignore",
+            "Use this when a course has classes for another group. Write the course code, then @ and the day. " +
+                "WIX1003@Mon ignores only Monday's WIX1003. Separate several with commas: WIX1003@Mon, WIA2010@Tue. " +
+                "Days: Mon Tue Wed Thu Fri Sat Sun. Without @day, every day of that course is ignored.",
+            p.skipClasses, "WIX1003@Mon",
+        )
+        add(
+            "manualCourses", "Courses marked by Teams recording",
+            "Courses where attendance is taken by watching the Teams recording, not a live class link. " +
+                "Write course codes separated by commas, for example WIA2010.",
+            p.manualCourses, "WIA2010",
+        )
+
+        col.section("OTHER GROUPS' POSTS")
+        add(
+            "myGroups", "My group",
+            "Another lecturer's materials and announcements for a different Occ or tutorial group are hidden. " +
+                "Leave this empty and the app works out your group from your class names. " +
+                "To set it yourself write the course, a colon and the group, for example WIX1003:occ2, WIX1003:t3. " +
+                "Write just occ2 to use it for every course. Write off to turn the filter off. " +
+                "Posts that do not name any group are always shown.",
+            p.myGroups, "WIX1003:occ2, WIX1003:t3",
+        )
+
+        col.section("DEADLINES")
+        add(
+            "deadlineHours", "Remind me before a deadline",
+            "Number of hours before the deadline, separated by commas. 24,3 means one reminder a day before and another 3 hours before.",
+            p.deadlineHours, "24,3",
+        )
+
+        col.section("BACKGROUND CHECKS")
+        add(
+            "pollMinutes", "Check Spectrum every (minutes)",
+            "How often the app looks for new materials, announcements and notifications. Android does not allow less than 15.",
+            p.pollMinutes.toString(), "15", 1,
+        )
+
+        col.section("TOOLS")
+        col.action("Save settings", "Saves everything above now.") {
+            save(); Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+        }
+        col.action("Check now", "Looks at Spectrum right away. A new notification appears in the list if something is new.") {
+            save()
+            Scheduler.pollNow(this)
+            Toast.makeText(this, "Checking Spectrum...", Toast.LENGTH_SHORT).show()
+        }
+        col.action("Send test notification", "Sends one test message so you can see how notifications look and that tapping opens the app.") {
+            Notifier.push(this, "Test", "Notifications are working.\nTap the button below to open Spectrum.", true, listOf(Pair("Open Spectrum", p.site)))
+        }
+        alarmBtn = col.action("Allow exact alarms", "Needed so class reminders arrive about 10 minutes before the class, on time.") {
+            if (Build.VERSION.SDK_INT >= 31) {
+                startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+            }
+        }
+        alarmHelp = col.getChildAt(col.childCount - 1)
+        col.action("Battery settings", "Open the list, find Spectrum Notify and choose Unrestricted, so Android does not stop the background checks.") {
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (e: Exception) {
+                Toast.makeText(this, "Open battery settings manually", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val vis = if (Scheduler.canExact(this)) View.GONE else View.VISIBLE
+        alarmBtn.visibility = vis
+        alarmHelp?.visibility = vis
+    }
+
+    override fun onPause() {
+        super.onPause()
+        save()  // settings are saved when you leave the screen
+    }
+
+    private fun f(key: String) = fields[key]?.text?.toString()?.trim() ?: ""
+
+    private fun save() {
+        p.quietStart = f("quietStart").toIntOrNull() ?: 1
+        p.quietEnd = f("quietEnd").toIntOrNull() ?: 7
+        p.summaryTime = f("summaryTime")
+        p.afternoonTime = f("afternoonTime")
+        p.manualCourses = f("manualCourses")
+        p.skipClasses = f("skipClasses")
+        p.myGroups = f("myGroups")
+        p.deadlineHours = f("deadlineHours")
+        p.pollMinutes = f("pollMinutes").toIntOrNull() ?: 15
+        Scheduler.ensurePolling(this)
+        Scheduler.scheduleAll(this)
+    }
+}
