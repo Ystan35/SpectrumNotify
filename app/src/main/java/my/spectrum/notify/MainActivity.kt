@@ -208,7 +208,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Ui.BAR)
-            setPadding(dp(8), dp(6), dp(8), dp(6))
+            minimumHeight = dp(64)
+            setPadding(dp(4), dp(2), dp(4), dp(2))
         }
         bar.addView(navItem(R.drawable.ic_courses, "Courses", false) { startActivity(Intent(this, CoursesActivity::class.java)) }, lp(0, WRAP, 1f))
         bar.addView(navItem(R.drawable.ic_timetable, "Timetable", false) { startActivity(Intent(this, TimetableActivity::class.java)) }, lp(0, WRAP, 1f))
@@ -266,8 +267,8 @@ class MainActivity : Activity() {
     private fun navItem(icon: Int, label: String, withDot: Boolean, onClick: () -> Unit): View {
         val item = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            minimumHeight = dp(52)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, dp(6), 0, dp(6))
             isClickable = true
             contentDescription = label
             setOnClickListener { onClick() }
@@ -283,11 +284,17 @@ class MainActivity : Activity() {
                 visibility = View.GONE
             }
             holder.addView(bellDot, FrameLayout.LayoutParams(dp(10), dp(10), Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(0); rightMargin = dp(8)
+                rightMargin = dp(8)
             })
         }
-        item.addView(holder, lp(dp(46), dp(28)))
-        item.addView(tv(label, 11f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        item.addView(holder, lp(dp(46), dp(28)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        // the label gets the whole width of its cell and is centred in it, so it always sits under its icon
+        item.addView(tv(label, 11f, Ui.DIM).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(2), dp(2), dp(2), 0)
+        }, lp(MATCH, WRAP))
         return item
     }
 

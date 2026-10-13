@@ -70,9 +70,10 @@ class Prefs(ctx: Context) {
     var deadlineHours: String
         get() = sp.getString("deadlineHours", "24,3") ?: ""
         set(v) { sp.edit().putString("deadlineHours", v.trim()).apply() }
+    /** Minutes between checks. Default and minimum 10 (new key, so old 15-minute settings reset to the new default). */
     var pollMinutes: Int
-        get() = maxOf(15, sp.getInt("pollMinutes", 15))
-        set(v) { sp.edit().putInt("pollMinutes", maxOf(15, v)).apply() }
+        get() = maxOf(10, sp.getInt("pollMin", 10))
+        set(v) { sp.edit().putInt("pollMin", maxOf(10, v)).apply() }
     var loginStartedAt: Long
         get() = sp.getLong("loginStartedAt", 0L)
         set(v) { sp.edit().putLong("loginStartedAt", v).apply() }

@@ -18,13 +18,47 @@ import java.util.concurrent.TimeUnit
 object Scheduler {
     private val net = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
-    /** Slow background poll (Android's minimum is 15 min). Class-time precision comes from alarms below. */
+    private const val POLL_CODE = 77
+
+    private fun pollIntent(ctx: Context, flags: Int): PendingIntent? =
+        PendingIntent.getBroadcast(ctx, POLL_CODE, Intent(ctx, PollAlarmReceiver::class.java), flags or PendingIntent.FLAG_IMMUTABLE)
+
+    /**
+     * Background checks. 15 minutes or more: WorkManager periodic job (Android's minimum is 15).
+     * 10-14 minutes: a self-re-arming alarm that starts a check each time (see PollAlarmReceiver).
+     * Class-time precision comes from the exact alarms in scheduleAll.
+     */
     fun ensurePolling(ctx: Context) {
         val p = Prefs(ctx)
-        val req = PeriodicWorkRequestBuilder<PollWorker>(p.pollMinutes.toLong(), TimeUnit.MINUTES)
-            .setConstraints(net)
-            .build()
-        WorkManager.getInstance(ctx).enqueueUniquePeriodicWork("poll", ExistingPeriodicWorkPolicy.UPDATE, req)
+        val wm = WorkManager.getInstance(ctx)
+        if (p.pollMinutes >= 15) {
+            cancelPollAlarm(ctx)
+            val req = PeriodicWorkRequestBuilder<PollWorker>(p.pollMinutes.toLong(), TimeUnit.MINUTES)
+                .setConstraints(net)
+                .build()
+            wm.enqueueUniquePeriodicWork("poll", ExistingPeriodicWorkPolicy.UPDATE, req)
+        } else {
+            wm.cancelUniqueWork("poll")
+            if (pollIntent(ctx, PendingIntent.FLAG_NO_CREATE) == null) armPoll(ctx)   // already armed: leave it
+        }
+    }
+
+    /** Arms the next 10-14 minute check. Called again by each alarm, so the chain keeps going. */
+    fun armPoll(ctx: Context) {
+        val p = Prefs(ctx)
+        if (p.pollMinutes >= 15) return
+        val am = ctx.getSystemService(AlarmManager::class.java)
+        val pi = pollIntent(ctx, PendingIntent.FLAG_UPDATE_CURRENT) ?: return
+        try {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + p.pollMinutes * 60_000L, pi)
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun cancelPollAlarm(ctx: Context) {
+        val pi = pollIntent(ctx, PendingIntent.FLAG_NO_CREATE) ?: return
+        ctx.getSystemService(AlarmManager::class.java).cancel(pi)
+        pi.cancel()
     }
 
     fun pollNow(ctx: Context) {

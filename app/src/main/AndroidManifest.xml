@@ -44,6 +44,7 @@
         <activity android:name=".LoginWebActivity" android:exported="false" />
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
+        <receiver android:name=".PollAlarmReceiver" android:exported="false" />
 
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>

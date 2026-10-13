@@ -33,8 +33,12 @@ Android port of spectrum_notify.py. Runs entirely on the phone with your own Spe
 
 - v0.8.0 Layout: home page = reminders only (greeting, Up next, Due soon). Bottom bar: Courses, Timetable, Notifications (bell, red dot when unread), Settings. The notification history moved to the bell page (NotificationsActivity: filter chips, expand, swipe to dismiss, Clear all). Tapping a phone notification opens the bell page on that record (back goes home). The Account page is now the PROFILE section at the top of Settings (site URL, log in, token, log out); the old Account screen just forwards to Settings.
 
+- v0.8.1 Bottom bar labels centred under their icons (equal-width cells). Settings is now an accordion: each section (Profile, Quiet hours, Daily messages, Your classes, Other groups' posts, Deadlines, Background checks, Tools) is a closed header; tapping one opens it and closes the others. Profile opens by itself while logged out.
+
+- v0.8.2 Check interval: default and minimum are now 10 minutes (Settings > Background checks; old 15-minute settings reset to 10). Android only allows periodic background jobs of 15+ minutes, so below 15 the app uses a self-re-arming alarm (PollAlarmReceiver) that starts a check each time; 15+ still uses WorkManager. Quiet hours still apply. While the phone is in deep sleep (Doze) Android may delay an alarm; keep the battery setting on Unrestricted.
+
 ## In progress
-- v0.6.0-0.8.0 not compiled or run on a device (no Android SDK in the build sandbox); the CI Build APK run is the first compile. New semester: on your PC run the SDK scripts, `node cleaner.js course_events_with_details.json lecturer_data.json`, then `node tools/make_catalog.js timetable_data.json 2026/S1` (rewrites app/src/main/assets/catalog.json; keeps LEC/TUT/LAB, no emails). The 77 MB raw file never has to leave your PC
+- v0.6.0-0.8.2 not compiled or run on a device (no Android SDK in the build sandbox); the CI Build APK run is the first compile. New semester: on your PC run the SDK scripts, `node cleaner.js course_events_with_details.json lecturer_data.json`, then `node tools/make_catalog.js timetable_data.json 2026/S1` (rewrites app/src/main/assets/catalog.json; keeps LEC/TUT/LAB, no emails). The 77 MB raw file never has to leave your PC
 - v0.5.0 Courses page not yet run on a device; the course home page address is `<site>/course/view.php?id=<id>`
 - v0.4.0 not yet run on a device. Compiles against android.jar and the timetable data logic passes JVM tests; layout and the Spectrum event names are untested for real
 - v0.4.1 group filter only works if your attendance event names contain Occ / T numbers; otherwise set My group by hand

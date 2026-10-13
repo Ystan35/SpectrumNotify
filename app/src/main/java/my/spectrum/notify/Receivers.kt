@@ -23,6 +23,15 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 }
 
+/** Every 10-14 minutes (when set below 15): arms the next alarm first, then starts a check. */
+class PollAlarmReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val app = context.applicationContext
+        Scheduler.armPoll(app)
+        Scheduler.pollNow(app)
+    }
+}
+
 /** Re-arms polling and alarms after reboot or app update. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
