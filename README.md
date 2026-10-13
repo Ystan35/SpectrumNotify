@@ -37,8 +37,10 @@ Android port of spectrum_notify.py. Runs entirely on the phone with your own Spe
 
 - v0.8.2 Check interval: default and minimum are now 10 minutes (Settings > Background checks; old 15-minute settings reset to 10). Android only allows periodic background jobs of 15+ minutes, so below 15 the app uses a self-re-arming alarm (PollAlarmReceiver) that starts a check each time; 15+ still uses WorkManager. Quiet hours still apply. While the phone is in deep sleep (Doze) Android may delay an alarm; keep the battery setting on Unrestricted.
 
+- v0.8.3 No duplicate classes in the timetable: same course + day + overlapping time shows once. Priority: Spectrum class > class picked from the UM list (Occ) > hand-made entry. Hidden duplicates stay stored and reappear if the kept one goes away.
+
 ## In progress
-- v0.6.0-0.8.2 not compiled or run on a device (no Android SDK in the build sandbox); the CI Build APK run is the first compile. New semester: on your PC run the SDK scripts, `node cleaner.js course_events_with_details.json lecturer_data.json`, then `node tools/make_catalog.js timetable_data.json 2026/S1` (rewrites app/src/main/assets/catalog.json; keeps LEC/TUT/LAB, no emails). The 77 MB raw file never has to leave your PC
+- v0.6.0-0.8.3 not compiled or run on a device (no Android SDK in the build sandbox); the CI Build APK run is the first compile. New semester: on your PC run the SDK scripts, `node cleaner.js course_events_with_details.json lecturer_data.json`, then `node tools/make_catalog.js timetable_data.json 2026/S1` (rewrites app/src/main/assets/catalog.json; keeps LEC/TUT/LAB, no emails). The 77 MB raw file never has to leave your PC
 - v0.5.0 Courses page not yet run on a device; the course home page address is `<site>/course/view.php?id=<id>`
 - v0.4.0 not yet run on a device. Compiles against android.jar and the timetable data logic passes JVM tests; layout and the Spectrum event names are untested for real
 - v0.4.1 group filter only works if your attendance event names contain Occ / T numbers; otherwise set My group by hand

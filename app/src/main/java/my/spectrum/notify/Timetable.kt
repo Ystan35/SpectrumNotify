@@ -292,7 +292,7 @@ object Timetable {
     }
 
     // ------------------------------------------------------------ everything for the screen
-    /** Learned slots (minus hidden / ignored ones, with your type overrides) plus your own entries, by day and time. */
+    /** Learned slots (minus hidden / ignored ones, with your type overrides) plus your own entries, by day and time. Duplicates are merged. */
     fun all(ctx: Context): List<Slot> {
         val p = Prefs(ctx)
         val st = State(ctx)
@@ -304,6 +304,15 @@ object Timetable {
         val auto = merged.filter { it.key !in hidden && !isSkipped(it, p) }.map { s ->
             if (overrides.has(s.key)) s.copy(kind = SlotKind.parse(overrides.optString(s.key))) else s
         }
-        return (auto + manual(ctx)).sortedWith(compareBy<Slot>({ it.day }, { it.start }, { it.course }))
+        // The same class must not show twice. Same course + day + overlapping time = one class; the one kept is
+        // the Spectrum one, then one picked from the UM timetable list (Occ), then a hand-made entry.
+        fun overlaps(a: Slot, b: Slot) = a.course == b.course && a.day == b.day && a.start < b.end && b.start < a.end
+        val own = ArrayList<Slot>()
+        for (m in manual(ctx).sortedBy { if (it.grp.startsWith("cat-")) 0 else 1 }) {
+            if (auto.any { overlaps(it, m) }) continue
+            if (own.any { it.grp != m.grp && overlaps(it, m) }) continue
+            own.add(m)
+        }
+        return (auto + own).sortedWith(compareBy<Slot>({ it.day }, { it.start }, { it.course }))
     }
 }
