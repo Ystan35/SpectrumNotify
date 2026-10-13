@@ -1,0 +1,385 @@
+package my.spectrum.notify
+
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.Intent
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.TextUtils
+import android.text.method.LinkMovementMethod
+import android.text.util.Linkify
+import android.transition.AutoTransition
+import android.transition.TransitionManager
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+
+/**
+ * Notification history (the bell in the bottom bar): filter chips, tap to expand, swipe to dismiss.
+ * Tapping a phone notification opens this page on that record.
+ */
+class NotificationsActivity : Activity() {
+    companion object {
+        const val EXTRA_TS = "record_ts"
+        private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+        private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+    }
+
+    private lateinit var p: Prefs
+    private lateinit var scroll: ScrollView
+    private lateinit var content: LinearLayout
+    private lateinit var chipRow: LinearLayout
+    private lateinit var recordsBox: LinearLayout
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var filter = ""                 // "" = all
+    private var seenBefore = 0L             // records newer than this show a "new" dot
+    private var openTs = -1L                // record to open when arriving from a notification
+    private var chipSig = ""
+    private var recSig = ""
+    private var entries: List<NotifyLog.Entry> = emptyList()
+    private var logStamp = -1L
+    private val cards = HashMap<Long, View>()
+
+    private val ticker = object : Runnable {
+        override fun run() {
+            render()
+            handler.postDelayed(this, 2000)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        p = Prefs(this)
+        content = screen("Notifications")
+        scroll = content.parent as ScrollView
+
+        val recHead = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(2), dp(4), 0, dp(4))
+        }
+        recHead.addView(tv("Your notifications", 14f, Ui.DIM), lp(0, WRAP, 1f))
+        recHead.addView(tv("Clear all", 14f, Ui.CYAN, true).apply {
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            minHeight = dp(44)
+            setPadding(dp(12), 0, dp(2), 0)
+            setOnClickListener { confirmClear() }
+        })
+        content.addView(recHead)
+        chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        content.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(chipRow)
+        }, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
+        recordsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(recordsBox, lp(MATCH, WRAP))
+
+        seenBefore = p.lastSeen
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        seenBefore = p.lastSeen
+        recSig = ""
+        handler.post(ticker)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(ticker)
+        p.lastSeen = System.currentTimeMillis() / 1000   // everything shown so far counts as seen
+    }
+
+    /** Opened from a phone notification with nothing behind it: go back to the home screen, not out of the app. */
+    override fun finish() {
+        if (isTaskRoot) startActivity(Intent(this, MainActivity::class.java))
+        super.finish()
+    }
+
+    // ------------------------------------------------------------ small helpers
+    private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
+        TextView(this).apply {
+            this.text = text
+            textSize = size
+            setTextColor(color)
+            if (bold) setTypeface(typeface, Typeface.BOLD)
+        }
+
+    private fun lp(w: Int, h: Int, weight: Float = 0f) = LinearLayout.LayoutParams(w, h, weight)
+
+    private fun openUrl(url: String) {
+        if (url.isEmpty()) return
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun onPrimary(): Int = if (Ui.dark) Ui.BG else 0xFFFFFFFF.toInt()
+
+    private fun yIn(v: View, ancestor: View): Int {
+        var y = 0
+        var c: View? = v
+        while (c != null && c !== ancestor) {
+            y += c.top
+            c = c.parent as? View
+        }
+        return y
+    }
+
+    private fun confirmClear() {
+        if (entries.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Clear all notifications?")
+            .setMessage("This only clears the list in the app. Nothing changes on Spectrum.")
+            .setPositiveButton("Clear") { _, _ ->
+                NotifyLog.clear(this)
+                logStamp = -1L
+                recSig = ""
+                render()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // ------------------------------------------------------------ rendering
+    private fun render() {
+        val loggedIn = p.token.isNotEmpty()
+        val st = NotifyLog.stamp(this)
+        if (st != logStamp) {
+            logStamp = st
+            entries = NotifyLog.entries(this).filter { !(it.kind == "sys" && it.title == "Check OK") }.asReversed()
+        }
+        renderChips()
+        renderRecords(loggedIn)
+    }
+
+    // ------------------------------------------------------------ chips and records
+    private val filters = listOf("" to "All", Cat.CLASS to "Classes", Cat.DEADLINE to "Deadlines", Cat.MATERIAL to "Materials", Cat.NEWS to "News")
+
+    private fun catOf(e: NotifyLog.Entry) = Cat.of(e.title, e.body)
+
+    private fun renderChips() {
+        val notifs = entries.filter { it.kind == "notif" }
+        val counts = filters.map { (k, _) -> if (k.isEmpty()) notifs.size else notifs.count { catOf(it) == k } }
+        val sig = "$filter:${counts.joinToString(",")}"
+        if (sig == chipSig) return
+        chipSig = sig
+        chipRow.removeAllViews()
+        for ((i, f) in filters.withIndex()) {
+            val sel = f.first == filter
+            val label = if (counts[i] > 0 && f.first.isNotEmpty()) "${f.second}  ${counts[i]}" else f.second
+            chipRow.addView(
+                tv(label, 14f, if (sel) onPrimary() else Ui.TEXT, sel).apply {
+                    gravity = Gravity.CENTER
+                    minHeight = dp(40)
+                    setPadding(dp(16), 0, dp(16), 0)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
+                        if (sel) setColor(Ui.CYAN) else { setColor(Ui.BAR); setStroke(dp(1), Ui.BORDER) }
+                    }
+                    setOnClickListener {
+                        filter = f.first
+                        chipSig = ""
+                        recSig = ""
+                        render()
+                    }
+                },
+                lp(WRAP, WRAP).apply { rightMargin = dp(8) },
+            )
+        }
+    }
+
+    private fun renderRecords(loggedIn: Boolean) {
+        val shown = entries.filter { filter.isEmpty() || (it.kind == "notif" && catOf(it) == filter) }
+        val sig = "$loggedIn:$filter:$seenBefore:${shown.size}:${shown.firstOrNull()?.ts}:${shown.firstOrNull()?.title}"
+        if (sig == recSig) return
+        recSig = sig
+        TransitionManager.beginDelayedTransition(recordsBox, AutoTransition().setDuration(180))
+        recordsBox.removeAllViews()
+        cards.clear()
+        if (shown.isEmpty()) {
+            recordsBox.addView(emptyState(loggedIn))
+            return
+        }
+        for (e in shown) {
+            if (e.kind == "notif") {
+                val c = card(e)
+                cards[e.ts] = c
+                recordsBox.addView(c, lp(MATCH, WRAP).apply { bottomMargin = dp(10) })
+            } else {
+                recordsBox.addView(tv("${ago(e.ts)} · ${e.title}", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
+            }
+        }
+        if (openTs > 0) {
+            val target = cards[openTs]
+            if (target != null) scroll.post { scroll.smoothScrollTo(0, maxOf(0, yIn(target, content) - dp(72))) }
+            openTs = -1L
+        }
+    }
+
+    private fun emptyState(loggedIn: Boolean): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(16), dp(32), dp(16), dp(32))
+        }
+        box.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_cat_other)
+            setColorFilter(Ui.DIM)
+        }, lp(dp(44), dp(44)))
+        box.addView(tv(
+            if (!loggedIn) "Nothing here yet" else if (filter.isEmpty()) "You're all caught up" else "Nothing in this category",
+            17f, Ui.TEXT, true,
+        ).apply { setPadding(0, dp(12), 0, 0) })
+        box.addView(tv(
+            if (!loggedIn) "Log in to start receiving class links, deadlines and materials."
+            else "New class links, deadlines and materials will show up here.",
+            13f, Ui.DIM,
+        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) })
+        return box
+    }
+
+    // ------------------------------------------------------------ one notification record
+    private fun card(e: NotifyLog.Entry): View {
+        val cat = catOf(e)
+        val col = Cat.color(cat)
+        var open = e.ts == openTs
+        val btns = if (e.buttons.isNotEmpty()) e.buttons else
+            Regex("""https?://[^\s"'<>)]+""").findAll(e.body).map { Pair("Open link", it.value) }.distinct().take(3).toList()
+
+        val card = SwipeCard(this) {
+            NotifyLog.remove(this, e.ts)
+            logStamp = -1L
+            recSig = ""
+            render()
+            Toast.makeText(this, "Removed", Toast.LENGTH_SHORT).show()
+        }
+        card.orientation = LinearLayout.VERTICAL
+        card.setPadding(dp(14), dp(14), dp(14), dp(14))
+
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val badge = FrameLayout(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.tint(col, 0x2E)) }
+        }
+        badge.addView(ImageView(this).apply {
+            setImageResource(Cat.icon(cat))
+            setColorFilter(col)
+        }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+        row.addView(badge, lp(dp(40), dp(40)))
+
+        val col2 = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, dp(8), 0)
+        }
+        val meta = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        meta.addView(tv(Cat.label(cat), 11f, col, true).apply { letterSpacing = 0.06f })
+        meta.addView(tv("· ${ago(e.ts)}", 12f, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
+        col2.addView(meta)
+        val title = tv(e.title, 15f, Ui.TEXT, true).apply {
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, dp(3), 0, 0)
+        }
+        col2.addView(title)
+        var body: TextView? = null
+        if (e.body.isNotEmpty()) {
+            body = tv(e.body.take(3000), 13f, Ui.DIM).apply {
+                ellipsize = TextUtils.TruncateAt.END
+                setLinkTextColor(Ui.CYAN)
+                setPadding(0, dp(6), 0, 0)
+                Linkify.addLinks(this, Linkify.WEB_URLS)       // links inside the text open when tapped
+                movementMethod = LinkMovementMethod.getInstance()
+            }
+            col2.addView(body)
+        }
+        row.addView(col2, lp(0, WRAP, 1f))
+        val unread = e.ts > seenBefore
+        val dot = View(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.CYAN) }
+            visibility = if (unread) View.VISIBLE else View.GONE
+        }
+        row.addView(dot, lp(dp(10), dp(10)).apply { topMargin = dp(4) })
+        card.addView(row)
+
+        // link buttons: the first is always visible, the rest appear when the card is opened
+        val chips = ArrayList<TextView>()
+        if (btns.isNotEmpty()) {
+            val chipLine = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(12), 0, 0)
+            }
+            for ((i, b) in btns.withIndex()) {
+                val chip = tv(b.first, 13f, if (i == 0) onPrimary() else col, true).apply {
+                    gravity = Gravity.CENTER
+                    minHeight = dp(40)
+                    setPadding(dp(16), 0, dp(16), 0)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
+                        if (i == 0) setColor(col) else { setColor(0x00000000); setStroke(dp(1), col) }
+                    }
+                    setOnClickListener { openUrl(b.second) }
+                }
+                chips.add(chip)
+                chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
+            }
+            card.addView(HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(chipLine)
+            })
+        }
+
+        fun applyOpen() {
+            title.maxLines = if (open) Int.MAX_VALUE else 2
+            body?.maxLines = if (open) Int.MAX_VALUE else 2
+            body?.setTextColor(if (open) Ui.TEXT else Ui.DIM)
+            for ((i, c) in chips.withIndex()) c.visibility = if (i == 0 || open) View.VISIBLE else View.GONE
+            card.background = roundBg(Ui.BAR, if (open) col else Ui.BORDER, this, 16)
+            if (open) dot.visibility = View.GONE
+        }
+        fun toggle() {
+            TransitionManager.beginDelayedTransition(recordsBox, AutoTransition().setDuration(180))
+            open = !open
+            applyOpen()
+        }
+        applyOpen()
+        card.setOnClickListener { toggle() }
+        body?.setOnClickListener { toggle() }       // tapping plain text still expands; tapping a link opens it
+        return card
+    }
+
+    // ------------------------------------------------------------ intent from a phone notification
+    private fun handleIntent(i: Intent?) {
+        if (i == null) return
+        val ts = i.getLongExtra(EXTRA_TS, -1L)
+        if (ts > 0) {
+            // opened from a notification: show that record, opened and scrolled into view
+            i.removeExtra(EXTRA_TS)
+            openTs = ts
+            filter = ""
+            chipSig = ""
+            recSig = ""
+            logStamp = -1L
+            if (::recordsBox.isInitialized) render()
+        }
+    }
+}

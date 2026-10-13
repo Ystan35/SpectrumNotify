@@ -36,12 +36,12 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Home screen for students: greeting, "up next" class with countdown and Join button, deadlines coming up,
- * then the notification history (filter chips, tap to expand, swipe to dismiss). Account bottom-left, settings bottom-right.
+ * Home screen for students: greeting, "up next" class with countdown and Join button, and deadlines coming up (reminders only).
+ * Bottom bar: courses, timetable, notifications (bell), settings. The notification history is in NotificationsActivity;
+ * the profile (login) is a section of Settings.
  */
 class MainActivity : Activity() {
     companion object {
-        const val EXTRA_TS = "record_ts"
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
     }
@@ -56,20 +56,11 @@ class MainActivity : Activity() {
     private lateinit var heroBox: LinearLayout
     private lateinit var dueSection: LinearLayout
     private lateinit var dueRow: LinearLayout
-    private lateinit var chipRow: LinearLayout
-    private lateinit var recordsBox: LinearLayout
-    private lateinit var avatar: TextView
-    private lateinit var accountLabel: TextView
-    private lateinit var accountSub: TextView
+    private lateinit var bellDot: View
 
     private val handler = Handler(Looper.getMainLooper())
-    private var filter = ""                 // "" = all
-    private var seenBefore = 0L             // records newer than this show a "new" dot
-    private var openTs = -1L                // record to open when arriving from a notification
     private var heroSig = ""
     private var dueSig = ""
-    private var chipSig = ""
-    private var recSig = ""
     private var ov = Checker.Overview(emptyList(), emptyList())
     private var ovAt = 0L
     private var entries: List<NotifyLog.Entry> = emptyList()
@@ -78,7 +69,6 @@ class MainActivity : Activity() {
     private var refreshStart = 0L
     private var refreshBase = ""
     private var spin: ObjectAnimator? = null
-    private val cards = HashMap<Long, View>()
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -97,7 +87,6 @@ class MainActivity : Activity() {
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
-        seenBefore = p.lastSeen
         buildUi()
         handleIntent(intent)
         Scheduler.ensurePolling(this)
@@ -111,16 +100,13 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        seenBefore = p.lastSeen
         ovAt = 0L
-        recSig = ""
         handler.post(ticker)
     }
 
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(ticker)
-        p.lastSeen = System.currentTimeMillis() / 1000   // everything shown so far counts as seen
     }
 
     // ------------------------------------------------------------ small helpers
@@ -216,90 +202,18 @@ class MainActivity : Activity() {
         })
         content.addView(dueSection, lp(MATCH, WRAP))
 
-        // notifications header + filters
-        val recHead = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(2), dp(24), 0, dp(4))
-        }
-        recHead.addView(tv("Notifications", 18f, Ui.TEXT, true), lp(0, WRAP, 1f))
-        recHead.addView(tv("Clear all", 14f, Ui.CYAN, true).apply {
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            minHeight = dp(44)
-            setPadding(dp(12), 0, dp(2), 0)
-            setOnClickListener { confirmClear() }
-        })
-        content.addView(recHead)
-        chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        content.addView(HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(chipRow)
-        }, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
-        recordsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        content.addView(recordsBox, lp(MATCH, WRAP))
-
-        // bottom bar: account (left), courses, timetable, settings (right)
+        // bottom bar: courses, timetable, notifications (bell), settings (profile is inside Settings)
         root.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, lp(MATCH, 1))
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Ui.BAR)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(8), dp(6), dp(8), dp(6))
         }
-        val account = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(48)
-            setOnClickListener { startActivity(Intent(this@MainActivity, AccountActivity::class.java)) }
-        }
-        avatar = tv("?", 17f, Ui.CYAN, true).apply {
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Ui.tint(Ui.CYAN, 0x2E))
-            }
-        }
-        account.addView(avatar, lp(dp(42), dp(42)))
-        val names = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, dp(8), 0)
-        }
-        accountLabel = tv("", 15f, Ui.TEXT, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
-        accountSub = tv("", 12f, Ui.DIM)
-        names.addView(accountLabel)
-        names.addView(accountSub)
-        account.addView(names, lp(0, WRAP, 1f))
-        bar.addView(account, lp(0, WRAP, 1f))
-        bar.addView(
-            ImageButton(this).apply {
-                setImageResource(R.drawable.ic_courses)
-                setColorFilter(Ui.TEXT)
-                background = roundBg(Ui.BG, Ui.BORDER, this@MainActivity, 24)
-                contentDescription = "Courses"
-                setOnClickListener { startActivity(Intent(this@MainActivity, CoursesActivity::class.java)) }
-            },
-            lp(dp(48), dp(48)).apply { rightMargin = dp(10) },
-        )
-        bar.addView(
-            ImageButton(this).apply {
-                setImageResource(R.drawable.ic_timetable)
-                setColorFilter(Ui.TEXT)
-                background = roundBg(Ui.BG, Ui.BORDER, this@MainActivity, 24)
-                contentDescription = "Timetable"
-                setOnClickListener { startActivity(Intent(this@MainActivity, TimetableActivity::class.java)) }
-            },
-            lp(dp(48), dp(48)).apply { rightMargin = dp(10) },
-        )
-        bar.addView(
-            ImageButton(this).apply {
-                setImageResource(R.drawable.ic_settings)
-                setColorFilter(Ui.TEXT)
-                background = roundBg(Ui.BG, Ui.BORDER, this@MainActivity, 24)
-                contentDescription = "Settings"
-                setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
-            },
-            lp(dp(48), dp(48)),
-        )
+        bar.addView(navItem(R.drawable.ic_courses, "Courses", false) { startActivity(Intent(this, CoursesActivity::class.java)) }, lp(0, WRAP, 1f))
+        bar.addView(navItem(R.drawable.ic_timetable, "Timetable", false) { startActivity(Intent(this, TimetableActivity::class.java)) }, lp(0, WRAP, 1f))
+        bar.addView(navItem(R.drawable.ic_bell, "Notifications", true) { startActivity(Intent(this, NotificationsActivity::class.java)) }, lp(0, WRAP, 1f))
+        bar.addView(navItem(R.drawable.ic_settings, "Settings", false) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(0, WRAP, 1f))
         root.addView(bar)
         setContentView(root)
     }
@@ -307,7 +221,7 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------ refresh button
     private fun startRefresh() {
         if (p.token.isEmpty()) {
-            startActivity(Intent(this, AccountActivity::class.java))
+            startActivity(Intent(this, SettingsActivity::class.java))
             return
         }
         if (refreshing) return
@@ -343,19 +257,38 @@ class MainActivity : Activity() {
         ).show()
     }
 
-    private fun confirmClear() {
-        if (entries.isEmpty()) return
-        AlertDialog.Builder(this)
-            .setTitle("Clear all notifications?")
-            .setMessage("This only clears the list in the app. Nothing changes on Spectrum.")
-            .setPositiveButton("Clear") { _, _ ->
-                NotifyLog.clear(this)
-                logStamp = -1L
-                recSig = ""
-                render()
+    /** Dot on the bell while there are notifications you have not opened yet. */
+    private fun renderBell() {
+        val unread = entries.any { it.kind == "notif" && it.ts > p.lastSeen }
+        bellDot.visibility = if (unread) View.VISIBLE else View.GONE
+    }
+
+    private fun navItem(icon: Int, label: String, withDot: Boolean, onClick: () -> Unit): View {
+        val item = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            minimumHeight = dp(52)
+            isClickable = true
+            contentDescription = label
+            setOnClickListener { onClick() }
+        }
+        val holder = FrameLayout(this)
+        holder.addView(ImageView(this).apply {
+            setImageResource(icon)
+            setColorFilter(Ui.TEXT)
+        }, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+        if (withDot) {
+            bellDot = View(this).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.RED) }
+                visibility = View.GONE
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            holder.addView(bellDot, FrameLayout.LayoutParams(dp(10), dp(10), Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(0); rightMargin = dp(8)
+            })
+        }
+        item.addView(holder, lp(dp(46), dp(28)))
+        item.addView(tv(label, 11f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        return item
     }
 
     // ------------------------------------------------------------ rendering
@@ -375,8 +308,7 @@ class MainActivity : Activity() {
         renderHeader(loggedIn)
         renderHero(loggedIn)
         renderDue()
-        renderChips()
-        renderRecords(loggedIn)
+        renderBell()
     }
 
     private fun renderHeader(loggedIn: Boolean) {
@@ -397,9 +329,6 @@ class MainActivity : Activity() {
             else -> { syncLabel.text = "● Synced ${ago(ts)}"; syncLabel.setTextColor(Ui.GREEN) }
         }
 
-        avatar.text = if (loggedIn && p.userName.isNotEmpty()) p.userName.trim().take(1).uppercase() else "?"
-        accountLabel.text = if (loggedIn) p.userName.ifEmpty { "Logged in" } else "Log in"
-        accountSub.text = if (loggedIn) "Your account" else "Tap to connect Spectrum"
     }
 
     private fun pill(label: String, filled: Boolean, onClick: () -> Unit): TextView =
@@ -440,7 +369,7 @@ class MainActivity : Activity() {
             card.addView(label("WELCOME"))
             card.addView(tv("Never miss a class link", 24f, white, true).apply { setPadding(0, dp(6), 0, 0) })
             card.addView(tv("Log in with your Spectrum account to get class links, deadlines and new materials here.", 14f, soft).apply { setPadding(0, dp(6), 0, dp(14)) })
-            card.addView(pill("Log in", true) { startActivity(Intent(this, AccountActivity::class.java)) }, lp(WRAP, WRAP))
+            card.addView(pill("Log in", true) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(WRAP, WRAP))
         } else if (next == null) {
             val due = ov.due.firstOrNull()
             card.addView(label("ALL CLEAR"))
@@ -527,212 +456,9 @@ class MainActivity : Activity() {
         }
     }
 
-    private val filters = listOf("" to "All", Cat.CLASS to "Classes", Cat.DEADLINE to "Deadlines", Cat.MATERIAL to "Materials", Cat.NEWS to "News")
-
-    private fun catOf(e: NotifyLog.Entry) = Cat.of(e.title, e.body)
-
-    private fun renderChips() {
-        val notifs = entries.filter { it.kind == "notif" }
-        val counts = filters.map { (k, _) -> if (k.isEmpty()) notifs.size else notifs.count { catOf(it) == k } }
-        val sig = "$filter:${counts.joinToString(",")}"
-        if (sig == chipSig) return
-        chipSig = sig
-        chipRow.removeAllViews()
-        for ((i, f) in filters.withIndex()) {
-            val sel = f.first == filter
-            val label = if (counts[i] > 0 && f.first.isNotEmpty()) "${f.second}  ${counts[i]}" else f.second
-            chipRow.addView(
-                tv(label, 14f, if (sel) onPrimary() else Ui.TEXT, sel).apply {
-                    gravity = Gravity.CENTER
-                    minHeight = dp(40)
-                    setPadding(dp(16), 0, dp(16), 0)
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
-                        if (sel) setColor(Ui.CYAN) else { setColor(Ui.BAR); setStroke(dp(1), Ui.BORDER) }
-                    }
-                    setOnClickListener {
-                        filter = f.first
-                        chipSig = ""
-                        recSig = ""
-                        render()
-                    }
-                },
-                lp(WRAP, WRAP).apply { rightMargin = dp(8) },
-            )
-        }
-    }
-
-    private fun renderRecords(loggedIn: Boolean) {
-        val shown = entries.filter { filter.isEmpty() || (it.kind == "notif" && catOf(it) == filter) }
-        val sig = "$loggedIn:$filter:$seenBefore:${shown.size}:${shown.firstOrNull()?.ts}:${shown.firstOrNull()?.title}"
-        if (sig == recSig) return
-        recSig = sig
-        TransitionManager.beginDelayedTransition(recordsBox, AutoTransition().setDuration(180))
-        recordsBox.removeAllViews()
-        cards.clear()
-        if (shown.isEmpty()) {
-            recordsBox.addView(emptyState(loggedIn))
-            return
-        }
-        for (e in shown) {
-            if (e.kind == "notif") {
-                val c = card(e)
-                cards[e.ts] = c
-                recordsBox.addView(c, lp(MATCH, WRAP).apply { bottomMargin = dp(10) })
-            } else {
-                recordsBox.addView(tv("${ago(e.ts)} · ${e.title}", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
-            }
-        }
-        if (openTs > 0) {
-            val target = cards[openTs]
-            if (target != null) scroll.post { scroll.smoothScrollTo(0, maxOf(0, yIn(target, content) - dp(72))) }
-            openTs = -1L
-        }
-    }
-
-    private fun emptyState(loggedIn: Boolean): View {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(16), dp(32), dp(16), dp(32))
-        }
-        box.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_cat_other)
-            setColorFilter(Ui.DIM)
-        }, lp(dp(44), dp(44)))
-        box.addView(tv(
-            if (!loggedIn) "Nothing here yet" else if (filter.isEmpty()) "You're all caught up" else "Nothing in this category",
-            17f, Ui.TEXT, true,
-        ).apply { setPadding(0, dp(12), 0, 0) })
-        box.addView(tv(
-            if (!loggedIn) "Log in to start receiving class links, deadlines and materials."
-            else "New class links, deadlines and materials will show up here.",
-            13f, Ui.DIM,
-        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) })
-        return box
-    }
-
-    // ------------------------------------------------------------ one notification record
-    private fun card(e: NotifyLog.Entry): View {
-        val cat = catOf(e)
-        val col = Cat.color(cat)
-        var open = e.ts == openTs
-        val btns = if (e.buttons.isNotEmpty()) e.buttons else
-            Regex("""https?://[^\s"'<>)]+""").findAll(e.body).map { Pair("Open link", it.value) }.distinct().take(3).toList()
-
-        val card = SwipeCard(this) {
-            NotifyLog.remove(this, e.ts)
-            logStamp = -1L
-            recSig = ""
-            render()
-            Toast.makeText(this, "Removed", Toast.LENGTH_SHORT).show()
-        }
-        card.orientation = LinearLayout.VERTICAL
-        card.setPadding(dp(14), dp(14), dp(14), dp(14))
-
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val badge = FrameLayout(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.tint(col, 0x2E)) }
-        }
-        badge.addView(ImageView(this).apply {
-            setImageResource(Cat.icon(cat))
-            setColorFilter(col)
-        }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
-        row.addView(badge, lp(dp(40), dp(40)))
-
-        val col2 = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, dp(8), 0)
-        }
-        val meta = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        meta.addView(tv(Cat.label(cat), 11f, col, true).apply { letterSpacing = 0.06f })
-        meta.addView(tv("· ${ago(e.ts)}", 12f, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
-        col2.addView(meta)
-        val title = tv(e.title, 15f, Ui.TEXT, true).apply {
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(0, dp(3), 0, 0)
-        }
-        col2.addView(title)
-        var body: TextView? = null
-        if (e.body.isNotEmpty()) {
-            body = tv(e.body.take(3000), 13f, Ui.DIM).apply {
-                ellipsize = TextUtils.TruncateAt.END
-                setLinkTextColor(Ui.CYAN)
-                setPadding(0, dp(6), 0, 0)
-                Linkify.addLinks(this, Linkify.WEB_URLS)       // links inside the text open when tapped
-                movementMethod = LinkMovementMethod.getInstance()
-            }
-            col2.addView(body)
-        }
-        row.addView(col2, lp(0, WRAP, 1f))
-        val unread = e.ts > seenBefore
-        val dot = View(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.CYAN) }
-            visibility = if (unread) View.VISIBLE else View.GONE
-        }
-        row.addView(dot, lp(dp(10), dp(10)).apply { topMargin = dp(4) })
-        card.addView(row)
-
-        // link buttons: the first is always visible, the rest appear when the card is opened
-        val chips = ArrayList<TextView>()
-        if (btns.isNotEmpty()) {
-            val chipLine = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(12), 0, 0)
-            }
-            for ((i, b) in btns.withIndex()) {
-                val chip = tv(b.first, 13f, if (i == 0) onPrimary() else col, true).apply {
-                    gravity = Gravity.CENTER
-                    minHeight = dp(40)
-                    setPadding(dp(16), 0, dp(16), 0)
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
-                        if (i == 0) setColor(col) else { setColor(0x00000000); setStroke(dp(1), col) }
-                    }
-                    setOnClickListener { openUrl(b.second) }
-                }
-                chips.add(chip)
-                chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
-            }
-            card.addView(HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(chipLine)
-            })
-        }
-
-        fun applyOpen() {
-            title.maxLines = if (open) Int.MAX_VALUE else 2
-            body?.maxLines = if (open) Int.MAX_VALUE else 2
-            body?.setTextColor(if (open) Ui.TEXT else Ui.DIM)
-            for ((i, c) in chips.withIndex()) c.visibility = if (i == 0 || open) View.VISIBLE else View.GONE
-            card.background = roundBg(Ui.BAR, if (open) col else Ui.BORDER, this, 16)
-            if (open) dot.visibility = View.GONE
-        }
-        fun toggle() {
-            TransitionManager.beginDelayedTransition(recordsBox, AutoTransition().setDuration(180))
-            open = !open
-            applyOpen()
-        }
-        applyOpen()
-        card.setOnClickListener { toggle() }
-        body?.setOnClickListener { toggle() }       // tapping plain text still expands; tapping a link opens it
-        return card
-    }
-
-    // ------------------------------------------------------------ intents (notification tap, login redirect)
+    // ------------------------------------------------------------ intents (login redirect)
     private fun handleIntent(i: Intent?) {
         if (i == null) return
-        val ts = i.getLongExtra(EXTRA_TS, -1L)
-        if (ts > 0) {
-            // opened from a notification: show that record, opened and scrolled into view
-            i.removeExtra(EXTRA_TS)
-            openTs = ts
-            filter = ""
-            chipSig = ""
-            recSig = ""
-            logStamp = -1L
-            if (::recordsBox.isInitialized) render()
-        }
         val raw = i.dataString ?: return
         if (!raw.startsWith("spectrumnotify://")) return
         i.data = null
@@ -745,7 +471,6 @@ class MainActivity : Activity() {
         Login.saveAndVerify(this, tok) { msg ->
             runOnUiThread {
                 Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-                recSig = ""
                 heroSig = ""
                 ovAt = 0L
                 render()

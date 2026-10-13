@@ -29,6 +29,16 @@ object Catalog {
             SlotKind.LAB -> lab
             else -> emptyList()
         }
+
+        /** Every Occ number the course has (lectures are shared by several Occs, so this is the list a student picks from). */
+        fun occs(): List<String> = (lec + tut + lab).map { it.occ }.distinct()
+            .sortedWith(compareBy({ it.toIntOrNull() ?: Int.MAX_VALUE }, { it }))
+
+        /** Your lecture, tutorial and lab slots when you are in this Occ. */
+        fun forOcc(occ: String): List<Pair<SlotKind, Choice>> =
+            listOf(SlotKind.LECTURE, SlotKind.TUTORIAL, SlotKind.LAB).mapNotNull { k ->
+                choices(k).firstOrNull { it.occ == occ }?.let { Pair(k, it) }
+            }
     }
 
     @Volatile private var cache: Map<String, Course>? = null

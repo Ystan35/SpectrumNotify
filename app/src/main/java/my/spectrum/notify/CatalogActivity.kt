@@ -71,78 +71,72 @@ class CatalogActivity : Activity() {
     }
 
     private fun buildPickers(c: Catalog.Course) {
-        val kinds = listOf(
-            Triple(SlotKind.LECTURE, "Lecture Occ", c.lec),
-            Triple(SlotKind.TUTORIAL, "Tutorial Occ", c.tut),
-            Triple(SlotKind.LAB, "Lab Occ", c.lab),
-        ).filter { it.third.isNotEmpty() }
-        if (kinds.isEmpty()) {
+        val occs = c.occs()
+        if (occs.isEmpty()) {
             holder.label("No lecture, tutorial or lab slots are listed for ${c.code} this semester.", 13f, Ui.TEXT, 12)
             return
         }
-        val chosen = HashMap<SlotKind, Int>()   // index into the choice list, -1 = none
-        for ((kind, title, list) in kinds) {
-            val prev = previousOcc(c.code, kind)
-            chosen[kind] = maxOf(-1, list.indexOfFirst { it.occ == prev })
-            holder.label(title, 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-            val detail = holder.label("", 12f, Ui.DIM, 4)
-            val items = listOf("— not taking —") + list.map { it.label() }
-            val sp = spinner(items, chosen[kind]!! + 1) { pos ->
-                chosen[kind] = pos - 1
-                detail.text = if (pos > 0) list[pos - 1].detail() else ""
-            }
-            holder.addView(sp, holder.indexOfChild(detail), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+        holder.label("My Occ", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        holder.label("One Occ per course. It sets your lecture and tutorial together.", 12f, Ui.DIM, 2)
+        val detail = holder.label("", 12f, Ui.TEXT, 8)
+        var chosen = occs.indexOf(previousOcc(c.code))   // -1 = none
+        val sp = spinner(listOf("Choose your Occ") + occs.map { "Occ $it" }, chosen + 1) { pos ->
+            chosen = pos - 1
+            detail.text = if (pos > 0) describe(c, occs[pos - 1]) else ""
         }
+        holder.addView(sp, holder.indexOfChild(detail), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         holder.btn("Add to my timetable") {
-            val picked = kinds.mapNotNull { (kind, _, list) -> chosen[kind]?.takeIf { it >= 0 }?.let { Triple(kind, list[it], it) } }
-            if (picked.isEmpty()) {
-                Toast.makeText(this, "Choose at least one Occ", Toast.LENGTH_SHORT).show()
+            if (chosen < 0) {
+                Toast.makeText(this, "Choose your Occ", Toast.LENGTH_SHORT).show()
             } else {
-                save(c, kinds.map { it.first }, picked.map { Pair(it.first, it.second) })
-                Toast.makeText(this, "Added ${c.code}: " + picked.joinToString(", ") { "${it.first.label} Occ ${it.second.occ}" }, Toast.LENGTH_LONG).show()
+                val occ = occs[chosen]
+                save(c, occ)
+                Toast.makeText(this, "Added ${c.code} Occ $occ", Toast.LENGTH_LONG).show()
                 finish()
             }
         }
     }
 
-    /** Occ saved earlier for this course and type, so the list opens on it. */
-    private fun previousOcc(code: String, kind: SlotKind): String =
-        Timetable.manual(this).firstOrNull { it.grp.startsWith(prefix(code, kind)) }?.grp?.removePrefix(prefix(code, kind))?.substringBefore('-') ?: ""
-
-    private fun prefix(code: String, kind: SlotKind) = "cat-$code-${kind.tag}-"
-
-    private fun save(c: Catalog.Course, offered: List<SlotKind>, picked: List<Pair<SlotKind, Catalog.Choice>>) {
-        // replace what was added earlier for this course (only for the types listed, so manual entries stay)
-        for (k in offered) {
-            Timetable.manual(this).map { it.grp }.filter { it.startsWith(prefix(c.code, k)) }.distinct()
-                .forEach { Timetable.deleteManual(this, it) }
+    /** What Occ N means: its lecture, tutorial and lab slots with room and lecturer. */
+    private fun describe(c: Catalog.Course, occ: String): String {
+        val mine = c.forOcc(occ)
+        if (mine.isEmpty()) return ""
+        return mine.joinToString("\n") { (k, ch) ->
+            val times = ch.parts.joinToString(" + ") {
+                "${Timetable.DAYS[it.day - 1]} ${Timetable.fmtMin(it.start)}–${Timetable.fmtMin(it.end)}" + if (it.room.isNotEmpty()) " ${it.room}" else ""
+            }
+            "${k.label}: $times" + ch.detail().let { if (it.isNotEmpty()) "  ($it)" else "" }
         }
-        for ((kind, choice) in picked) {
+    }
+
+    /** Occ saved earlier for this course, so the list opens on it. */
+    private fun previousOcc(code: String): String =
+        Timetable.manual(this).firstOrNull { it.grp.startsWith(prefix(code)) }?.grp?.removePrefix(prefix(code))?.split('-')?.getOrNull(1) ?: ""
+
+    private fun prefix(code: String) = "cat-$code-"
+
+    private fun save(c: Catalog.Course, occ: String) {
+        // replace what was added earlier for this course (own hand-made entries use other ids and stay)
+        Timetable.manual(this).map { it.grp }.filter { it.startsWith(prefix(c.code)) }.distinct()
+            .forEach { Timetable.deleteManual(this, it) }
+        for ((kind, choice) in c.forOcc(occ)) {
             choice.parts.forEachIndexed { i, p ->
                 Timetable.saveManual(
-                    this, prefix(c.code, kind) + choice.occ + "-" + i, c.code, "${kind.label} Occ ${choice.occ}",
+                    this, prefix(c.code) + kind.tag + "-" + occ + "-" + i, c.code, "${kind.label} Occ $occ",
                     listOf(p.day), p.start, p.end, kind, p.room,
                 )
             }
         }
         if (Timetable.colourIndexOrNull(this, c.code) == null) Timetable.setColourIndex(this, c.code, Timetable.nextColourIndex(this))
-        setMyGroup(c.code, picked)
+        setMyGroup(c.code, occ)
     }
 
     /** "WIX1003:occ2, WIX1003:t3" in Settings > My group, so posts for other Occ / tutorial groups are not notified. */
-    private fun setMyGroup(code: String, picked: List<Pair<SlotKind, Catalog.Choice>>) {
+    private fun setMyGroup(code: String, occ: String) {
         val p = Prefs(this)
         if (p.groupsOff) return
-        val tokens = picked.mapNotNull { (k, ch) ->
-            when (k) {
-                SlotKind.LECTURE -> "occ${ch.occ}"
-                SlotKind.TUTORIAL -> "t${ch.occ}"
-                else -> null
-            }
-        }
-        if (tokens.isEmpty()) return
         val keep = p.myGroups.split(",").map { it.trim() }.filter { it.isNotEmpty() && !it.uppercase(Locale.ROOT).startsWith("$code:") }
-        p.myGroups = (keep + tokens.map { "$code:$it" }).joinToString(", ")
+        p.myGroups = (keep + "$code:occ$occ").joinToString(", ")
     }
 
     private fun spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit): Spinner {

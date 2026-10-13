@@ -8,7 +8,9 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
+import android.webkit.CookieManager
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 
 class SettingsActivity : Activity() {
@@ -16,6 +18,9 @@ class SettingsActivity : Activity() {
     private val fields = LinkedHashMap<String, EditText>()
     private lateinit var alarmBtn: Button
     private var alarmHelp: View? = null
+    private lateinit var profileStatus: TextView
+    private lateinit var siteField: EditText
+    private lateinit var tokenField: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,6 +32,40 @@ class SettingsActivity : Activity() {
         }
 
         col.label("Changes are saved automatically when you leave this screen.", 12f, Ui.DIM, 4)
+
+        col.section("PROFILE")
+        profileStatus = col.label("", 15f, Ui.TEXT, 8)
+        col.label("Spectrum site URL", 12f, Ui.DIM, 12)
+        siteField = col.field(p.site)
+        col.btn("Log in with Spectrum") {
+            p.site = siteField.text.toString()
+            startActivity(Intent(this, LoginWebActivity::class.java))
+        }
+        col.btn("Log in with browser instead") {
+            p.site = siteField.text.toString()
+            Login.start(this)
+        }
+        col.label("Or paste a token manually", 13f, Ui.TEXT, 16)
+        tokenField = col.field("", "Token", true)
+        col.btn("Save token") {
+            val t = tokenField.text.toString().trim()
+            if (t.isNotEmpty()) {
+                p.site = siteField.text.toString()
+                tokenField.setText("")
+                Login.saveAndVerify(this, t) { msg ->
+                    runOnUiThread {
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                        refreshProfile()
+                    }
+                }
+            }
+        }
+        col.btn("Log out") {
+            p.clearToken()
+            CookieManager.getInstance().removeAllCookies(null)
+            NotifyLog.sys(this, "Logged out")
+            refreshProfile()
+        }
 
         col.section(
             "QUIET HOURS",
@@ -55,6 +94,10 @@ class SettingsActivity : Activity() {
         )
 
         col.section("OTHER GROUPS' POSTS")
+        col.action(
+            "Choose my Occ from a list",
+            "Pick a course, then your Occ from a drop-down. It fills your lecture and tutorial times and the My group box below.",
+        ) { startActivity(android.content.Intent(this, CatalogActivity::class.java)) }
         add(
             "myGroups", "My group",
             "Another lecturer's materials and announcements for a different Occ or tutorial group are hidden. " +
@@ -111,11 +154,20 @@ class SettingsActivity : Activity() {
         val vis = if (Scheduler.canExact(this)) View.GONE else View.VISIBLE
         alarmBtn.visibility = vis
         alarmHelp?.visibility = vis
+        refreshProfile()
+        fields["myGroups"]?.setText(p.myGroups)  // may have been set by the Occ list
     }
 
     override fun onPause() {
         super.onPause()
         save()  // settings are saved when you leave the screen
+    }
+
+    private fun refreshProfile() {
+        val loggedIn = p.token.isNotEmpty()
+        profileStatus.text = (if (loggedIn) "Logged in" + (if (p.userName.isNotEmpty()) " as ${p.userName}" else "") else "Not logged in") +
+            "\nLast check: ${p.lastRun}"
+        profileStatus.setTextColor(if (loggedIn) Ui.GREEN else Ui.RED)
     }
 
     private fun f(key: String) = fields[key]?.text?.toString()?.trim() ?: ""
