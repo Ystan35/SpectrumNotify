@@ -9,7 +9,7 @@ Android port of spectrum_notify.py. Runs entirely on the phone with your own Spe
 - Slow background poll (15 min) for: Moodle notifications, new materials, announcements, deadlines (24h/3h)
 - Exact alarms ~10 min before each class (class link or "no link yet"), morning summary, afternoon check-in
 - Settings screen: quiet hours, times, Teams-record courses, deadline hours, poll interval
-- v0.2.0 UI: launcher icon (bell), account (login) at bottom-left, settings at bottom-right
+- v0.2.0 UI: launcher icon (bell); (account/settings placement changed in v0.8.0)
 - v0.2.1: in-app sign-in page (WebView) that re-requests the token after Microsoft sign-in; browser login kept as fallback
 - Fixed debug signing key (app/debug.keystore) so new builds update over the old install
 
@@ -27,8 +27,14 @@ Android port of spectrum_notify.py. Runs entirely on the phone with your own Spe
 
 - v0.6.0 UM timetable picker (data from damnitjoshua/um-timetable-sdk, 2026/S1, 2209 courses, `app/src/main/assets/catalog.json`, bundled so every user gets it): Timetable > + > "Pick from UM timetable". Type a course code or name, then choose **Lecture Occ** / **Tutorial Occ** (/ Lab Occ) from drop-down lists showing day, time and room (lecturer under it). Saving adds the slots as your own classes (re-picking replaces them) and sets Settings > My group (e.g. `WIX1003:occ2, WIX1003:t3`) so other groups' posts are hidden.
 
+- v0.6.1 One Occ per course: the picker has a single **My Occ** drop-down per course (a student has one Occ; lectures are shared by several Occs). It adds that Occ's lecture, tutorial and lab slots and sets My group to `CODE:occN`. Settings > "Choose my Occ from a list" opens it.
+
+- v0.7.0 Notification pages: Courses > a course card > "Notification pages" lists the course's pages (sections, plus Announcements) with a switch each. Only pages you switch off are stored, so a page that is new on Spectrum is on by default. New files/links on an off page are not notified (they still count as seen, so turning the page on later does not replay old items); skipped ones are logged in the console. The page list is learned from each check, so run Settings > Check now first.
+
+- v0.8.0 Layout: home page = reminders only (greeting, Up next, Due soon). Bottom bar: Courses, Timetable, Notifications (bell, red dot when unread), Settings. The notification history moved to the bell page (NotificationsActivity: filter chips, expand, swipe to dismiss, Clear all). Tapping a phone notification opens the bell page on that record (back goes home). The Account page is now the PROFILE section at the top of Settings (site URL, log in, token, log out); the old Account screen just forwards to Settings.
+
 ## In progress
-- v0.6.0 not compiled or run on a device (no Android SDK in the build sandbox); the CI Build APK run is the first compile. New semester: on your PC run the SDK scripts, `node cleaner.js course_events_with_details.json lecturer_data.json`, then `node tools/make_catalog.js timetable_data.json 2026/S1` (rewrites app/src/main/assets/catalog.json; keeps LEC/TUT/LAB, no emails). The 77 MB raw file never has to leave your PC
+- v0.6.0-0.8.0 not compiled or run on a device (no Android SDK in the build sandbox); the CI Build APK run is the first compile. New semester: on your PC run the SDK scripts, `node cleaner.js course_events_with_details.json lecturer_data.json`, then `node tools/make_catalog.js timetable_data.json 2026/S1` (rewrites app/src/main/assets/catalog.json; keeps LEC/TUT/LAB, no emails). The 77 MB raw file never has to leave your PC
 - v0.5.0 Courses page not yet run on a device; the course home page address is `<site>/course/view.php?id=<id>`
 - v0.4.0 not yet run on a device. Compiles against android.jar and the timetable data logic passes JVM tests; layout and the Spectrum event names are untested for real
 - v0.4.1 group filter only works if your attendance event names contain Occ / T numbers; otherwise set My group by hand

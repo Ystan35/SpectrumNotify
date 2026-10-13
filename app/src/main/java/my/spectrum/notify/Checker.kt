@@ -194,19 +194,26 @@ object Checker {
     }
 
     // ------------------------------------------------------------ materials
-    private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
+    private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
+                               secOf: MutableMap<String, String>, secNames: MutableMap<String, String>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
         val raw = ArrayList<Triple<String, String, Long>>()
         val cid = c.optLong("id")
         for (sec in api.arr("core_course_get_contents", mapOf("courseid" to cid)).objs()) {
             val sname = sec.str("name")
-            for (m in (sec.optJSONArray("modules") ?: JSONArray()).objs()) {
+            val skey = sec.optLong("id").toString()
+            val mods = (sec.optJSONArray("modules") ?: JSONArray()).objs()
+            if (mods.isNotEmpty()) {
+                secNames[skey] = sname.ifEmpty { if (sec.optInt("section") == 0) "General" else "Page ${sec.optInt("section")}" }
+            }
+            for (m in mods) {
                 val contents = (m.optJSONArray("contents") ?: JSONArray()).objs()
                 val mt = contents.maxOfOrNull { it.optLong("timemodified", 0L) } ?: 0L
                 val key = "mod:${m.optLong("id")}:$mt"
                 val name = m.str("name")
                 val url = m.str("url")
                 snap[key] = Triple(name, url, sname)
+                secOf[key] = skey
                 val desc = clean(m.str("description"), 300)
                 if (desc.isNotEmpty()) extra[key] = desc
                 if (m.str("modname") in MEETING_MODS && m.optBoolean("uservisible", true) && url.isNotEmpty()) {
@@ -232,6 +239,8 @@ object Checker {
                     snap["ann:$did"] = Triple(
                         "Announcement: " + d.str("name"), "$site/mod/forum/discuss.php?d=$did", "Announcements",
                     )
+                    secOf["ann:$did"] = Sections.ANN
+                    secNames[Sections.ANN] = "Announcements"
                     extra["ann:$did"] = clean(d.str("message"), 300)
                     for (u in findLinks(d.str("message"))) {
                         raw.add(Triple(u, "announcement: " + clean(d.str("name"), 50), maxOf(d.optLong("timemodified"), d.optLong("created"))))
@@ -270,29 +279,37 @@ object Checker {
             val cid = c.optLong("id")
             val ckey = "course$cid"
             val extra = HashMap<String, String>()
+            val secOf = HashMap<String, String>()
+            val secNames = LinkedHashMap<String, String>()
             val result = try {
-                snapshotCourse(api, p.site, c, extra)
+                snapshotCourse(api, p.site, c, extra, secOf, secNames)
             } catch (e: Exception) {
                 Log.w(TAG, "course $cid skipped: $e")
                 prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }
                 continue
             }
             val snap = result.first
+            Sections.remember(st, cid, secNames)
             linksByCourse["$cid"] = result.second
             val known = st.j.has(ckey)
             val old = st.strings(ckey)
             val newKeys = snap.keys.filter { it !in old }
             if (known && newKeys.isNotEmpty()) {
-                // hide items that name another group (Occ / tutorial) of this course; they still count as seen
+                // pages you switched off, then items that name another group (Occ / tutorial); both still count as seen
                 val code = Timetable.courseCode(c)
+                val off = Sections.offSet(ctx, cid)
+                val inPages = newKeys.filter { k -> secOf[k]?.let { it in off } != true }
                 val mine = Groups.mine(st, p, code)
-                val fresh = newKeys.filter { k ->
+                val fresh = inPages.filter { k ->
                     val t = snap[k]
                     !Groups.isForeign("${t?.first ?: ""} ${t?.third ?: ""} ${extra[k] ?: ""}", mine)
                 }
                 if (fresh.isNotEmpty()) pushCourse(ctx, p.site, c, fresh.mapNotNull { snap[it] })
-                if (fresh.size < newKeys.size) {
-                    NotifyLog.sys(ctx, "Skipped ${newKeys.size - fresh.size} item(s) for other groups in $code")
+                if (inPages.size < newKeys.size) {
+                    NotifyLog.sys(ctx, "Skipped ${newKeys.size - inPages.size} item(s) on pages switched off in $code")
+                }
+                if (fresh.size < inPages.size) {
+                    NotifyLog.sys(ctx, "Skipped ${inPages.size - fresh.size} item(s) for other groups in $code")
                 }
             }
             st.putStrings(ckey, snap.keys)

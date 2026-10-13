@@ -22,9 +22,9 @@ object Notifier {
     }
 
     private fun openAppIntent(ctx: Context, ts: Long): PendingIntent {
-        val i = Intent(ctx, MainActivity::class.java)
+        val i = Intent(ctx, NotificationsActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(MainActivity.EXTRA_TS, ts)
+            .putExtra(NotificationsActivity.EXTRA_TS, ts)
         return PendingIntent.getActivity(
             ctx, (System.nanoTime() and 0x7fffffff).toInt(), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )

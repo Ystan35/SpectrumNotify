@@ -120,6 +120,15 @@ class CoursesActivity : Activity() {
                 setOnClickListener { open(c.url) }
             }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
         }
+        if (c.id > 0L) {
+            col.btn("Notification pages  ·  " + Sections.summary(this, c.id)) {
+                startActivity(
+                    Intent(this, SectionsActivity::class.java)
+                        .putExtra(SectionsActivity.EXTRA_ID, c.id)
+                        .putExtra(SectionsActivity.EXTRA_NAME, c.code + if (c.name.isNotEmpty()) "  " + c.name else "")
+                )
+            }
+        }
         card.addView(col, LinearLayout.LayoutParams(0, WRAP, 1f))
         return card
     }
