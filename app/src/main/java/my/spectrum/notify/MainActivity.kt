@@ -22,6 +22,7 @@ import android.text.util.Linkify
 import android.transition.AutoTransition
 import android.transition.TransitionManager
 import android.view.Gravity
+import android.view.Window
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
@@ -83,6 +84,8 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
+        // draw our own logo + title row instead of the system title bar
+        requestWindowFeature(Window.FEATURE_NO_TITLE)
         applyBars()
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -164,6 +167,20 @@ class MainActivity : Activity() {
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         page.addView(scroll, lp(MATCH, 0, 1f))
 
+        // app title row: logo + name on a bordered card, so it reads as the app bar, not the background
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 18)
+        }
+        titleRow.addView(ImageView(this).apply {
+            setImageResource(R.mipmap.ic_launcher_round)
+            contentDescription = "Spectrum Notify"
+        }, lp(dp(32), dp(32)).apply { rightMargin = dp(10) })
+        titleRow.addView(tv("Spectrum Notify", 20f, Ui.TEXT, true))
+        content.addView(titleRow, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
+
         // greeting + refresh sit on their own card so they stand out from the BG
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -171,10 +188,6 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(14), dp(12), dp(14))
             background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 18)
         }
-        header.addView(ImageView(this).apply {
-            setImageResource(R.mipmap.ic_launcher_round)
-            contentDescription = "Spectrum Notify"
-        }, lp(dp(40), dp(40)).apply { rightMargin = dp(12) })
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         greetTitle = tv("", 26f, Ui.TEXT, true)
         greetSub = tv("", 14f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) }
@@ -310,10 +323,31 @@ class MainActivity : Activity() {
         }
         dim.setOnClickListener { closeQuickSheet(root) }
         root.addView(dim, FrameLayout.LayoutParams(MATCH, MATCH))
-        val lp = FrameLayout.LayoutParams(dp(230), WRAP, Gravity.END).apply {
-            rightMargin = dp(14)
-            // the sheet grows upward from just above wherever the button was dragged to
-            bottomMargin = fabLp.bottomMargin + fabLp.height + dp(10)
+        // Anchor the sheet to the toolbox wherever it was dragged: horizontal edge with more
+        // room wins (sheet is 230dp wide), and it opens above the button unless the button is
+        // near the top, in which case it opens below.
+        val sheetW = dp(230)
+        val sheetHGuess = dp(260)
+        val spaceRight = root.width - fabLp.rightMargin - fabLp.width
+        val spaceLeft = fabLp.rightMargin
+        val onRight = spaceRight >= sheetW || spaceRight >= spaceLeft
+        val fabTopY = root.height - fabLp.bottomMargin - fabLp.height
+        val openBelow = fabTopY < sheetHGuess
+        val lp = FrameLayout.LayoutParams(sheetW, WRAP).apply {
+            if (onRight) {
+                gravity = Gravity.END
+                rightMargin = dp(14)
+            } else {
+                gravity = Gravity.START
+                leftMargin = dp(14)
+            }
+            if (openBelow) {
+                gravity = gravity or Gravity.TOP
+                topMargin = fabTopY + fabLp.height + dp(10)
+            } else {
+                gravity = gravity or Gravity.BOTTOM
+                bottomMargin = fabLp.bottomMargin + fabLp.height + dp(10)
+            }
         }
         root.addView(sheet, lp)
     }
@@ -540,7 +574,9 @@ class MainActivity : Activity() {
             ).apply { setPadding(0, dp(6), 0, 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END })
         } else {
             val live = now >= next.start
-            card.addView(label(if (live) "HAPPENING NOW" else if (isToday(next.start)) "UP NEXT TODAY" else "NEXT CLASS"))
+            card.addView(label(if (live) "HAPPENING NOW" else if (isToday(next.start)) "UP NEXT TODAY" else "NEXT CLASS").apply {
+                paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            })
             card.addView(tv(next.course, 28f, white, true).apply { setPadding(0, dp(6), 0, 0) })
             val sub = if (next.name.isNotEmpty() && !next.name.equals(next.course, true)) next.name else next.full
             if (sub.isNotEmpty()) {
