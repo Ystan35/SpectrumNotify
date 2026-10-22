@@ -228,7 +228,7 @@ class NotificationsActivity : Activity() {
                 cards[e.ts] = c
                 recordsBox.addView(c, lp(MATCH, WRAP).apply { bottomMargin = dp(10) })
             } else {
-                recordsBox.addView(tv("${ago(e.ts)} · ${e.title}", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
+                recordsBox.addView(tv("${ago(NotifyLog.atOf(e))} · ${e.title}", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
             }
         }
         if (openTs > 0) {
@@ -294,7 +294,7 @@ class NotificationsActivity : Activity() {
         }
         val meta = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         meta.addView(tv(Cat.label(cat), 11f, col, true).apply { letterSpacing = 0.06f })
-        meta.addView(tv("· ${ago(e.ts)}", 12f, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
+        meta.addView(tv("· ${ago(NotifyLog.atOf(e))}", 12f, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
         col2.addView(meta)
         val title = tv(e.title, 15f, Ui.TEXT, true).apply {
             ellipsize = TextUtils.TruncateAt.END
@@ -313,7 +313,7 @@ class NotificationsActivity : Activity() {
             col2.addView(body)
         }
         row.addView(col2, lp(0, WRAP, 1f))
-        val unread = e.ts > seenBefore
+        val unread = NotifyLog.atOf(e) > seenBefore
         val dot = View(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.CYAN) }
             visibility = if (unread) View.VISIBLE else View.GONE

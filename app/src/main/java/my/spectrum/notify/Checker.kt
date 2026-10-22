@@ -618,7 +618,6 @@ object Checker {
                 p.userName = info.str("fullname").ifEmpty { info.str("username") }
                 checkNotes(ctx, api, p, userid, st, first)
                 checkCourses(ctx, api, p, userid, st)
-                try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
                 val nowS = System.currentTimeMillis() / 1000
                 try {
                     st.j.put("deadlines", jobjs(checkDeadlines(ctx, api, p, st, nowS)))
@@ -642,6 +641,8 @@ object Checker {
             } catch (e: Exception) {
                 val msg = (e.message ?: e.toString())
                 Log.w(TAG, "poll failed: $msg")
+                // Keep what this run already learned/notified, or the next good check re-sends it.
+                try { st.save() } catch (_: Exception) {}
                 p.fails = p.fails + 1
                 p.lastError = msg.take(200)
                 NotifyLog.sys(ctx, "Check failed: ${msg.take(150)}")
@@ -654,6 +655,7 @@ object Checker {
                 }
             }
         }
+        try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
         Scheduler.scheduleAll(ctx)
     }
 }

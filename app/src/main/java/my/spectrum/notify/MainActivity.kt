@@ -260,7 +260,7 @@ class MainActivity : Activity() {
 
     /** Dot on the bell while there are notifications you have not opened yet. */
     private fun renderBell() {
-        val unread = entries.any { it.kind == "notif" && it.ts > p.lastSeen }
+        val unread = entries.any { it.kind == "notif" && NotifyLog.atOf(it) > p.lastSeen }
         bellDot.visibility = if (unread) View.VISIBLE else View.GONE
     }
 

@@ -15,6 +15,8 @@ object NotifyLog {
         val title: String,
         val body: String,
         val buttons: List<Pair<String, String>> = emptyList(),
+        /** Wall-clock seconds for display/unread; ts is only a unique id. Old records have no "at" and fall back to ts. */
+        val at: Long = ts,
     )
 
     private fun file(ctx: Context) = File(ctx.applicationContext.filesDir, "console.json")
@@ -41,11 +43,14 @@ object NotifyLog {
         val end = if (collapse) old.length() - 1 else old.length()
         val out = JSONArray()
         for (i in maxOf(0, end - (MAX - 1)) until end) out.put(old.opt(i))
-        val ts = System.currentTimeMillis() / 1000
+        // NanoTime, not wall-clock seconds: two notifications in the same poll second
+        // would otherwise share an id (tap-to-open picks the wrong record, swipe deletes two).
+        val ts = System.nanoTime()
         val bs = JSONArray()
         for ((l, u) in buttons.take(3)) if (u.isNotEmpty()) bs.put(JSONObject().put("l", l).put("u", u))
         out.put(
-            JSONObject().put("ts", ts).put("kind", kind).put("title", title).put("body", body).put("buttons", bs)
+            JSONObject().put("ts", ts).put("at", System.currentTimeMillis() / 1000)
+                .put("kind", kind).put("title", title).put("body", body).put("buttons", bs)
         )
         try { file(ctx).writeText(out.toString()) } catch (e: Exception) { }
         return ts
@@ -57,8 +62,11 @@ object NotifyLog {
     fun entries(ctx: Context): List<Entry> =
         readArr(ctx).objs().map { o ->
             val bs = (o.optJSONArray("buttons") ?: JSONArray()).objs().map { Pair(it.str("l"), it.str("u")) }
-            Entry(o.optLong("ts"), o.str("kind"), o.str("title"), o.str("body"), bs)
+            Entry(o.optLong("ts"), o.str("kind"), o.str("title"), o.str("body"), bs, o.optLong("at", o.optLong("ts")))
         }
+
+    /** Wall-clock seconds a record was created (for "X min ago" and unread marks). */
+    fun atOf(e: Entry): Long = e.at
 
     @Synchronized
     fun remove(ctx: Context, ts: Long) {

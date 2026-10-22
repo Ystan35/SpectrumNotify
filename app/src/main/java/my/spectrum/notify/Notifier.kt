@@ -51,7 +51,7 @@ object Notifier {
         for ((i, bt) in buttons.take(3).withIndex()) {
             if (bt.second.isEmpty()) continue
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(bt.second)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            val code = (System.nanoTime() and 0xffff).toInt() + i
+            val code = (logTs.hashCode() and 0x7fffffff) + i
             val pi = PendingIntent.getActivity(
                 ctx, code, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
@@ -59,7 +59,7 @@ object Notifier {
             b.addAction(0, bt.first.take(30), pi)
         }
         try {
-            nm.notify((System.currentTimeMillis() and 0x7fffffff).toInt(), b.build())
+            nm.notify((logTs.hashCode() and 0x7fffffff), b.build())
         } catch (e: SecurityException) {
             // notification permission not granted
         }
