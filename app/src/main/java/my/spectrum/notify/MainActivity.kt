@@ -8,6 +8,8 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
+import android.view.MotionEvent
+import kotlin.math.abs
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
@@ -149,10 +151,7 @@ class MainActivity : Activity() {
 
     // ------------------------------------------------------------ layout
     private fun buildUi() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Ui.BG)
-        }
+        val root = FrameLayout(this).apply { setBackgroundColor(Ui.BG) }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), 0, dp(16), dp(24))
@@ -161,13 +160,14 @@ class MainActivity : Activity() {
             isVerticalScrollBarEnabled = false
             addView(content)
         }
-        root.addView(scroll, lp(MATCH, 0, 1f))
+        root.addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
 
-        // greeting + refresh
+        // greeting + refresh sit on their own card so they stand out from the BG
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(20), 0, dp(14))
+            setPadding(dp(16), dp(14), dp(12), dp(14))
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 18)
         }
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         greetTitle = tv("", 26f, Ui.TEXT, true)
@@ -180,12 +180,12 @@ class MainActivity : Activity() {
         refreshBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_refresh)
             setColorFilter(Ui.CYAN)
-            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 24)
+            background = rippleBg(Ui.BG, Ui.BORDER, this@MainActivity, 24)
             contentDescription = "Check Spectrum now"
             setOnClickListener { startRefresh() }
         }
-        header.addView(refreshBtn, lp(dp(48), dp(48)))
-        content.addView(header)
+        header.addView(refreshBtn, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
+        content.addView(header, lp(MATCH, WRAP).apply { topMargin = dp(14); bottomMargin = dp(12) })
 
         heroBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(heroBox, lp(MATCH, WRAP))
@@ -204,7 +204,8 @@ class MainActivity : Activity() {
         content.addView(dueSection, lp(MATCH, WRAP))
 
         // bottom bar: courses, timetable, notifications (bell), settings (profile is inside Settings)
-        root.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, lp(MATCH, 1))
+        val bottom = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        bottom.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, lp(MATCH, 1))
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -216,8 +217,75 @@ class MainActivity : Activity() {
         bar.addView(navItem(R.drawable.ic_timetable, "Timetable", false, false) { startActivity(Intent(this, TimetableActivity::class.java)) }, lp(0, WRAP, 1f))
         bar.addView(navItem(R.drawable.ic_bell, "Notifications", true, false) { startActivity(Intent(this, NotificationsActivity::class.java)) }, lp(0, WRAP, 1f))
         bar.addView(navItem(R.drawable.ic_settings, "Settings", false, false) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(0, WRAP, 1f))
-        root.addView(bar)
+        bottom.addView(bar)
+        root.addView(bottom, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM))
+
+        // floating toolbox: quick access to the appearance settings. Drag it anywhere; tap to open.
+        val fab = TextView(this).apply {
+            text = "Aa"
+            textSize = 17f * Ui.fontScale
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setTextColor(Ui.CYAN)
+            background = rippleBg(Ui.BAR, Ui.CYAN, this@MainActivity, 26)
+            contentDescription = "Appearance settings. Tap to open, hold and drag to move."
+            elevation = dp(6).toFloat()
+        }
+        val fabLp = FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply {
+            rightMargin = dp(14); bottomMargin = dp(78)
+        }
+        root.addView(fab, fabLp)
+        setupFabDrag(fab, fabLp, root)
         setContentView(root)
+    }
+
+    /** Tap opens Appearance; holding still and dragging moves the button and snaps it to the nearest edge. */
+    private fun setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout) {
+        var downX = 0f
+        var downY = 0f
+        var startX = 0
+        var startY = 0
+        var moved = false
+        var dragging = false
+        var pressTime = 0L
+        fab.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = ev.rawX; downY = ev.rawY
+                    startX = fabLp.rightMargin; startY = fabLp.bottomMargin
+                    moved = false; dragging = false; pressTime = System.currentTimeMillis()
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (ev.rawX - downX).toInt()
+                    val dy = (ev.rawY - downY).toInt()
+                    if (!dragging && (abs(dx) > dp(8) || abs(dy) > dp(8))) dragging = true
+                    if (dragging) {
+                        moved = true
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                        // margins are measured from BOTTOM/END, so the button tracks the finger
+                        fabLp.rightMargin = (startX - dx).coerceIn(0, root.width - v.width)
+                        fabLp.bottomMargin = (startY - dy).coerceIn(dp(64), root.height - v.width)
+                        root.updateViewLayout(v, fabLp)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (dragging) {
+                        // snap to the nearer horizontal edge
+                        val toEnd = fabLp.rightMargin < (root.width - v.width) / 2
+                        fabLp.rightMargin = if (toEnd) dp(14) else root.width - v.width - dp(14)
+                        root.updateViewLayout(v, fabLp)
+                        moved = false  // a finished drag never counts as a tap
+                    } else if (System.currentTimeMillis() - pressTime < 600) {
+                        v.performClick()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> { dragging = false; true }
+                else -> false
+            }
+        }
     }
 
     // ------------------------------------------------------------ refresh button

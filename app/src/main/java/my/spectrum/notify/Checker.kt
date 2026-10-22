@@ -645,11 +645,11 @@ object Checker {
                 try { st.save() } catch (_: Exception) {}
                 p.fails = p.fails + 1
                 p.lastError = msg.take(200)
-                NotifyLog.sys(ctx, "Check failed: ${msg.take(150)}")
+                NotifyLog.sys(ctx, "Check failed: ${friendly(msg).take(150)}")
                 if ((p.fails >= 3 || "invalidtoken" in msg) && !p.alerted) {
                     Notifier.push(
                         ctx, "Spectrum Notify is failing",
-                        "${msg.take(300)}\n\nIf this says invalidtoken, log in again in the app.", true,
+                        "${friendly(msg).take(300)}\n\nIf this says invalidtoken, log in again in the app.", true,
                     )
                     p.alerted = true
                 }
@@ -657,5 +657,15 @@ object Checker {
         }
         try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
         Scheduler.scheduleAll(ctx)
+    }
+
+    /** Raw exception text is noise (ports, IPs, "after 20000ms"). One plain line per failure family. */
+    fun friendly(msg: String): String = when {
+        "invalidtoken" in msg -> msg
+        "ConnectException" in msg || "failed to connect" in msg.lowercase() -> "Could not reach the Spectrum site. It may be down, or the phone has no internet."
+        "SocketTimeout" in msg || "timeout" in msg.lowercase() || "timed out" in msg.lowercase() -> "The Spectrum site did not answer in time. It may be slow or down."
+        "UnknownHost" in msg || "Unable to resolve" in msg -> "No internet connection (site name could not be resolved)."
+        "SSL" in msg || "ssl" in msg -> "Secure connection to the Spectrum site failed."
+        else -> msg
     }
 }

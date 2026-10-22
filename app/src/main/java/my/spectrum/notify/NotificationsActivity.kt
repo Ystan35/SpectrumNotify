@@ -229,7 +229,8 @@ class NotificationsActivity : Activity() {
                 cards[e.ts] = c
                 recordsBox.addView(c, lp(MATCH, WRAP).apply { bottomMargin = dp(10) })
             } else {
-                recordsBox.addView(tv("${ago(NotifyLog.atOf(e))} · ${e.title}", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
+                val count = if (e.n > 1) " (×${e.n})" else ""
+                recordsBox.addView(tv("${ago(NotifyLog.atOf(e))} · ${e.title}$count", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
             }
         }
         if (openTs > 0) {

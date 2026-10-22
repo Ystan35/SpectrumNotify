@@ -16,6 +16,7 @@ import android.widget.TextView
 import android.widget.Toast
 
 class SettingsActivity : Activity() {
+    companion object { const val EXTRA_OPEN = "open_section" }
     private lateinit var p: Prefs
     private val fields = LinkedHashMap<String, EditText>()
     private lateinit var alarmBtn: Button
@@ -126,9 +127,9 @@ class SettingsActivity : Activity() {
             p.pollMinutes.toString(), "10", 1,
         )
 
-        target = accordion(col,
-            "APPEARANCE & ACCESSIBILITY",
-            "Change how the app looks. Tap a chip to apply it right away — the screen redraws with your choice."
+        target = accordion(col, "APPEARANCE & ACCESSIBILITY",
+            "Change how the app looks. Tap a chip to apply it right away — the screen redraws with your choice.",
+            key = "appearance",
         )
         target.label("Colour mode", 15f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
         target.chips(listOf("Phone", "Light", "Dark"), setOf(p.themeMode), false) { sel ->
@@ -186,12 +187,23 @@ class SettingsActivity : Activity() {
             sections[0].first.visibility = View.VISIBLE
             sections[0].second.text = "▾"
         }
+        // deep link from the floating toolbox on home: open the appearance section directly
+        if (intent.getStringExtra(EXTRA_OPEN) == "appearance") {
+            sections.firstOrNull { it.third == "appearance" }?.let { (body, arrow, _) ->
+                body.visibility = View.VISIBLE
+                arrow.text = "▾"
+            }
+        }
     }
 
-    private val sections = ArrayList<Pair<LinearLayout, TextView>>()
+    private val sections = ArrayList<Triple<LinearLayout, TextView, String>>()
 
     /** A tappable section header; its content is hidden until the header is pressed. Only one section is open at a time. */
     private fun accordion(col: LinearLayout, title: String, intro: String = ""): LinearLayout {
+        return accordion(col, title, intro, "")
+    }
+
+    private fun accordion(col: LinearLayout, title: String, intro: String, key: String): LinearLayout {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundBg(Ui.BAR, Ui.BORDER, this@SettingsActivity, 14)
@@ -224,14 +236,14 @@ class SettingsActivity : Activity() {
         head.setOnClickListener {
             val open = body.visibility != View.VISIBLE
             android.transition.TransitionManager.beginDelayedTransition(col, android.transition.AutoTransition().setDuration(160))
-            for ((b, a) in sections) { b.visibility = View.GONE; a.text = "▸" }
+            for ((b, a, _) in sections) { b.visibility = View.GONE; a.text = "▸" }
             if (open) { body.visibility = View.VISIBLE; arrow.text = "▾" }
         }
         card.addView(head)
         card.addView(body)
         col.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         if (intro.isNotEmpty()) body.label(intro, 12f, Ui.DIM, 0)
-        sections.add(Pair(body, arrow))
+        sections.add(Triple(body, arrow, key))
         return body
     }
 
