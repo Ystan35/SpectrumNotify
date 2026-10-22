@@ -220,7 +220,7 @@ class NotificationsActivity : Activity() {
         recordsBox.removeAllViews()
         cards.clear()
         if (shown.isEmpty()) {
-            recordsBox.addView(emptyState(loggedIn))
+            recordsBox.addView(emptyState(loggedIn), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             return
         }
         for (e in shown) {

@@ -561,6 +561,8 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
             })
         }
         item.addView(holder, LinearLayout.LayoutParams(dp(46), dp(28)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        // proportional width: longer labels get a bigger share, so nothing disappears
+        val labelWeight = when (t.label.length) { in 0..6 -> 1f; in 7..9 -> 1.25f; else -> 1.5f }
         item.addView(TextView(this).apply {
             text = t.label
             textSize = if (isActive) 12f * Ui.fontScale else 11f * Ui.fontScale
@@ -569,17 +571,8 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = null
-            post {
-                fun shrink() {
-                    val w = (parent as? android.widget.LinearLayout)?.width ?: 0
-                    if (w == 0 || paint.measureText(text.toString()) <= w - dp(6)) return
-                    textSize -= 1f
-                    if (textSize > 8f) post { shrink() }
-                }
-                shrink()
-            }
             setPadding(dp(2), dp(2), dp(2), 0)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, labelWeight))
         bar.addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     }
     bar.tag = dot
