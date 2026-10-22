@@ -4,14 +4,15 @@ rem You do the login part; this script does the rest.
 rem
 rem Steps:
 rem   1. Open https://cloud.timeedit.net/my_um/web/students/ in Chrome/Edge and log in.
-rem   2. Paste main.js into the console (F12) -> wait -> it downloads course_events_with_details.json
-rem   3. Paste lecturer.js into the console -> it downloads lecturer_data.json
-rem   4. Put both JSON files (from your Downloads folder) into this tools folder if they are not already here.
-rem   5. Run this script (double-click or `tools\update_catalog.bat`).
+rem   2. Paste tools\collect_timetable.js into the console (F12) -> wait -> it downloads
+rem      lecturer_data.json and course_events_with_details.json (the course part takes a while).
+rem   3. Run this script (double-click or `tools\update_catalog.bat`).
 rem
-rem The script runs cleaner.js, rebuilds app/src/main/assets/catalog.json, commits and pushes.
+rem It finds the newest copy of each JSON in your Downloads folder, even when the browser
+rem renamed duplicates to "name (1).json". Then it runs cleaner.js, rebuilds
+rem app/src/main/assets/catalog.json, commits and pushes.
 
-setlocal enabledelayedexpansion
+setlocal
 cd /d "%~dp0.."
 
 set SDK_DIR=%TEMP%\um-timetable-sdk
@@ -20,19 +21,17 @@ if not exist "%SDK_DIR%\cleaner.js" (
   git clone --depth 1 https://github.com/damnitjoshua/um-timetable-sdk.git "%SDK_DIR%" || goto :fail
 )
 
-set RAW=tools\course_events_with_details.json
-set LEC=tools\lecturer_data.json
-if not exist "%RAW%" (
-  if exist "%USERPROFILE%\Downloads\course_events_with_details.json" copy /y "%USERPROFILE%\Downloads\course_events_with_details.json" "%RAW%" >nul
+rem Pick the newest "name.json" or "name (n).json" from Downloads into tools\name.json.
+for %%N in (course_events_with_details.json lecturer_data.json) do (
+  powershell -NoProfile -ExecutionPolicy Bypass -File tools\newest_download.ps1 "%%N" "tools\%%N"
+  if errorlevel 1 (
+    echo Missing %%N - paste tools\collect_timetable.js on TimeEdit first.
+    goto :fail
+  )
 )
-if not exist "%LEC%" (
-  if exist "%USERPROFILE%\Downloads\lecturer_data.json" copy /y "%USERPROFILE%\Downloads\lecturer_data.json" "%LEC%" >nul
-)
-if not exist "%RAW%" ( echo Missing course_events_with_details.json - run main.js on TimeEdit first & goto :fail )
-if not exist "%LEC%" ( echo Missing lecturer_data.json - run lecturer.js on TimeEdit first & goto :fail )
 
 echo Running cleaner.js...
-node "%SDK_DIR%\cleaner.js" "%RAW%" "%LEC%" || goto :fail
+node "%SDK_DIR%\cleaner.js" "tools\course_events_with_details.json" "tools\lecturer_data.json" || goto :fail
 
 echo Building catalog.json...
 node tools\make_catalog.js timetable_data.json 2026/S1 || goto :fail
