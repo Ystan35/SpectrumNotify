@@ -173,7 +173,7 @@ class MainActivity : Activity() {
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         page.addView(scroll, lp(MATCH, 0, 1f))
 
-        // app title row: logo + name on a bordered card; theme toggle on the far right
+        // app title row: same shared header as every page (logo + name + theme toggle)
         val titleRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -190,8 +190,8 @@ class MainActivity : Activity() {
             background = rippleBg(Ui.BG, Ui.BORDER, this@MainActivity, 24)
             contentDescription = "Toggle light or dark colour mode"
             setOnClickListener {
-                val p = Prefs(this@MainActivity)
-                p.themeMode = if (Ui.dark) 1 else 2   // from the mode we are in, switch to the other, overriding "Phone"
+                val pr = Prefs(this@MainActivity)
+                pr.themeMode = if (Ui.dark) 1 else 2   // switch to the other mode, overriding "Phone"
                 recreate()
             }
         }
@@ -633,14 +633,16 @@ class MainActivity : Activity() {
             }
             val actions = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(14), 0, 0)
             }
             val hasLink = c.link.isNotEmpty() && !c.manual
-            if (hasLink) actions.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, WRAP).apply { rightMargin = dp(10) })
+            if (hasLink) actions.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actions.addView(pill("Attendance", !hasLink) {
-                startActivity(Intent(this@MainActivity, AttendanceActivity::class.java))
-            }, lp(WRAP, WRAP).apply { rightMargin = dp(10) })
-            actions.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, WRAP))
+                val au = Checker.attendanceUrl(this@MainActivity, c.courseId)
+                if (au.isNotEmpty()) openUrl(au) else openUrl(c.courseUrl)
+            }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
+            actions.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
             card.addView(actions)
             // countdown progress: how far we are into the wait (or the class itself), fills to 100%
             val span = if (live) maxOf(1, c.end - c.start) else maxOf(1, (c.start - now) + (c.end - c.start))

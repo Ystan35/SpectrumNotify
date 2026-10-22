@@ -82,6 +82,13 @@ class SettingsActivity : Activity() {
                 r.setOnClickListener {
                     openSection(s, col)
                     searchBox?.setText("")
+                    // highlight the section briefly so the user can spot where it opened
+                    s.body.post {
+                        s.body.background = roundBg(Ui.tint(Ui.CYAN, 30), Ui.CYAN, this@SettingsActivity, 12)
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            s.body.background = null
+                        }, 1200)
+                    }
                 }
                 results.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
             }
@@ -335,7 +342,14 @@ class SettingsActivity : Activity() {
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(arrow)
         val s = Section(body, arrow, title, icon, contents, key)
-        head.setOnClickListener { openSection(s, col) }
+        head.setOnClickListener {
+            if (body.visibility == View.VISIBLE) {
+                // tapping the open section closes it again
+                android.transition.TransitionManager.beginDelayedTransition(col, android.transition.AutoTransition().setDuration(160))
+                body.visibility = View.GONE
+                arrow.text = "▸"
+            } else openSection(s, col)
+        }
         card.addView(head)
         card.addView(body)
         col.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })

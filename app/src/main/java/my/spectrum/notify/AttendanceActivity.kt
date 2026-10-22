@@ -166,12 +166,29 @@ class AttendanceActivity : Activity() {
                     card.addView(tv(text, 12f, col, true).apply { setPadding(0, dp(6), 0, 0) })
                 }
             }
-            if (c.link.isNotEmpty() && !c.manual) {
+            val attUrl = Checker.attendanceUrl(this, c.courseId)
+            if (attUrl.isNotEmpty()) {
                 val b = TextView(this).apply {
-                    text = "Open attendance link"
+                    text = "Open attendance page"
                     textSize = 13f * Ui.fontScale
                     setTextColor(Ui.CYAN)
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    minHeight = dp(44)
+                    gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                    background = rippleBg(Ui.BAR, 0, this@AttendanceActivity, 12)
+                }
+                b.setOnClickListener {
+                    try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(attUrl))) }
+                    catch (_: Exception) { Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show() }
+                }
+                card.addView(b, lp(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+            } else if (c.link.isNotEmpty() && !c.manual) {
+                // attendance page not found for this course yet — fall back to the class link
+                val b = TextView(this).apply {
+                    text = "Open class link (attendance page not found yet)"
+                    textSize = 13f * Ui.fontScale
+                    setTextColor(Ui.DIM)
                     minHeight = dp(44)
                     gravity = Gravity.CENTER_VERTICAL
                     isClickable = true

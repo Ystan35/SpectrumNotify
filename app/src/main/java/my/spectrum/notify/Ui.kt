@@ -141,6 +141,48 @@ fun Activity.screen(
         orientation = LinearLayout.VERTICAL
         setBackgroundColor(Ui.BG)
     }
+
+    // consistent app header on every page: logo + "Spectrum Notify" on a bordered card;
+    // tapping it goes Home (the logo is the home button, like most apps' top-left mark)
+    val titleRow = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(14), dp(10), dp(10), dp(10))
+        background = roundBg(Ui.BAR, Ui.BORDER, this@screen, 18)
+    }
+    titleRow.addView(android.widget.ImageView(this).apply {
+        setImageResource(R.mipmap.ic_launcher_round)
+        contentDescription = "Spectrum Notify — go home"
+    }, LinearLayout.LayoutParams(dp(32), dp(32)).apply { rightMargin = dp(10) })
+    titleRow.addView(TextView(this).apply {
+        text = "Spectrum Notify"
+        textSize = 20f * Ui.fontScale
+        setTypeface(typeface, android.graphics.Typeface.BOLD)
+        setTextColor(Ui.TEXT)
+    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    // theme toggle on the far right of the header (home shows it too)
+    titleRow.addView(ImageButton(this).apply {
+        setColorFilter(Ui.CYAN)
+        background = rippleBg(Ui.BG, Ui.BORDER, this@screen, 24)
+        contentDescription = "Toggle light or dark colour mode"
+        setOnClickListener {
+            val p = try { Prefs(this@screen) } catch (_: Exception) { null }
+            if (p != null) {
+                p.themeMode = if (Ui.dark) 1 else 2
+                recreate()
+            }
+        }
+    }, LinearLayout.LayoutParams(dp(Ui.touch(44)), dp(Ui.touch(44))))
+    if (this !is MainActivity) {
+        // on sub-pages make the whole header tappable back to Home; Home's own header is already home
+        titleRow.setOnClickListener { goToHome() }
+        titleRow.isClickable = true
+        titleRow.foreground = rippleBg(0, 0, this, 18)
+    }
+    root.addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+        setMargins(dp(16), dp(12), dp(16), dp(4))
+    })
+
     val top = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -181,14 +223,17 @@ fun Activity.screen(
         orientation = LinearLayout.VERTICAL
         setPadding(dp(20), dp(4), dp(20), if (navTo != null) dp(12) else dp(32))
     }
-    if (navTo != null) {
-        root.addView(ScrollView(this).apply { addView(col) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        addNavBar(root, navTo)
-    } else {
-        root.addView(ScrollView(this).apply { addView(col) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-    }
+    root.addView(ScrollView(this).apply { addView(col) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    if (navTo != null) addNavBar(root, navTo)
     setContentView(root)
     return col
+}
+
+/** Navigate back to the home screen, clearing whatever sub-page stack is open. */
+fun Activity.goToHome() {
+    val i = Intent(this, MainActivity::class.java)
+        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    startActivity(i)
 }
 
 fun LinearLayout.label(t: String, size: Float = 12f, color: Int = Ui.DIM, top: Int = 12): TextView {
@@ -513,7 +558,16 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
             if (isActive) setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
+            ellipsize = null
+            post {
+                fun shrink() {
+                    val w = (parent as? android.widget.LinearLayout)?.width ?: 0
+                    if (w == 0 || paint.measureText(text.toString()) <= w - dp(6)) return
+                    textSize -= 1f
+                    if (textSize > 8f) post { shrink() }
+                }
+                shrink()
+            }
             setPadding(dp(2), dp(2), dp(2), 0)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bar.addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))

@@ -115,9 +115,18 @@ object Checker {
     data class ClassItem(
         val name: String, val course: String, val full: String,
         val start: Long, val end: Long, val link: String, val courseUrl: String, val manual: Boolean,
+        val courseId: Long = 0L,
     )
     data class DueItem(val name: String, val course: String, val ts: Long, val url: String)
     class Overview(val classes: List<ClassItem>, val due: List<DueItem>)
+
+    /** The Spectrum attendance page for a course, e.g. …/mod/attendance/view.php?id=1127746, or "" if unknown. */
+    fun attendanceUrl(ctx: Context, courseId: Long): String {
+        if (courseId == 0L) return ""
+        val id = try { State(ctx).j.optJSONObject("attcmid")?.optLong(courseId.toString(), 0L) ?: 0L } catch (_: Exception) { 0L }
+        val site = Prefs(ctx).site
+        return if (id != 0L && site.isNotEmpty()) "$site/mod/attendance/view.php?id=$id" else ""
+    }
 
     /** Classes (not yet finished) and deadlines from the cached data, for the main screen. */
     fun overview(ctx: Context): Overview {
@@ -138,7 +147,7 @@ object Checker {
                 start, start + (if (dur > 0) dur else 3600L),
                 linksForEvent(e, cal, links).firstOrNull()?.first ?: "",
                 if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site,
-                isManual(e, p),
+                isManual(e, p), cid,
             )
         }.filter { it.end > now }.sortedBy { it.start }
         val due = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().mapNotNull { e ->
@@ -195,7 +204,8 @@ object Checker {
 
     // ------------------------------------------------------------ materials
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
-                               secOf: MutableMap<String, String>, secNames: MutableMap<String, String>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
+                               secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
+                               attCmids: MutableMap<Long, Long>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
         val raw = ArrayList<Triple<String, String, Long>>()
         val cid = c.optLong("id")
@@ -216,6 +226,9 @@ object Checker {
                 secOf[key] = skey
                 val desc = clean(m.str("description"), 300)
                 if (desc.isNotEmpty()) extra[key] = desc
+                if (m.str("modname") == "attendance" && m.optLong("id") != 0L && !attCmids.containsKey(cid)) {
+                    attCmids[cid] = m.optLong("id")   // for <site>/mod/attendance/view.php?id=<cmid>
+                }
                 if (m.str("modname") in MEETING_MODS && m.optBoolean("uservisible", true) && url.isNotEmpty()) {
                     raw.add(Triple(url, clean(name), mt))
                 }
@@ -273,6 +286,7 @@ object Checker {
     private fun checkCourses(ctx: Context, api: Moodle, p: Prefs, userid: Long, st: State) {
         val prevLinks = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
         val linksByCourse = LinkedHashMap<String, List<Link>>()
+        val attCmids = HashMap<Long, Long>()
         val enrolled = api.arr("core_enrol_get_users_courses", mapOf("userid" to userid)).objs()
         Courses.remember(st, enrolled)
         for (c in enrolled) {
@@ -282,7 +296,7 @@ object Checker {
             val secOf = HashMap<String, String>()
             val secNames = LinkedHashMap<String, String>()
             val result = try {
-                snapshotCourse(api, p.site, c, extra, secOf, secNames)
+                snapshotCourse(api, p.site, c, extra, secOf, secNames, attCmids)
             } catch (e: Exception) {
                 Log.w(TAG, "course $cid skipped: $e")
                 prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }
@@ -290,6 +304,11 @@ object Checker {
             }
             val snap = result.first
             Sections.remember(st, cid, secNames)
+            if (attCmids.containsKey(cid)) {
+                val am = st.j.optJSONObject("attcmid") ?: JSONObject()
+                am.put(cid.toString(), attCmids[cid]!!)
+                st.j.put("attcmid", am)
+            }
             linksByCourse["$cid"] = result.second
             val known = st.j.has(ckey)
             val old = st.strings(ckey)
