@@ -3,3 +3,8 @@ build/
 local.properties
 .idea/
 *.iml
+
+# raw timetable data produced by tools/update_catalog.bat
+timetable_data.json
+tools/course_events_with_details.json
+tools/lecturer_data.json
