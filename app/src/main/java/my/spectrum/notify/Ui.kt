@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.graphics.Typeface
 import android.os.Build
 import android.view.View
+import android.view.Window
 import android.text.InputType
 import android.view.Gravity
 import android.view.ViewGroup
@@ -105,6 +106,7 @@ object Ui {
 @Volatile var lookChanged = false
 
 fun Activity.applyBars() {
+    requestWindowFeature(Window.FEATURE_NO_TITLE)  // every page draws the shared header; no system title bar
     val before = Ui.look
     Ui.setup(this)
     window.statusBarColor = Ui.BG

@@ -89,8 +89,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
-        // draw our own logo + title row instead of the system title bar
-        requestWindowFeature(Window.FEATURE_NO_TITLE)
         applyBars()
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
