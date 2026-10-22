@@ -253,7 +253,7 @@ class NotificationsActivity : Activity() {
         box.addView(tv(
             if (!loggedIn) "Nothing here yet" else if (filter.isEmpty()) "You're all caught up" else "Nothing in this category",
             17f, Ui.TEXT, true,
-        ).apply { setPadding(0, dp(12), 0, 0) })
+        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) })
         box.addView(tv(
             if (!loggedIn) "Log in to start receiving class links, deadlines and materials."
             else "New class links, deadlines and materials will show up here.",
