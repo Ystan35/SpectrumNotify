@@ -29,6 +29,11 @@ class TimetableEditActivity : Activity() {
     private val kinds = listOf(SlotKind.LECTURE, SlotKind.TUTORIAL, SlotKind.LAB, SlotKind.CLASS)
     private val kindLabels = listOf("Lecture", "Tutorial", "Lab", "Other")
 
+    override fun onResume() {
+        super.onResume()
+        recreateIfLookChanged()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val grp = intent.getStringExtra(EXTRA_GRP) ?: ""

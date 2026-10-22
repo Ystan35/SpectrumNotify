@@ -103,4 +103,22 @@ class Prefs(ctx: Context) {
     var alerted: Boolean
         get() = health.getBoolean("alerted", false)
         set(v) { health.edit().putBoolean("alerted", v).apply() }
+
+    // ---------------- appearance / accessibility
+    /** Theme override: 0 = follow phone, 1 = light, 2 = dark. */
+    var themeMode: Int
+        get() = sp.getInt("themeMode", 0)
+        set(v) { sp.edit().putInt("themeMode", v).apply() }
+    /** Text scale: 0 = normal (1.0), 1 = large (1.2), 2 = extra large (1.4). */
+    var textScale: Int
+        get() = sp.getInt("textScale", 0)
+        set(v) { sp.edit().putInt("textScale", v).apply() }
+    /** Higher-contrast text (darker greys / brighter accents). */
+    var highContrast: Boolean
+        get() = sp.getBoolean("highContrast", false)
+        set(v) { sp.edit().putBoolean("highContrast", v).apply() }
+    /** Bigger touch targets (56 dp instead of 48 dp). */
+    var bigTouch: Boolean
+        get() = sp.getBoolean("bigTouch", false)
+        set(v) { sp.edit().putBoolean("bigTouch", v).apply() }
 }

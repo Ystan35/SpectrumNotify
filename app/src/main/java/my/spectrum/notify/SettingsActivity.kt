@@ -126,6 +126,36 @@ class SettingsActivity : Activity() {
             p.pollMinutes.toString(), "10", 1,
         )
 
+        target = accordion(col,
+            "APPEARANCE & ACCESSIBILITY",
+            "Change how the app looks. Tap a chip to apply it right away — the screen redraws with your choice."
+        )
+        target.label("Colour mode", 15f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+        target.chips(listOf("Phone", "Light", "Dark"), setOf(p.themeMode), false) { sel ->
+            val v = sel.firstOrNull() ?: 0
+            if (v != p.themeMode) { p.themeMode = v; recreate() }
+        }
+        target.label("Text size", 15f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        target.chips(listOf("Normal", "Large", "Extra large"), setOf(p.textScale), false) { sel ->
+            val v = sel.firstOrNull() ?: 0
+            if (v != p.textScale) { p.textScale = v; recreate() }
+        }
+        target.label("Easier to see and touch", 15f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        val initial = buildSet {
+            if (p.highContrast) add(0)
+            if (p.bigTouch) add(1)
+        }
+        target.chips(listOf("High contrast", "Big touch targets"), initial, true) { sel ->
+            val hc = 0 in sel
+            val bt = 1 in sel
+            if (hc != p.highContrast || bt != p.bigTouch) {
+                p.highContrast = hc
+                p.bigTouch = bt
+                recreate()
+            }
+        }
+        target.label("High contrast uses stronger text colours. Big touch targets make every button and box 56 dp tall.", 12f, Ui.DIM, 8)
+
         target = accordion(col, "TOOLS")
         target.action("Save settings", "Saves everything above now.") {
             save(); Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
@@ -173,7 +203,7 @@ class SettingsActivity : Activity() {
         }
         val arrow = TextView(this).apply {
             text = "▸"
-            textSize = 16f
+            textSize = 16f * Ui.fontScale
             setTextColor(Ui.DIM)
         }
         val head = LinearLayout(this).apply {
@@ -186,7 +216,7 @@ class SettingsActivity : Activity() {
         }
         head.addView(TextView(this).apply {
             text = title.lowercase().replaceFirstChar { it.uppercase() }
-            textSize = 15f
+            textSize = 15f * Ui.fontScale
             setTextColor(Ui.TEXT)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -207,6 +237,7 @@ class SettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         val vis = if (Scheduler.canExact(this)) View.GONE else View.VISIBLE
         alarmBtn.visibility = vis
         alarmHelp?.visibility = vis

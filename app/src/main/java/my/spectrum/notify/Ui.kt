@@ -18,7 +18,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-/** Colours follow the phone's light/dark mode. Call Ui.setup(context) (or Activity.applyBars()) before reading them. */
+/** Colours follow the phone's light/dark mode unless Settings > Appearance overrides it.
+ *  Call Ui.setup(context) (or Activity.applyBars()) before reading them. */
 object Ui {
     var dark = true
     var BG = 0
@@ -35,6 +36,15 @@ object Ui {
     val HERO_A = 0xFF3B5BDB.toInt()
     val HERO_B = 0xFF7048E8.toInt()
 
+    /** Multiply every textSize by this (1.0 / 1.2 / 1.4 from Settings > Appearance). */
+    @Volatile var fontScale = 1.0f
+    /** Minimum touch target in dp (48 normally, 56 with Big touch targets on). */
+    @Volatile var touchDp = 48
+    /** Fingerprint of the last applied appearance; activities recreate when it changes. */
+    @Volatile var look: String = ""
+    /** 1 = dark palette was made with extra contrast. */
+    private var contrastDark = -1
+
     init { palette(true) }
 
     private fun palette(d: Boolean) {
@@ -50,19 +60,50 @@ object Ui {
             GREEN = 0xFF12805A.toInt(); RED = 0xFFC93636.toInt(); YELLOW = 0xFF9A6700.toInt()
             ORANGE = 0xFFC25E0B.toInt(); PURPLE = 0xFF6B46C8.toInt()
         }
+        if (contrastDark == if (d) 1 else 0) return  // palette already matches contrast setting
+        contrastDark = if (d) 1 else 0
+        if (d) {
+            // high contrast dark: brighter text/dim, stronger accents
+            TEXT = 0xFFFFFFFF.toInt(); DIM = 0xFFC3CCE0.toInt(); CYAN = 0xFFA3BCFF.toInt()
+            GREEN = 0xFF6FF0B4.toInt(); RED = 0xFFFF9B9B.toInt(); YELLOW = 0xFFFFD98A.toInt()
+            ORANGE = 0xFFFFBE85.toInt(); PURPLE = 0xFFD0B8FF.toInt()
+        } else {
+            // high contrast light: near-black text, darker greys and accents
+            TEXT = 0xFF000000.toInt(); DIM = 0xFF3A4157.toInt(); CYAN = 0xFF1E3FBB.toInt()
+            GREEN = 0xFF0A5E41.toInt(); RED = 0xFFA31F1F.toInt(); YELLOW = 0xFF7A5400.toInt()
+            ORANGE = 0xFF9A4704.toInt(); PURPLE = 0xFF5332A8.toInt()
+        }
     }
 
     fun setup(ctx: Context) {
-        val night = ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        palette(night == Configuration.UI_MODE_NIGHT_YES)
+        val p = try { Prefs(ctx) } catch (_: Exception) { null }
+        fontScale = when (p?.textScale ?: 0) { 1 -> 1.2f; 2 -> 1.4f; else -> 1.0f }
+        touchDp = if (p?.bigTouch == true) 56 else 48
+        when (p?.themeMode ?: 0) {
+            1 -> palette(false)
+            2 -> palette(true)
+            else -> {
+                val night = ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+                palette(night == Configuration.UI_MODE_NIGHT_YES)
+            }
+        }
+        look = "${p?.themeMode ?: 0}:${p?.textScale ?: 0}:${p?.highContrast == true}:${p?.bigTouch == true}:$dark"
     }
+
+    /** A dp amount for a touch target, honouring the Big touch targets setting. */
+    fun touch(n: Int): Int = maxOf(touchDp, n)
 
     /** Same colour with a different opacity (0-255). */
     fun tint(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or (alpha shl 24)
 }
 
-/** Picks light/dark colours and colours the system bars to match. */
+/** Applies the appearance settings and colours the system bars to match.
+ *  Sets [lookChanged] when the appearance changed while a screen was open, so its
+ *  onResume can rebuild with the new look. */
+@Volatile var lookChanged = false
+
 fun Activity.applyBars() {
+    val before = Ui.look
     Ui.setup(this)
     window.statusBarColor = Ui.BG
     window.navigationBarColor = Ui.BG
@@ -70,6 +111,15 @@ fun Activity.applyBars() {
         var f = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         if (Build.VERSION.SDK_INT >= 26) f = f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         window.decorView.systemUiVisibility = f
+    }
+    if (before.isNotEmpty() && before != Ui.look) lookChanged = true
+}
+
+/** Call at the top of onResume: rebuilds the screen when the appearance changed while it was open. */
+fun Activity.recreateIfLookChanged() {
+    if (lookChanged) {
+        lookChanged = false
+        recreate()
     }
 }
 
@@ -104,7 +154,7 @@ fun Activity.screen(
     )
     top.addView(TextView(this).apply {
         text = title
-        textSize = 20f
+        textSize = 20f * Ui.fontScale
         setTypeface(typeface, android.graphics.Typeface.BOLD)
         setTextColor(Ui.TEXT)
     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -133,7 +183,7 @@ fun Activity.screen(
 fun LinearLayout.label(t: String, size: Float = 12f, color: Int = Ui.DIM, top: Int = 12): TextView {
     val tv = TextView(context)
     tv.text = t
-    tv.textSize = size
+    tv.textSize = size * Ui.fontScale
     tv.setTextColor(color)
     tv.setPadding(0, context.dp(top), 0, 0)
     addView(tv)
@@ -161,9 +211,9 @@ fun LinearLayout.field(value: String, hint: String = "", password: Boolean = fal
     et.hint = hint
     et.setTextColor(Ui.TEXT)
     et.setHintTextColor(Ui.DIM)
-    et.textSize = 15f
+    et.textSize = 15f * Ui.fontScale
     et.background = rippleBg(Ui.BAR, Ui.BORDER, context)
-    et.minHeight = context.dp(48)
+    et.minHeight = context.dp(Ui.touch(48))
     et.setPadding(context.dp(12), context.dp(10), context.dp(12), context.dp(10))
     if (password) {
         et.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -184,11 +234,11 @@ fun LinearLayout.btn(text: String, onClick: () -> Unit): Button {
     val b = Button(context)
     b.text = text
     b.isAllCaps = false
-    b.textSize = 14f
+    b.textSize = 14f * Ui.fontScale
     b.setTextColor(Ui.CYAN)
     b.background = rippleBg(Ui.BAR, Ui.CYAN, context, 24)
     b.setOnClickListener { onClick() }
-    addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(48)).apply {
+    addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(Ui.touch(48))).apply {
         topMargin = context.dp(10)
     })
     return b
@@ -198,7 +248,7 @@ fun LinearLayout.btn(text: String, onClick: () -> Unit): Button {
 fun LinearLayout.section(title: String, intro: String = "") {
     val t = TextView(context)
     t.text = title
-    t.textSize = 13f
+    t.textSize = 13f * Ui.fontScale
     t.setTextColor(Ui.CYAN)
     t.setTypeface(t.typeface, android.graphics.Typeface.BOLD)
     t.setPadding(0, context.dp(28), 0, 0)
@@ -247,9 +297,9 @@ fun Context.chip(
         } else {
             text = label
         }
-        textSize = size
+        textSize = size * Ui.fontScale
         gravity = Gravity.CENTER
-        minHeight = c.dp(48)
+        minHeight = c.dp(Ui.touch(48))
         minWidth = c.dp(48)
         setPadding(c.dp(padH), 0, c.dp(padH), 0)
         setTextColor(if (selected) onAccent() else Ui.TEXT)
@@ -318,7 +368,7 @@ fun LinearLayout.swatches(selected: Int, onPick: (Int) -> Unit): (Int) -> Unit {
             val on = i == cur
             val sw = TextView(ctx).apply {
                 text = if (on) "\u2713" else ""
-                textSize = 18f
+                textSize = 18f * Ui.fontScale
                 gravity = Gravity.CENTER
                 setTextColor(onAccent())
                 setTypeface(typeface, Typeface.BOLD)
@@ -353,7 +403,7 @@ class TimeField(private val ctx: Context, minutes: Int, private val onPick: (Int
         private set
 
     val view: TextView = TextView(ctx).apply {
-        textSize = 16f
+        textSize = 16f * Ui.fontScale
         setTextColor(Ui.TEXT)
         gravity = Gravity.CENTER_VERTICAL
         minHeight = ctx.dp(48)

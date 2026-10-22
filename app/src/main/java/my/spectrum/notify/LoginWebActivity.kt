@@ -48,14 +48,14 @@ class LoginWebActivity : Activity() {
         }
         top.addView(TextView(this).apply {
             text = "←"
-            textSize = 22f
+            textSize = 22f * Ui.fontScale
             setTextColor(Ui.TEXT)
             setPadding(dp(12), dp(8), dp(16), dp(8))
             setOnClickListener { finish() }
         })
         top.addView(TextView(this).apply {
             text = "Sign in to Spectrum"
-            textSize = 18f
+            textSize = 18f * Ui.fontScale
             setTextColor(Ui.TEXT)
         })
         root.addView(top)

@@ -29,13 +29,14 @@ class CoursesActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         render()
     }
 
     private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = size
+            textSize = size * Ui.fontScale
             setTextColor(color)
             if (bold) setTypeface(typeface, Typeface.BOLD)
         }

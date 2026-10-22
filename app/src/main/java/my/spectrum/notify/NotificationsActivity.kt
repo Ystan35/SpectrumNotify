@@ -98,6 +98,7 @@ class NotificationsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         seenBefore = p.lastSeen
         recSig = ""
         handler.post(ticker)
@@ -119,7 +120,7 @@ class NotificationsActivity : Activity() {
     private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = size
+            textSize = size * Ui.fontScale
             setTextColor(color)
             if (bold) setTypeface(typeface, Typeface.BOLD)
         }

@@ -100,6 +100,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         ovAt = 0L
         handler.post(ticker)
     }
@@ -113,7 +114,7 @@ class MainActivity : Activity() {
     private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = size
+            textSize = size * Ui.fontScale
             setTextColor(color)
             if (bold) setTypeface(typeface, Typeface.BOLD)
         }
@@ -211,10 +212,10 @@ class MainActivity : Activity() {
             minimumHeight = dp(64)
             setPadding(dp(4), dp(2), dp(4), dp(2))
         }
-        bar.addView(navItem(R.drawable.ic_courses, "Courses", false) { startActivity(Intent(this, CoursesActivity::class.java)) }, lp(0, WRAP, 1f))
-        bar.addView(navItem(R.drawable.ic_timetable, "Timetable", false) { startActivity(Intent(this, TimetableActivity::class.java)) }, lp(0, WRAP, 1f))
-        bar.addView(navItem(R.drawable.ic_bell, "Notifications", true) { startActivity(Intent(this, NotificationsActivity::class.java)) }, lp(0, WRAP, 1f))
-        bar.addView(navItem(R.drawable.ic_settings, "Settings", false) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(0, WRAP, 1f))
+        bar.addView(navItem(R.drawable.ic_courses, "Courses", false, false) { startActivity(Intent(this, CoursesActivity::class.java)) }, lp(0, WRAP, 1f))
+        bar.addView(navItem(R.drawable.ic_timetable, "Timetable", false, false) { startActivity(Intent(this, TimetableActivity::class.java)) }, lp(0, WRAP, 1f))
+        bar.addView(navItem(R.drawable.ic_bell, "Notifications", true, false) { startActivity(Intent(this, NotificationsActivity::class.java)) }, lp(0, WRAP, 1f))
+        bar.addView(navItem(R.drawable.ic_settings, "Settings", false, false) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(0, WRAP, 1f))
         root.addView(bar)
         setContentView(root)
     }
@@ -264,19 +265,19 @@ class MainActivity : Activity() {
         bellDot.visibility = if (unread) View.VISIBLE else View.GONE
     }
 
-    private fun navItem(icon: Int, label: String, withDot: Boolean, onClick: () -> Unit): View {
+    private fun navItem(icon: Int, label: String, withDot: Boolean, active: Boolean, onClick: () -> Unit): View {
         val item = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(0, dp(6), 0, dp(6))
             isClickable = true
-            contentDescription = label
+            contentDescription = label + if (active) ", current screen" else ""
             setOnClickListener { onClick() }
         }
         val holder = FrameLayout(this)
         holder.addView(ImageView(this).apply {
             setImageResource(icon)
-            setColorFilter(Ui.TEXT)
+            setColorFilter(if (active) Ui.CYAN else Ui.DIM)
         }, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
         if (withDot) {
             bellDot = View(this).apply {
@@ -289,7 +290,7 @@ class MainActivity : Activity() {
         }
         item.addView(holder, lp(dp(46), dp(28)).apply { gravity = Gravity.CENTER_HORIZONTAL })
         // the label gets the whole width of its cell and is centred in it, so it always sits under its icon
-        item.addView(tv(label, 11f, Ui.DIM).apply {
+        item.addView(tv(label, if (active) 12f else 11f, if (active) Ui.CYAN else Ui.DIM, active).apply {
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END

@@ -41,13 +41,14 @@ class TimetableActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         render()
     }
 
     private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = size
+            textSize = size * Ui.fontScale
             setTextColor(color)
             if (bold) setTypeface(typeface, Typeface.BOLD)
         }
@@ -289,7 +290,7 @@ class TimetableActivity : Activity() {
             text.setSpan(ForegroundColorSpan(colours[c] ?: Ui.CYAN), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             row.addView(TextView(this).apply {
                 this.text = text
-                textSize = 14f
+                textSize = 14f * Ui.fontScale
                 setTextColor(Ui.TEXT)
                 gravity = Gravity.CENTER
                 minHeight = dp(40)
