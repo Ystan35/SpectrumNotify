@@ -160,7 +160,9 @@ class MainActivity : Activity() {
             isVerticalScrollBarEnabled = false
             addView(content)
         }
-        root.addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
+        // scrollable column, bottom bar pinned under it (weighted heights so scrolling works)
+        val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        page.addView(scroll, lp(MATCH, 0, 1f))
 
         // greeting + refresh sit on their own card so they stand out from the BG
         val header = LinearLayout(this).apply {
@@ -169,6 +171,10 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(14), dp(12), dp(14))
             background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 18)
         }
+        header.addView(ImageView(this).apply {
+            setImageResource(R.mipmap.ic_launcher_round)
+            contentDescription = "Spectrum Notify"
+        }, lp(dp(40), dp(40)).apply { rightMargin = dp(12) })
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         greetTitle = tv("", 26f, Ui.TEXT, true)
         greetSub = tv("", 14f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) }
@@ -207,8 +213,6 @@ class MainActivity : Activity() {
         content.addView(dueSection, lp(MATCH, WRAP))
 
         // bottom bar: courses, timetable, notifications (bell), settings (profile is inside Settings)
-        val bottom = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        bottom.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, lp(MATCH, 1))
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -220,8 +224,9 @@ class MainActivity : Activity() {
         bar.addView(navItem(R.drawable.ic_timetable, "Timetable", false, false) { startActivity(Intent(this, TimetableActivity::class.java)) }, lp(0, WRAP, 1f))
         bar.addView(navItem(R.drawable.ic_bell, "Notifications", true, false) { startActivity(Intent(this, NotificationsActivity::class.java)) }, lp(0, WRAP, 1f))
         bar.addView(navItem(R.drawable.ic_settings, "Settings", false, false) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(0, WRAP, 1f))
-        bottom.addView(bar)
-        root.addView(bottom, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM))
+        page.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, lp(MATCH, 1))
+        page.addView(bar, lp(MATCH, WRAP))
+        root.addView(page, FrameLayout.LayoutParams(MATCH, MATCH))
 
         // floating toolbox: tap opens a quick appearance sheet; hold and drag to move the button.
         val fab = TextView(this).apply {
@@ -234,7 +239,7 @@ class MainActivity : Activity() {
             contentDescription = "Appearance settings. Tap to open, hold and drag to move."
             elevation = dp(6).toFloat()
         }
-        val fabLp = FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply {
+        val fabLp = FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48)), Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(14); bottomMargin = dp(78)
         }
         root.addView(fab, fabLp)
