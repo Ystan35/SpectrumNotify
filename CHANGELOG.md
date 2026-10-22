@@ -1,0 +1,62 @@
+# Changelog
+
+## 0.8.4 (versionCode 17)
+- Refreshable UM timetable data: each background check downloads the newest `catalog.json` from the repo (raw.githubusercontent) and keeps the newest copy by its `generatedAt` date; the bundled copy stays the first-launch/offline fallback. The picker shows "Data as of <date>" — lecturers and rooms may have changed. Pushing a new `catalog.json` updates every installed app, no APK needed.
+- Catalog tooling: `tools/collect_timetable.js` (one console paste combines the SDK's main.js + lecturer.js), `tools/update_catalog.bat`/`.ps1` (finds newest Downloads copy, cleans, builds, commits, pushes), patched `tools/cleaner.js` (skips reservations with missing details instead of crashing), `tools/make_catalog.js` stamps `generatedAt`.
+- Logic fixes: a failed poll now saves what it already learned (no duplicate notifications after a network drop); unique notification record ids (same-second records no longer collide — tap-to-open and swipe-dismiss target the right record); catalog load ignores corrupt/empty stored copies; catalog refresh can no longer overwrite a newer stored copy; catalog download moved out of the state lock.
+- HCI fixes: ripple pressed-feedback on buttons, chips, fields and swatches; 48 dp minimum touch targets (chips, fields, top-bar action); Settings validates quiet hours (0–23), times (HH:MM) and clamps poll interval to ≥10, marking invalid boxes red; "Delete this class" asks first; DayNight theme so dialogs/pickers/switches match dark mode.
+
+## 0.8.3
+- No duplicate classes in the timetable: same course + day + overlapping time shows once. Priority: Spectrum class > class picked from the UM list (Occ) > hand-made entry. Hidden duplicates stay stored and reappear if the kept one goes away.
+
+## 0.8.2
+- Check interval: default and minimum are now 10 minutes (Settings > Background checks; old 15-minute settings reset to 10). Below 15 minutes the app uses a self-re-arming alarm (PollAlarmReceiver) since Android only allows 15+ minute periodic jobs; 15+ still uses WorkManager. Quiet hours still apply. Doze may delay alarms; keep battery on Unrestricted.
+
+## 0.8.1
+- Bottom bar labels centred under their icons (equal-width cells). Settings is an accordion: one section open at a time (Profile, Quiet hours, Daily messages, Your classes, Other groups' posts, Deadlines, Background checks, Tools). Profile opens by itself while logged out.
+
+## 0.8.0
+- Layout: home = reminders only (greeting, Up next, Due soon). Bottom bar: Courses, Timetable, Notifications (bell, red dot when unread), Settings. Notification history moved to the bell page (filter chips, expand, swipe to dismiss, Clear all). Tapping a phone notification opens the bell page on that record. Account moved into Settings as the PROFILE section.
+
+## 0.7.0
+- Notification pages: Courses > a course card > "Notification pages" lists the course's pages with a switch each. Only switched-off pages are stored, so new pages are on by default. Items on an off page are not notified (still count as seen, so re-enabling never replays old items).
+
+## 0.6.1
+- One Occ drop-down per course (a student has one Occ; lectures are shared). Adds that Occ's lecture, tutorial and lab slots and sets My group to `CODE:occN`. Settings > "Choose my Occ from a list".
+
+## 0.6.0
+- UM timetable picker (data from damnitjoshua/um-timetable-sdk, bundled as `app/src/main/assets/catalog.json`): Timetable > + > "Pick from UM timetable". Type a code or name, choose your Occ from drop-downs showing day, time, room (lecturer under). Saving adds the slots and sets My group so other groups' posts are hidden.
+
+## 0.5.0
+- Courses page: one card per enrolled course with weekly class times and a "Course home page" button. Course list remembered from each check; falls back to cached calendar courses before the first check.
+
+## 0.4.1
+- Other groups' posts hidden: materials, announcements and notifications naming a different Occ/tutorial group of the same course are not notified. Group learned from attendance event names or Settings > My group (`WIX1003:occ2, WIX1003:t3`, `off` disables). Posts naming no group still notify. Deadlines are not filtered.
+
+## 0.4.0
+- Timetable: weekly slots learned from Spectrum attendance events (course + weekday + time, remembered 6 weeks), your own classes (+ button with time picker, room/note), one colour per course, lecture/tutorial/lab tags from the class name (English/Malay; K1 = lecture, T1 = tutorial), "Other" otherwise. Day view (cards, NOW/NEXT) and week grid. Tap a learned class to set its type, recolour, or remove (restorable).
+
+## 0.3.0
+- Student home screen: greeting, sync status, refresh button, "Up next" class card (countdown, Join class), "Due soon" strip, filter chips with counts, category icons, unread dots, swipe to dismiss, tap-to-expand, light/dark following the phone.
+
+## 0.2.3
+- Links in notification text are tappable; link chips under each card; your Spectrum name at the bottom-left; Settings sections with plain-language help under every box.
+
+## 0.2.2
+- Main page: notification record cards (newest first, expandable, link buttons). Tapping a phone notification opens the app on that record. "Classes to ignore" setting (default `WIX1003@Mon`).
+
+## 0.2.1
+- In-app sign-in page (WebView) that re-requests the token after Microsoft sign-in; browser login kept as fallback.
+
+## 0.2.0
+- Launcher icon; fixed debug signing key (`app/debug.keystore`) so updates install over the old build.
+
+## 0.1.0
+- First working version: login + encrypted token, background poll (notifications, materials, announcements, deadlines), class reminders via exact alarms, morning summary and afternoon check-in, Settings.
+
+## Known limitations
+- Not compiled against a real device until recently — CI "Build APK" is the verifying compile; layouts and Spectrum event names are tested only against real data once installed.
+- The group filter only works if attendance event names contain Occ / T numbers; otherwise set My group by hand.
+- Lecture/tutorial/lab detection depends on what Spectrum puts in the event name/description; slots without it show no tag until you set one.
+- Not ported: auto-download of files; "Attendance OPEN" alerts (needs `private_token`, which the login redirect does not return).
+- The UM catalog only reflects TimeEdit when you refresh it (`tools/update_catalog.bat`); between refreshes the "Data as of" date tells you how old it is.
