@@ -1,14 +1,26 @@
 package my.spectrum.notify
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 
 /**
  * UM timetable catalogue (assets/catalog.json), made from the um-timetable-sdk output (timetable_data.json).
  * One entry per course code with its lecture / tutorial / lab slots and the occurrences (Occ) each slot is for.
+ *
+ * The bundled file is a snapshot, so the app also downloads a fresh one from [REMOTE_URL] during
+ * background checks and caches it. The downloaded copy wins over the bundled one when its
+ * generatedAt date is the same or newer. Lecturers and rooms can change at TimeEdit after this
+ * data was made, so the UI shows the generatedAt date ("as of") and Spectrum stays the source
+ * of truth once classes start.
  */
 object Catalog {
+    /** Where a refreshed catalog.json is downloaded from. raw.githubusercontent serves the file in the repo. */
+    private const val REMOTE_URL = "https://raw.githubusercontent.com/Ystan35/SpectrumNotify/main/app/src/main/assets/catalog.json"
+
     /** One weekly slot of an occurrence. day: 1 = Monday. start/end: minutes after midnight. */
     class Part(val day: Int, val start: Int, val end: Int, val room: String, val lecturer: String)
 
@@ -41,32 +53,81 @@ object Catalog {
             }
     }
 
+    private lateinit var sp: SharedPreferences
     @Volatile private var cache: Map<String, Course>? = null
     @Volatile var semester: String = ""
         private set
+
+    /** Date the loaded catalogue was generated (yyyy-mm-dd), from the newest copy available. */
+    @Volatile var generatedAt: String = ""
+        private set
+
+    private fun sp(ctx: Context): SharedPreferences {
+        if (!::sp.isInitialized) sp = ctx.applicationContext.getSharedPreferences("catalog", Context.MODE_PRIVATE)
+        return sp
+    }
 
     fun load(ctx: Context): Map<String, Course> {
         cache?.let { return it }
         synchronized(this) {
             cache?.let { return it }
-            val out = LinkedHashMap<String, Course>()
-            try {
-                val text = ctx.applicationContext.assets.open("catalog.json").bufferedReader().use { it.readText() }
-                val root = JSONObject(text)
-                semester = root.optString("semester")
-                val cs = root.optJSONObject("courses") ?: JSONObject()
-                for (code in cs.keys()) {
-                    val o = cs.optJSONObject(code) ?: continue
-                    out[code] = Course(code, o.optString("n"), parse(o, "LEC"), parse(o, "TUT"), parse(o, "LAB"))
-                }
-            } catch (_: Exception) {
-            }
-            cache = out
-            return out
+            val app = ctx.applicationContext
+            // The downloaded copy wins over the bundled one when it is not older.
+            val (bundledDate, bundledSem, bundled) =
+                readText(app.assets.open("catalog.json").bufferedReader().use { it.readText() })
+            val stored = sp(app).getString("json", null)
+            val picked = if (stored != null) {
+                val (storedDate, storedSem, storedMap) = readText(stored)
+                if (storedDate >= bundledDate) Triple(storedDate, storedSem, storedMap) else null
+            } else null
+            val (date, sem, map) = picked ?: Triple(bundledDate, bundledSem, bundled)
+            semester = sem
+            generatedAt = date
+            cache = map
+            return map
         }
     }
 
-    /** Groups the slots by occurrence number, sorted by number. */
+    /** Parses one catalogue; returns its generatedAt date, semester and courses. */
+    private fun readText(text: String): Triple<String, String, LinkedHashMap<String, Course>> {
+        val root = JSONObject(text)
+        val out = LinkedHashMap<String, Course>()
+        val cs = root.optJSONObject("courses") ?: JSONObject()
+        for (code in cs.keys()) {
+            val o = cs.optJSONObject(code) ?: continue
+            out[code] = Course(code, o.optString("n"), parse(o, "LEC"), parse(o, "TUT"), parse(o, "LAB"))
+        }
+        return Triple(root.optString("generatedAt"), root.optString("semester"), out)
+    }
+
+    /**
+     * Downloads the current catalogue and stores it when newer than what we have.
+     * Called from the background check; any failure is quiet (the bundled copy still works).
+     */
+    fun refresh(ctx: Context) {
+        try {
+            val conn = URL(REMOTE_URL).openConnection() as HttpURLConnection
+            val text: String = try {
+                conn.connectTimeout = 15000
+                conn.readTimeout = 30000
+                if (conn.responseCode !in 200..299) return
+                conn.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                conn.disconnect()
+            }
+            val (date, sem, map) = readText(text)
+            if (map.isEmpty() || date < generatedAt) return
+            sp(ctx).edit().putString("json", text).apply()
+            synchronized(this) {
+                cache = map
+                semester = sem
+                generatedAt = date
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Group slots by occurrence number, sorted by number. */
     private fun parse(o: JSONObject, key: String): List<Choice> {
         val arr = o.optJSONArray(key) ?: return emptyList()
         val byOcc = LinkedHashMap<String, MutableList<Part>>()

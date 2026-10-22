@@ -618,6 +618,7 @@ object Checker {
                 p.userName = info.str("fullname").ifEmpty { info.str("username") }
                 checkNotes(ctx, api, p, userid, st, first)
                 checkCourses(ctx, api, p, userid, st)
+                try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
                 val nowS = System.currentTimeMillis() / 1000
                 try {
                     st.j.put("deadlines", jobjs(checkDeadlines(ctx, api, p, st, nowS)))

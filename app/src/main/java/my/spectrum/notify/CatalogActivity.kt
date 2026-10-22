@@ -26,8 +26,10 @@ class CatalogActivity : Activity() {
         super.onCreate(savedInstanceState)
         val col = screen("Pick from UM timetable")
         val cat = Catalog.load(this)
+        val asOf = if (Catalog.generatedAt.isNotEmpty()) " Data as of ${Catalog.generatedAt} — lecturers and rooms may have changed." else ""
         col.label(
-            if (cat.isEmpty()) "The UM timetable list could not be loaded." else "Semester ${Catalog.semester} · ${cat.size} courses, from UM TimeEdit.",
+            if (cat.isEmpty()) "The UM timetable list could not be loaded."
+            else "Semester ${Catalog.semester} · ${cat.size} courses, from UM TimeEdit.$asOf",
             12f, Ui.DIM, 6,
         )
         col.label("Course code or name", 13f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)

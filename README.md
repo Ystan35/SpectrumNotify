@@ -39,6 +39,8 @@ Android port of spectrum_notify.py. Runs entirely on the phone with your own Spe
 
 - v0.8.3 No duplicate classes in the timetable: same course + day + overlapping time shows once. Priority: Spectrum class > class picked from the UM list (Occ) > hand-made entry. Hidden duplicates stay stored and reappear if the kept one goes away.
 
+- v0.8.4 Refreshable UM timetable data: the bundled catalog.json is a snapshot, so the picker now shows "Data as of <date>" (lecturers and rooms may have changed). Each background check downloads the current catalog.json from `https://raw.githubusercontent.com/Ystan35/SpectrumNotify/main/app/src/main/assets/catalog.json` and keeps the newest copy (by its generatedAt date) in app storage; the bundled file stays the first-launch/offline fallback. Pushing an updated catalog.json to the repo is enough — no new APK needed.
+
 ## In progress
 - v0.6.0-0.8.3 not compiled or run on a device (no Android SDK in the build sandbox); the CI Build APK run is the first compile. New semester: on your PC run the SDK scripts, `node cleaner.js course_events_with_details.json lecturer_data.json`, then `node tools/make_catalog.js timetable_data.json 2026/S1` (rewrites app/src/main/assets/catalog.json; keeps LEC/TUT/LAB, no emails). The 77 MB raw file never has to leave your PC
 - v0.5.0 Courses page not yet run on a device; the course home page address is `<site>/course/view.php?id=<id>`

@@ -29,5 +29,5 @@ for (const code of Object.keys(courses)) {
   for (const k of ['LEC', 'TUT', 'LAB']) if (!c[k].length) delete c[k];
   if (!c.LEC && !c.TUT && !c.LAB) delete courses[code];
 }
-fs.writeFileSync(output, JSON.stringify({ semester: period, courses }));
-console.log(`${Object.keys(courses).length} courses (${period}), ${skipped} incomplete slots skipped -> ${output}`);
+fs.writeFileSync(output, JSON.stringify({ semester: period, generatedAt: new Date().toISOString().slice(0, 10), courses }));
+console.log(`${Object.keys(courses).length} courses (${period}), generatedAt ${new Date().toISOString().slice(0, 10)}, ${skipped} incomplete slots skipped -> ${output}`);
