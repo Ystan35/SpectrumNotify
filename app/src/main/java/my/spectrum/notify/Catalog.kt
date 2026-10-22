@@ -62,7 +62,7 @@ object Catalog {
     @Volatile var generatedAt: String = ""
         private set
 
-    private fun sp(ctx: Context): SharedPreferences {
+    private fun prefs(ctx: Context): SharedPreferences {
         if (!::sp.isInitialized) sp = ctx.applicationContext.getSharedPreferences("catalog", Context.MODE_PRIVATE)
         return sp
     }
@@ -75,7 +75,7 @@ object Catalog {
             // The downloaded copy wins over the bundled one when it is not older.
             val (bundledDate, bundledSem, bundled) =
                 readText(app.assets.open("catalog.json").bufferedReader().use { it.readText() })
-            val stored = sp(app).getString("json", null)
+            val stored = prefs(app).getString("json", null)
             val picked = if (stored != null) {
                 val (storedDate, storedSem, storedMap) = readText(stored)
                 if (storedDate >= bundledDate) Triple(storedDate, storedSem, storedMap) else null
@@ -117,7 +117,7 @@ object Catalog {
             }
             val (date, sem, map) = readText(text)
             if (map.isEmpty() || date < generatedAt) return
-            sp(ctx).edit().putString("json", text).apply()
+            prefs(ctx).edit().putString("json", text).apply()
             synchronized(this) {
                 cache = map
                 semester = sem
