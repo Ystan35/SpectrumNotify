@@ -113,11 +113,11 @@ fun Activity.screen(
             ImageButton(this).apply {
                 setImageResource(actionIcon)
                 setColorFilter(Ui.CYAN)
-                background = roundBg(Ui.BAR, Ui.BORDER, this@screen, 24)
+                background = rippleBg(Ui.BAR, Ui.BORDER, this@screen, 24)
                 contentDescription = actionDesc
                 setOnClickListener { onAction() }
             },
-            LinearLayout.LayoutParams(dp(44), dp(44)),
+            LinearLayout.LayoutParams(dp(48), dp(48)),
         )
     }
     root.addView(top)
@@ -146,6 +146,14 @@ fun roundBg(fill: Int, stroke: Int, ctx: Context, radius: Int = 10): GradientDra
     cornerRadius = ctx.dp(radius).toFloat()
 }
 
+/** roundBg with a ripple, so taps give visible feedback (HCI: pressed state on every control). */
+fun rippleBg(fill: Int, stroke: Int, ctx: Context, radius: Int = 10): android.graphics.drawable.RippleDrawable {
+    val bg = roundBg(fill, stroke, ctx, radius)
+    return android.graphics.drawable.RippleDrawable(
+        android.content.res.ColorStateList.valueOf(Ui.tint(Ui.CYAN, 60)), bg, bg
+    )
+}
+
 /** kind: 0 = text, 1 = whole number, 2 = time (HH:MM keyboard). */
 fun LinearLayout.field(value: String, hint: String = "", password: Boolean = false, kind: Int = 0): EditText {
     val et = EditText(context)
@@ -154,7 +162,8 @@ fun LinearLayout.field(value: String, hint: String = "", password: Boolean = fal
     et.setTextColor(Ui.TEXT)
     et.setHintTextColor(Ui.DIM)
     et.textSize = 15f
-    et.background = roundBg(Ui.BAR, Ui.BORDER, context)
+    et.background = rippleBg(Ui.BAR, Ui.BORDER, context)
+    et.minHeight = context.dp(48)
     et.setPadding(context.dp(12), context.dp(10), context.dp(12), context.dp(10))
     if (password) {
         et.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -177,7 +186,7 @@ fun LinearLayout.btn(text: String, onClick: () -> Unit): Button {
     b.isAllCaps = false
     b.textSize = 14f
     b.setTextColor(Ui.CYAN)
-    b.background = roundBg(Ui.BAR, Ui.CYAN, context, 24)
+    b.background = rippleBg(Ui.BAR, Ui.CYAN, context, 24)
     b.setOnClickListener { onClick() }
     addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(48)).apply {
         topMargin = context.dp(10)
@@ -240,7 +249,8 @@ fun Context.chip(
         }
         textSize = size
         gravity = Gravity.CENTER
-        minHeight = c.dp(40)
+        minHeight = c.dp(48)
+        minWidth = c.dp(48)
         setPadding(c.dp(padH), 0, c.dp(padH), 0)
         setTextColor(if (selected) onAccent() else Ui.TEXT)
         if (selected) setTypeface(typeface, Typeface.BOLD)
@@ -248,6 +258,11 @@ fun Context.chip(
             cornerRadius = c.dp(20).toFloat()
             if (selected) setColor(accent) else { setColor(Ui.BAR); setStroke(c.dp(1), Ui.BORDER) }
         }
+        foreground = android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Ui.tint(accent, 80)),
+            null,
+            GradientDrawable().apply { cornerRadius = c.dp(20).toFloat() },
+        )
         isClickable = true
         setOnClickListener { onClick() }
     }
@@ -312,6 +327,10 @@ fun LinearLayout.swatches(selected: Int, onPick: (Int) -> Unit): (Int) -> Unit {
                     setColor(Timetable.colorOf(i))
                     if (on) setStroke(ctx.dp(3), Ui.TEXT)
                 }
+                foreground = android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(Ui.tint(onAccent(), 80)), null,
+                    GradientDrawable().apply { shape = GradientDrawable.OVAL },
+                )
                 contentDescription = "Colour ${i + 1}" + if (on) ", selected" else ""
                 isClickable = true
                 setOnClickListener { cur = i; draw(); onPick(i) }
@@ -339,7 +358,7 @@ class TimeField(private val ctx: Context, minutes: Int, private val onPick: (Int
         gravity = Gravity.CENTER_VERTICAL
         minHeight = ctx.dp(48)
         setPadding(ctx.dp(14), 0, ctx.dp(14), 0)
-        background = roundBg(Ui.BAR, Ui.BORDER, ctx)
+        background = rippleBg(Ui.BAR, Ui.BORDER, ctx)
         isClickable = true
         setOnClickListener {
             TimePickerDialog(ctx, { _, h, m ->

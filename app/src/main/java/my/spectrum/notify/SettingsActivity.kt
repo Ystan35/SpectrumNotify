@@ -2,6 +2,7 @@ package my.spectrum.notify
 
 import android.app.Activity
 import android.content.Intent
+import android.widget.Toast
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -229,15 +230,29 @@ class SettingsActivity : Activity() {
     private fun f(key: String) = fields[key]?.text?.toString()?.trim() ?: ""
 
     private fun save() {
-        p.quietStart = f("quietStart").toIntOrNull() ?: 1
-        p.quietEnd = f("quietEnd").toIntOrNull() ?: 7
-        p.summaryTime = f("summaryTime")
-        p.afternoonTime = f("afternoonTime")
+        // Validate before storing: bad input keeps the old value and marks the box red,
+        // so a typo can never silently kill the daily messages or the reminders.
+        var ok = true
+        fun bad(key: String) { fields[key]?.setBackgroundResource(0); fields[key]?.background = roundBg(Ui.tint(Ui.RED, 80), Ui.RED, this); ok = false }
+        fun good(key: String) { fields[key]?.background = rippleBg(Ui.BAR, Ui.BORDER, this) }
+
+        val qs = f("quietStart").toIntOrNull()
+        if (qs == null || qs !in 0..23) bad("quietStart") else { good("quietStart"); p.quietStart = qs }
+        val qe = f("quietEnd").toIntOrNull()
+        if (qe == null || qe !in 0..23) bad("quietEnd") else { good("quietEnd"); p.quietEnd = qe }
+        val pm = f("pollMinutes").toIntOrNull()
+        if (pm == null) bad("pollMinutes") else { good("pollMinutes"); p.pollMinutes = maxOf(10, pm) }  // 10 min is the documented floor
+        for (key in listOf("summaryTime", "afternoonTime")) {
+            val v = f(key)
+            if (v.isEmpty() || parseHm(v) != null) { good(key); if (key == "summaryTime") p.summaryTime = v else p.afternoonTime = v }
+            else bad(key)
+        }
+        if (!ok) Toast.makeText(this, "Some boxes are red — fix them or the related messages will not work.", Toast.LENGTH_LONG).show()
+
         p.manualCourses = f("manualCourses")
         p.skipClasses = f("skipClasses")
         p.myGroups = f("myGroups")
         p.deadlineHours = f("deadlineHours")
-        p.pollMinutes = f("pollMinutes").toIntOrNull() ?: 10
         Scheduler.ensurePolling(this)
         Scheduler.scheduleAll(this)
     }

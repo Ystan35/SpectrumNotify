@@ -164,8 +164,15 @@ class TimetableEditActivity : Activity() {
         }
         if (editing) {
             dangerBtn(col, "Delete this class") {
-                Timetable.deleteManual(this, grp)
-                finish()
+                android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Delete this class?")
+                    .setMessage("It will be removed from your timetable. You can add it again, but you will have to re-enter the times.")
+                    .setPositiveButton("Delete") { _, _ ->
+                        Timetable.deleteManual(this, grp)
+                        finish()
+                    }
+                    .setNegativeButton("Keep", null)
+                    .show()
             }
         }
     }
