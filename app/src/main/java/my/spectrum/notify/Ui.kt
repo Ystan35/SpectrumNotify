@@ -127,6 +127,46 @@ fun Activity.recreateIfLookChanged() {
 
 fun Context.dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
 
+/** The one and only app header: logo + name + theme toggle on a bordered card.
+ *  homeMode = shown on the home screen (not clickable); elsewhere tapping it goes Home. */
+fun Activity.headerRow(homeMode: Boolean): LinearLayout {
+    val titleRow = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(14), dp(10), dp(10), dp(10))
+        background = roundBg(Ui.BAR, Ui.BORDER, this@headerRow, 18)
+    }
+    titleRow.addView(android.widget.ImageView(this).apply {
+        setImageResource(R.mipmap.ic_launcher_round)
+        contentDescription = "Spectrum Notify"
+    }, LinearLayout.LayoutParams(dp(32), dp(32)).apply { rightMargin = dp(10) })
+    titleRow.addView(TextView(this).apply {
+        text = "Spectrum Notify"
+        textSize = 20f * Ui.fontScale
+        setTypeface(typeface, android.graphics.Typeface.BOLD)
+        setTextColor(Ui.TEXT)
+    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    titleRow.addView(ImageButton(this).apply {
+        setImageResource(if (Ui.dark) R.drawable.ic_sun else R.drawable.ic_moon)
+        setColorFilter(Ui.CYAN)
+        background = rippleBg(Ui.BG, Ui.BORDER, this@headerRow, 24)
+        contentDescription = "Toggle light or dark colour mode"
+        setOnClickListener {
+            val pr = try { Prefs(this@headerRow) } catch (_: Exception) { null }
+            if (pr != null) {
+                pr.themeMode = if (Ui.dark) 1 else 2
+                recreate()
+            }
+        }
+    }, LinearLayout.LayoutParams(dp(Ui.touch(44)), dp(Ui.touch(44))))
+    if (!homeMode) {
+        titleRow.setOnClickListener { goToHome() }
+        titleRow.isClickable = true
+        titleRow.foreground = rippleBg(0, 0, this@headerRow, 18)
+    }
+    return titleRow
+}
+
 /** Dark screen with a top bar (back arrow + title) and a scrolling column; returns the column.
  *  Pass [navTo] (the activity of the tab to highlight) to also show the shared bottom nav bar. */
 fun Activity.screen(
@@ -142,51 +182,13 @@ fun Activity.screen(
         setBackgroundColor(Ui.BG)
     }
 
-    // consistent app header on every page: logo + "Spectrum Notify" on a bordered card;
-    // tapping it goes Home (the logo is the home button, like most apps' top-left mark)
-    val titleRow = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(14), dp(10), dp(10), dp(10))
-        background = roundBg(Ui.BAR, Ui.BORDER, this@screen, 18)
-    }
-    titleRow.addView(android.widget.ImageView(this).apply {
-        setImageResource(R.mipmap.ic_launcher_round)
-        contentDescription = "Spectrum Notify — go home"
-    }, LinearLayout.LayoutParams(dp(32), dp(32)).apply { rightMargin = dp(10) })
-    titleRow.addView(TextView(this).apply {
-        text = "Spectrum Notify"
-        textSize = 20f * Ui.fontScale
-        setTypeface(typeface, android.graphics.Typeface.BOLD)
-        setTextColor(Ui.TEXT)
-    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-    // theme toggle on the far right of the header (home shows it too)
-    titleRow.addView(ImageButton(this).apply {
-        setColorFilter(Ui.CYAN)
-        background = rippleBg(Ui.BG, Ui.BORDER, this@screen, 24)
-        contentDescription = "Toggle light or dark colour mode"
-        setOnClickListener {
-            val p = try { Prefs(this@screen) } catch (_: Exception) { null }
-            if (p != null) {
-                p.themeMode = if (Ui.dark) 1 else 2
-                recreate()
-            }
-        }
-    }, LinearLayout.LayoutParams(dp(Ui.touch(44)), dp(Ui.touch(44))))
-    if (this !is MainActivity) {
-        // on sub-pages make the whole header tappable back to Home; Home's own header is already home
-        titleRow.setOnClickListener { goToHome() }
-        titleRow.isClickable = true
-        titleRow.foreground = rippleBg(0, 0, this, 18)
-    }
-    root.addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+    root.addView(headerRow(homeMode = this is MainActivity), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
         setMargins(dp(16), dp(12), dp(16), dp(4))
     })
-
     val top = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(4), dp(6), dp(16), dp(6))
+        setPadding(dp(16), dp(8), dp(16), dp(6))
     }
     if (navTo == null) {
         top.addView(
@@ -501,9 +503,9 @@ class NavTab(val icon: Int, val label: String, val cls: Class<*>, val withDot: B
  */
 fun Activity.bottomNav(active: Class<*>): LinearLayout {
     val tabs = listOf(
+        NavTab(R.drawable.ic_home, "Home", MainActivity::class.java),
         NavTab(R.drawable.ic_courses, "Courses", CoursesActivity::class.java),
         NavTab(R.drawable.ic_timetable, "Timetable", TimetableActivity::class.java),
-        NavTab(R.drawable.ic_cat_class, "Attendance", AttendanceActivity::class.java),
         NavTab(R.drawable.ic_bell, "Notifications", NotificationsActivity::class.java, withDot = true),
         NavTab(R.drawable.ic_settings, "Settings", SettingsActivity::class.java),
     )
@@ -525,7 +527,13 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
             contentDescription = t.label + if (isActive) ", current screen" else ""
             background = rippleBg(Ui.BAR, 0, this@bottomNav, 12)
             setOnClickListener {
-                if (!isActive) startActivity(Intent(this@bottomNav, t.cls))
+                if (!isActive) {
+                    val i = Intent(this@bottomNav, t.cls)
+                    if (t.cls == MainActivity::class.java) {
+                        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    }
+                    startActivity(i)
+                }
             }
         }
         // short indicator above the active icon (3dp pill, 28dp wide)

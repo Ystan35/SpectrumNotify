@@ -173,31 +173,9 @@ class MainActivity : Activity() {
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         page.addView(scroll, lp(MATCH, 0, 1f))
 
-        // app title row: same shared header as every page (logo + name + theme toggle)
-        val titleRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(10), dp(10), dp(10))
-            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 18)
-        }
-        titleRow.addView(ImageView(this).apply {
-            setImageResource(R.mipmap.ic_launcher_round)
-            contentDescription = "Spectrum Notify"
-        }, lp(dp(32), dp(32)).apply { rightMargin = dp(10) })
-        titleRow.addView(tv("Spectrum Notify", 20f, Ui.TEXT, true), lp(0, WRAP, 1f))
-        themeBtn = ImageButton(this).apply {
-            setColorFilter(Ui.CYAN)
-            background = rippleBg(Ui.BG, Ui.BORDER, this@MainActivity, 24)
-            contentDescription = "Toggle light or dark colour mode"
-            setOnClickListener {
-                val pr = Prefs(this@MainActivity)
-                pr.themeMode = if (Ui.dark) 1 else 2   // switch to the other mode, overriding "Phone"
-                recreate()
-            }
-        }
-        titleRow.addView(themeBtn, lp(dp(Ui.touch(44)), dp(Ui.touch(44))))
-        updateThemeBtn()
-        content.addView(titleRow, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
+        // app title row: THE shared header (same implementation as every page)
+        themeBtn = (headerRow(homeMode = true).getChildAt(2) as ImageButton)
+        content.addView(themeBtn.parent as View, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
 
         // greeting + refresh sit on their own card so they stand out from the BG
         val header = LinearLayout(this).apply {
@@ -631,10 +609,14 @@ class MainActivity : Activity() {
                     13f, soft,
                 ).apply { setPadding(0, dp(10), 0, 0) })
             }
-            val actions = LinearLayout(this).apply {
+            // horizontal scroll so three pills never get squeezed into wrapping vertically
+            val actions = HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                setPadding(0, dp(14), 0, 0)
+            }
+            val actionsRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(14), 0, 0)
             }
             val hasLink = c.link.isNotEmpty() && !c.manual
             if (hasLink) actions.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
@@ -642,7 +624,8 @@ class MainActivity : Activity() {
                 val au = Checker.attendanceUrl(this@MainActivity, c.courseId)
                 if (au.isNotEmpty()) openUrl(au) else openUrl(c.courseUrl)
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
-            actions.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
+            actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
+            actions.addView(actionsRow, lp(WRAP, WRAP))
             card.addView(actions)
             // countdown progress: how far we are into the wait (or the class itself), fills to 100%
             val span = if (live) maxOf(1, c.end - c.start) else maxOf(1, (c.start - now) + (c.end - c.start))

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.TextUtils
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -181,8 +182,74 @@ class TimetableActivity : Activity() {
         col.addView(tv(listOf(detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  "), 12f, Ui.DIM).apply {
             setPadding(0, dp(6), 0, 0)
         })
+        // attendance field: auto-filled from the course's Spectrum attendance page,
+        // placeholder when nothing is known, tap to paste one or more links
+        val auto = Checker.attendanceUrl(this, courseIdOf(s.course))
+        val user = userAttLink(s.course)
+        val link = user.ifEmpty { auto }
+        val att = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        att.addView(tv("Attendance", 12f, Ui.DIM, true))
+        if (link.isNotEmpty()) {
+            att.addView(tv(link.take(46) + if (link.length > 46) "…" else "", 12f, c, true).apply {
+                setPadding(dp(8), 0, 0, 0)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, WRAP, 1f))
+            val open = TextView(this).apply {
+                text = "Open"
+                textSize = 12f
+                setTextColor(Ui.CYAN)
+                setTypeface(typeface, Typeface.BOLD)
+                minHeight = dp(40)
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                background = rippleBg(Ui.BAR, 0, this@TimetableActivity, 10)
+            }
+            open.setOnClickListener {
+                try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))) }
+                catch (_: Exception) { Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show() }
+            }
+            att.addView(open)
+        } else {
+            att.addView(tv("no link yet — tap to paste", 12f, Ui.DIM).apply {
+                setPadding(dp(8), 0, 0, 0)
+                maxLines = 1
+            }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        }
+        att.isClickable = true
+        att.setOnClickListener { pasteAttendance(s.course) }
+        col.addView(att)
         card.addView(col, LinearLayout.LayoutParams(0, WRAP, 1f))
         return card
+    }
+
+    private fun courseIdOf(courseCode: String): Long =
+        Courses.all(this).firstOrNull { it.code.equals(courseCode, true) }?.id ?: 0L
+
+    private fun userAttLink(course: String): String =
+        getSharedPreferences("timetable", MODE_PRIVATE).getString("att:$course", "") ?: ""
+
+    /** Dialog to paste one or more attendance links (one per line). Empty text clears. */
+    private fun pasteAttendance(course: String) {
+        val field = android.widget.EditText(this).apply {
+            setText(userAttLink(course))
+            hint = "https://spectrum.um.edu.my/mod/attendance/view.php?id=…"
+            setTextIsSelectable(true)
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Attendance links — $course")
+            .setMessage("Paste one or more links (one per line). Leave empty to go back to the automatic one.")
+            .setView(field)
+            .setPositiveButton("Save") { _, _ ->
+                Timetable.setAttendanceLink(this, course, field.text.toString())
+                render()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // ------------------------------------------------------------ week view
