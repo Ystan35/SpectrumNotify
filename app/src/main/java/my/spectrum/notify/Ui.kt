@@ -50,28 +50,29 @@ object Ui {
     private fun palette(d: Boolean) {
         dark = d
         if (d) {
-            BG = 0xFF0E1320.toInt(); BAR = 0xFF171E30.toInt(); BORDER = 0xFF28324A.toInt()
-            TEXT = 0xFFE9EDF7.toInt(); DIM = 0xFF9AA6C1.toInt(); CYAN = 0xFF7A9BFF.toInt()
-            GREEN = 0xFF4ADE9A.toInt(); RED = 0xFFFF7A7A.toInt(); YELLOW = 0xFFFFC857.toInt()
-            ORANGE = 0xFFFFA45C.toInt(); PURPLE = 0xFFB794FF.toInt()
+            BG = 0xFF12151C.toInt(); BAR = 0xFF1B1F29.toInt(); BORDER = 0xFF2A3040.toInt()
+            TEXT = 0xFFE4E2DD.toInt(); DIM = 0xFF9BA0AC.toInt(); CYAN = 0xFF8FA8FF.toInt()
+            GREEN = 0xFF5FD5A0.toInt(); RED = 0xFFF88C8C.toInt(); YELLOW = 0xFFEFC878.toInt()
+            ORANGE = 0xFFF2A96A.toInt(); PURPLE = 0xFFC0A5FF.toInt()
         } else {
-            BG = 0xFFF3F5FB.toInt(); BAR = 0xFFFFFFFF.toInt(); BORDER = 0xFFDDE3F0.toInt()
-            TEXT = 0xFF161C2E.toInt(); DIM = 0xFF59647E.toInt(); CYAN = 0xFF2F55E4.toInt()
-            GREEN = 0xFF12805A.toInt(); RED = 0xFFC93636.toInt(); YELLOW = 0xFF9A6700.toInt()
-            ORANGE = 0xFFC25E0B.toInt(); PURPLE = 0xFF6B46C8.toInt()
+            // warm light: cream surfaces instead of plain white, soft blue-grey structure
+            BG = 0xFFF5F3EE.toInt(); BAR = 0xFFFDFBF7.toInt(); BORDER = 0xFFE2DED4.toInt()
+            TEXT = 0xFF26251F.toInt(); DIM = 0xFF6B6A60.toInt(); CYAN = 0xFF4A5FC4.toInt()
+            GREEN = 0xFF2E7D5B.toInt(); RED = 0xFFB44A4A.toInt(); YELLOW = 0xFF96690F.toInt()
+            ORANGE = 0xFFAD621C.toInt(); PURPLE = 0xFF7452B8.toInt()
         }
         if (contrastDark == if (d) 1 else 0) return  // palette already matches contrast setting
         contrastDark = if (d) 1 else 0
         if (d) {
-            // high contrast dark: brighter text/dim, stronger accents
-            TEXT = 0xFFFFFFFF.toInt(); DIM = 0xFFC3CCE0.toInt(); CYAN = 0xFFA3BCFF.toInt()
-            GREEN = 0xFF6FF0B4.toInt(); RED = 0xFFFF9B9B.toInt(); YELLOW = 0xFFFFD98A.toInt()
-            ORANGE = 0xFFFFBE85.toInt(); PURPLE = 0xFFD0B8FF.toInt()
+            // high contrast dark: brighter text/dim, stronger accents (still warm-tinted, never pure white)
+            TEXT = 0xFFFFFDF5.toInt(); DIM = 0xFFC9CBD3.toInt(); CYAN = 0xFFB0C2FF.toInt()
+            GREEN = 0xFF83E8B8.toInt(); RED = 0xFFFFA8A8.toInt(); YELLOW = 0xFFFFD98F.toInt()
+            ORANGE = 0xFFFFC08A.toInt(); PURPLE = 0xFFD6C0FF.toInt()
         } else {
-            // high contrast light: near-black text, darker greys and accents
-            TEXT = 0xFF000000.toInt(); DIM = 0xFF3A4157.toInt(); CYAN = 0xFF1E3FBB.toInt()
-            GREEN = 0xFF0A5E41.toInt(); RED = 0xFFA31F1F.toInt(); YELLOW = 0xFF7A5400.toInt()
-            ORANGE = 0xFF9A4704.toInt(); PURPLE = 0xFF5332A8.toInt()
+            // high contrast light: near-black warm text, darker greys and accents
+            TEXT = 0xFF14130E.toInt(); DIM = 0xFF4A4940.toInt(); CYAN = 0xFF2C3F9E.toInt()
+            GREEN = 0xFF1F5C42.toInt(); RED = 0xFF8F3030.toInt(); YELLOW = 0xFF6E4C08.toInt()
+            ORANGE = 0xFF83490F.toInt(); PURPLE = 0xFF5A3E92.toInt()
         }
     }
 

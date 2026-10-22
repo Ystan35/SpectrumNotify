@@ -195,7 +195,10 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
-        dueSection.addView(tv("Due soon", 18f, Ui.TEXT, true).apply { setPadding(dp(2), dp(24), 0, dp(10)) })
+        dueSection.addView(tv("DUE SOON", 13f, Ui.DIM, true).apply {
+            letterSpacing = 0.08f
+            setPadding(dp(2), dp(26), 0, dp(10))
+        })
         dueRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         dueSection.addView(HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -220,7 +223,7 @@ class MainActivity : Activity() {
         bottom.addView(bar)
         root.addView(bottom, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM))
 
-        // floating toolbox: quick access to the appearance settings. Drag it anywhere; tap to open.
+        // floating toolbox: tap opens a quick appearance sheet; hold and drag to move the button.
         val fab = TextView(this).apply {
             text = "Aa"
             textSize = 17f * Ui.fontScale
@@ -235,12 +238,88 @@ class MainActivity : Activity() {
             rightMargin = dp(14); bottomMargin = dp(78)
         }
         root.addView(fab, fabLp)
-        setupFabDrag(fab, fabLp, root)
+        setupFabDrag(fab, fabLp, root) { showQuickSheet(root, fabLp) }
         setContentView(root)
     }
 
-    /** Tap opens Appearance; holding still and dragging moves the button and snaps it to the nearest edge. */
-    private fun setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout) {
+    /** Small sheet above the FAB: theme / text size / contrast toggles, one tap each. */
+    private fun showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) {
+        if (root.findViewWithTag<View>("quicksheet") != null) return
+        val p = Prefs(this)
+
+        val sheet = LinearLayout(this).apply {
+            tag = "quicksheet"
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(14))
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
+            elevation = dp(8).toFloat()
+        }
+        fun row(name: String, value: String, onCycle: () -> Unit) {
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(48)
+                isClickable = true
+                background = rippleBg(Ui.BAR, 0, this@MainActivity, 12)
+            }
+            r.addView(tv(name, 14f, Ui.TEXT), lp(0, WRAP, 1f))
+            r.addView(tv("$value  ▸", 13f, Ui.CYAN, true))
+            r.setOnClickListener { onCycle() }
+            sheet.addView(r)
+        }
+        val themeNames = listOf("Phone", "Light", "Dark")
+        row("Colour mode", themeNames[p.themeMode]) {
+            p.themeMode = (p.themeMode + 1) % 3
+            recreate()
+        }
+        val sizeNames = listOf("Normal", "Large", "Extra large")
+        row("Text size", sizeNames[p.textScale]) {
+            p.textScale = (p.textScale + 1) % 3
+            recreate()
+        }
+        val conNames = listOf("Off", "On")
+        row("High contrast", conNames[if (p.highContrast) 1 else 0]) {
+            p.highContrast = !p.highContrast
+            recreate()
+        }
+        sheet.addView(View(this), lp(MATCH, dp(6)))
+        val more = TextView(this).apply {
+            text = "More appearance settings"
+            textSize = 13f * Ui.fontScale
+            setTextColor(Ui.CYAN)
+            minHeight = dp(44)
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            background = rippleBg(Ui.BAR, 0, this@MainActivity, 12)
+        }
+        more.setOnClickListener {
+            closeQuickSheet(root)
+            startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_OPEN, "appearance"))
+        }
+        sheet.addView(more)
+
+        val dim = View(this).apply {
+            tag = "quicksheetdim"
+            setBackgroundColor(0x66000000)
+            elevation = dp(7).toFloat()
+        }
+        dim.setOnClickListener { closeQuickSheet(root) }
+        root.addView(dim, FrameLayout.LayoutParams(MATCH, MATCH))
+        val lp = FrameLayout.LayoutParams(dp(230), WRAP, Gravity.END).apply {
+            rightMargin = dp(14)
+            // the sheet grows upward from just above wherever the button was dragged to
+            bottomMargin = fabLp.bottomMargin + fabLp.height + dp(10)
+        }
+        root.addView(sheet, lp)
+    }
+
+    private fun closeQuickSheet(root: FrameLayout) {
+        root.findViewWithTag<View>("quicksheet")?.let { root.removeView(it) }
+        root.findViewWithTag<View>("quicksheetdim")?.let { root.removeView(it) }
+    }
+
+    /** Tap opens the quick sheet; holding still and dragging moves the button and snaps it to the nearest edge. */
+    private fun setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onTap: () -> Unit) {
         var downX = 0f
         var downY = 0f
         var startX = 0
@@ -278,7 +357,7 @@ class MainActivity : Activity() {
                         root.updateViewLayout(v, fabLp)
                         moved = false  // a finished drag never counts as a tap
                     } else if (System.currentTimeMillis() - pressTime < 600) {
-                        v.performClick()
+                        onTap()
                     }
                     true
                 }
@@ -496,6 +575,20 @@ class MainActivity : Activity() {
                     setPadding(0, dp(12), 0, 0)
                 })
             }
+            // countdown progress: how far we are into the wait (or the class itself), fills to 100%
+            val span = if (live) maxOf(1, next.end - next.start) else maxOf(1, (next.start - now) + (next.end - next.start))
+            val done = if (live) now - next.start else (next.start - now).coerceAtLeast(0)
+            val frac = (done.toFloat() / span).coerceIn(0f, 1f)
+            val track = FrameLayout(this).apply {
+                setPadding(0, dp(14), 0, 0)
+            }
+            track.addView(View(this).apply {
+                background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(0x33FFFFFF) }
+            }, FrameLayout.LayoutParams(MATCH, dp(4)))
+            track.addView(View(this).apply {
+                background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(0xFFFFFFFF.toInt()) }
+            }, FrameLayout.LayoutParams((frac * 10000).toInt().coerceAtLeast(dp(8)), dp(4), Gravity.START or Gravity.CENTER_VERTICAL))
+            card.addView(track)
         }
         heroBox.removeAllViews()
         heroBox.addView(card, lp(MATCH, WRAP))
@@ -518,6 +611,10 @@ class MainActivity : Activity() {
                 background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
                 setOnClickListener { openUrl(d.url) }
             }
+            // urgency stripe across the top edge: readable at a glance without the badge
+            c.addView(View(this).apply {
+                background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(col) }
+            }, lp(MATCH, dp(4)).apply { bottomMargin = dp(10) })
             c.addView(tv("Due in ${relShort(left)}", 12f, col, true).apply {
                 setPadding(dp(10), dp(4), dp(10), dp(4))
                 background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Ui.tint(col, 0x26)) }
