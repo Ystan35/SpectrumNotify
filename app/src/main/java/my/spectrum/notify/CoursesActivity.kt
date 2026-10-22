@@ -24,7 +24,7 @@ class CoursesActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        box = screen("Courses")
+        box = screen("Courses", navTo = CoursesActivity::class.java)
     }
 
     override fun onResume() {

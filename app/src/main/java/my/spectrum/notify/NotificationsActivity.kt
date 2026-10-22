@@ -62,7 +62,7 @@ class NotificationsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
-        content = screen("Notifications")
+        content = screen("Notifications", navTo = NotificationsActivity::class.java)
         scroll = content.parent as ScrollView
 
         val recHead = LinearLayout(this).apply {

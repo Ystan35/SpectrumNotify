@@ -39,6 +39,7 @@
         <activity android:name=".CoursesActivity" android:exported="false" />
         <activity android:name=".TimetableEditActivity" android:exported="false" />
         <activity android:name=".CatalogActivity" android:exported="false" />
+        <activity android:name=".AttendanceActivity" android:exported="false" />
         <activity android:name=".SectionsActivity" android:exported="false" />
         <activity android:name=".AccountActivity" android:exported="false" />
         <activity android:name=".LoginWebActivity" android:exported="false" />

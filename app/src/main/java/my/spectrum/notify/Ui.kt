@@ -3,6 +3,7 @@ package my.spectrum.notify
 import android.app.Activity
 import android.app.TimePickerDialog
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Typeface
 import android.os.Build
@@ -126,12 +127,14 @@ fun Activity.recreateIfLookChanged() {
 
 fun Context.dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
 
-/** Dark screen with a top bar (back arrow + title) and a scrolling column; returns the column. */
+/** Dark screen with a top bar (back arrow + title) and a scrolling column; returns the column.
+ *  Pass [navTo] (the activity of the tab to highlight) to also show the shared bottom nav bar. */
 fun Activity.screen(
     title: String,
     actionIcon: Int = 0,
     actionDesc: String = "",
     onAction: (() -> Unit)? = null,
+    navTo: Class<*>? = null,
 ): LinearLayout {
     applyBars()
     val root = LinearLayout(this).apply {
@@ -143,16 +146,18 @@ fun Activity.screen(
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(4), dp(6), dp(16), dp(6))
     }
-    top.addView(
-        android.widget.ImageButton(this).apply {
-            setImageResource(R.drawable.ic_back)
-            setColorFilter(Ui.TEXT)
-            setBackgroundColor(0)
-            contentDescription = "Back"
-            setOnClickListener { finish() }
-        },
-        LinearLayout.LayoutParams(dp(48), dp(48)),
-    )
+    if (navTo == null) {
+        top.addView(
+            android.widget.ImageButton(this).apply {
+                setImageResource(R.drawable.ic_back)
+                setColorFilter(Ui.TEXT)
+                setBackgroundColor(0)
+                contentDescription = "Back"
+                setOnClickListener { finish() }
+            },
+            LinearLayout.LayoutParams(dp(48), dp(48)),
+        )
+    }
     top.addView(TextView(this).apply {
         text = title
         textSize = 20f * Ui.fontScale
@@ -174,9 +179,14 @@ fun Activity.screen(
     root.addView(top)
     val col = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(20), dp(4), dp(20), dp(32))
+        setPadding(dp(20), dp(4), dp(20), if (navTo != null) dp(12) else dp(32))
     }
-    root.addView(ScrollView(this).apply { addView(col) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    if (navTo != null) {
+        root.addView(ScrollView(this).apply { addView(col) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        addNavBar(root, navTo)
+    } else {
+        root.addView(ScrollView(this).apply { addView(col) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
     setContentView(root)
     return col
 }
@@ -433,3 +443,90 @@ class TimeField(private val ctx: Context, minutes: Int, private val onPick: (Int
 }
 
 fun Context.timeField(minutes: Int, onPick: (Int) -> Unit): TimeField = TimeField(this, minutes, onPick)
+
+// ---------------------------------------------------------------- bottom navigation
+
+/** One tab of the shared bottom bar. */
+class NavTab(val icon: Int, val label: String, val cls: Class<*>, val withDot: Boolean = false)
+
+/**
+ * The shared bottom navigation bar. [active] is the currently shown tab: it gets a short
+ * indicator bar above the icon plus cyan icon/label; the others stay dim until touched
+ * (every tab has a ripple, so touch feedback is always visible).
+ */
+fun Activity.bottomNav(active: Class<*>): LinearLayout {
+    val tabs = listOf(
+        NavTab(R.drawable.ic_courses, "Courses", CoursesActivity::class.java),
+        NavTab(R.drawable.ic_timetable, "Timetable", TimetableActivity::class.java),
+        NavTab(R.drawable.ic_cat_class, "Attendance", AttendanceActivity::class.java),
+        NavTab(R.drawable.ic_bell, "Notifications", NotificationsActivity::class.java, withDot = true),
+        NavTab(R.drawable.ic_settings, "Settings", SettingsActivity::class.java),
+    )
+    val bar = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setBackgroundColor(Ui.BAR)
+        minimumHeight = dp(64)
+        setPadding(dp(4), dp(2), dp(4), dp(2))
+    }
+    var dot: View? = null
+    for (t in tabs) {
+        val isActive = t.cls == active
+        val item = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, dp(6), 0, dp(6))
+            isClickable = true
+            contentDescription = t.label + if (isActive) ", current screen" else ""
+            background = rippleBg(Ui.BAR, 0, this@bottomNav, 12)
+            setOnClickListener {
+                if (!isActive) startActivity(Intent(this@bottomNav, t.cls))
+            }
+        }
+        // short indicator above the active icon (3dp pill, 28dp wide)
+        if (isActive) {
+            item.addView(View(this).apply {
+                background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Ui.CYAN) }
+            }, LinearLayout.LayoutParams(dp(28), dp(3)).apply { bottomMargin = dp(3) })
+        } else {
+            item.addView(View(this), LinearLayout.LayoutParams(dp(28), dp(3)).apply { bottomMargin = dp(3) })
+        }
+        val holder = android.widget.FrameLayout(this)
+        holder.addView(android.widget.ImageView(this).apply {
+            setImageResource(t.icon)
+            setColorFilter(if (isActive) Ui.CYAN else Ui.DIM)
+        }, android.widget.FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+        if (t.withDot) {
+            dot = View(this).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.RED) }
+                visibility = View.GONE
+            }
+            holder.addView(dot, android.widget.FrameLayout.LayoutParams(dp(10), dp(10), Gravity.TOP or Gravity.END).apply {
+                rightMargin = dp(8)
+            })
+        }
+        item.addView(holder, LinearLayout.LayoutParams(dp(46), dp(28)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        item.addView(TextView(this).apply {
+            text = t.label
+            textSize = if (isActive) 12f * Ui.fontScale else 11f * Ui.fontScale
+            setTextColor(if (isActive) Ui.CYAN else Ui.DIM)
+            if (isActive) setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(2), dp(2), dp(2), 0)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        bar.addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    }
+    bar.tag = dot
+    return bar
+}
+
+/** The unread dot on the bar's bell tab; returns null if this page's bar has no bell. */
+fun LinearLayout.navBellDot(): View = tag as? View ?: View(this.context)
+
+/** Standard top divider + nav bar, added to a page column (the weighted-content pattern). */
+fun Activity.addNavBar(page: LinearLayout, active: Class<*>) {
+    page.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
+    page.addView(bottomNav(active), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+}

@@ -121,4 +121,12 @@ class Prefs(ctx: Context) {
     var bigTouch: Boolean
         get() = sp.getBoolean("bigTouch", false)
         set(v) { sp.edit().putBoolean("bigTouch", v).apply() }
+
+    /** Attendance duplicate labels per course, e.g. attlabel:WIX1003 = "0=Lecture,1=Tutorial". */
+    fun attendanceLabel(course: String): String? =
+        health.getString("attlabel:$course", null)
+
+    fun setAttendanceLabel(course: String, first: String, second: String) {
+        health.edit().putString("attlabel:$course", "0=$first,1=$second").apply()
+    }
 }
