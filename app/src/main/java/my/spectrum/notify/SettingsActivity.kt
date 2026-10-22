@@ -2,7 +2,6 @@ package my.spectrum.notify
 
 import android.app.Activity
 import android.content.Intent
-import android.widget.Toast
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
