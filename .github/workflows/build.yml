@@ -2,6 +2,9 @@ name: Build APK
 on:
   push:
     branches: [main, master]
+    paths:
+      - "app/**"
+      - "latest.json"
   workflow_dispatch:
 
 env:
