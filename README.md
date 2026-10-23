@@ -61,3 +61,7 @@ Allow "install unknown apps" for your file manager/browser, open the APK, then i
 | `tools/make_catalog.js` | Converts `timetable_data.json` into the bundled `catalog.json` |
 | `tools/cleaner.js` | Patched copy of the SDK's cleaner (tolerates reservations with missing details) |
 | `CHANGELOG.md` | Version history and known limitations |
+
+## Update app
+
+The app checks GitHub for a newer version on every background check. When one is available you get a notification — tap **Get the update** to download and install it (two taps, data preserved).
