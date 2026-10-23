@@ -172,7 +172,7 @@ class MainActivity : Activity() {
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Confirm your Occ")
-            .setMessage("Detected from Spectrum. Pick your Occ for every course — one Save fills them all.")
+            .setMessage("Prefilled from your attendance and materials. Please confirm your Occurrence for each course — one Save fills them all.")
             .setView(box)
             .setPositiveButton("Save all") { _, _ ->
                 asks.forEachIndexed { i, a ->
