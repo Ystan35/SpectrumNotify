@@ -122,6 +122,15 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("bigTouch", false)
         set(v) { sp.edit().putBoolean("bigTouch", v).apply() }
 
+    /** versionCode of this installed build (to detect updates). */
+    var buildVersionCode: Int
+        get() = sp.getInt("buildVersionCode", 0)
+        set(v) { sp.edit().putInt("buildVersionCode", v).apply() }
+    /** Latest versionCode the user has already been notified about (remind once per version). */
+    var updateSeenCode: Int
+        get() = sp.getInt("updateSeenCode", 0)
+        set(v) { sp.edit().putInt("updateSeenCode", v).apply() }
+
     /** Show debug/system lines (Check OK, skipped-item notes) in the notification list. Default off. */
     var debugLog: Boolean
         get() = sp.getBoolean("debugLog", false)

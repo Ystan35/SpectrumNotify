@@ -10,6 +10,16 @@ import android.app.Application
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        try {
+            val p = Prefs(this)
+            val code = packageManager.getPackageInfo(packageName, 0).let {
+                if (android.os.Build.VERSION.SDK_INT >= 28) it.longVersionCode.toInt() else it.versionCode
+            }
+            if (p.buildVersionCode != code) {
+                p.buildVersionCode = code
+                p.updateSeenCode = 0   // new install/update: allow one update notification for newer versions
+            }
+        } catch (_: Exception) { }
         val default = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             try {
