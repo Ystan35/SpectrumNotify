@@ -122,9 +122,9 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("bigTouch", false)
         set(v) { sp.edit().putBoolean("bigTouch", v).apply() }
 
-    /** Show debug/system lines (Check OK, skipped-item notes) in the notification list. Default on. */
+    /** Show debug/system lines (Check OK, skipped-item notes) in the notification list. Default off. */
     var debugLog: Boolean
-        get() = sp.getBoolean("debugLog", true)
+        get() = sp.getBoolean("debugLog", false)
         set(v) { sp.edit().putBoolean("debugLog", v).apply() }
 
     /** Attendance duplicate labels per course, e.g. attlabel:WIX1003 = "0=Lecture,1=Tutorial". */
