@@ -512,23 +512,30 @@ class TimetableActivity : Activity() {
         val lecturer = choice?.detail() ?: ""
         if (lecturer.isNotEmpty()) box.addView(tv("👤 $lecturer", 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
         if (s.note.isNotEmpty()) box.addView(tv(s.note, 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
-        // attendance link as a button row
-        if (attUrl.isNotEmpty()) {
-            val ab = TextView(this).apply {
-                text = "Open attendance page"
-                textSize = 14f
-                setTextColor(onAccent())
-                setTypeface(typeface, Typeface.BOLD)
-                gravity = Gravity.CENTER
-                minHeight = dp(48)
-                background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(c) }
+        // action buttons: attendance page (primary), meeting link, course page — whichever exist
+        fun pillBtn(label: String, url: String, filled: Boolean): TextView = TextView(this).apply {
+            text = label
+            textSize = 13f
+            setTextColor(if (filled) onAccent() else c)
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            minHeight = dp(44)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(22).toFloat()
+                if (filled) setColor(c) else { setColor(0x00000000); setStroke(dp(1), c) }
             }
-            ab.setOnClickListener {
-                try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(attUrl))) }
-                catch (_: Exception) { Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show() }
+            setOnClickListener {
+                try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+                catch (_: Exception) { Toast.makeText(this@TimetableActivity, "Cannot open link", Toast.LENGTH_SHORT).show() }
             }
-            box.addView(ab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
         }
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(14), 0, 0) }
+        if (attUrl.isNotEmpty()) btnRow.addView(pillBtn("Attendance", attUrl, true), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
+        val meeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
+        if (meeting.isNotEmpty()) btnRow.addView(pillBtn("Join class", meeting, attUrl.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
+        val courseUrl = Prefs(this).site.let { if (it.isNotEmpty()) "$it/course/view.php?id=${courseIdOf(s.course)}" else "" }
+        if (courseUrl.isNotEmpty()) btnRow.addView(pillBtn("Course page", courseUrl, attUrl.isEmpty() && meeting.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f))
+        if (btnRow.childCount > 0) box.addView(btnRow, LinearLayout.LayoutParams(MATCH, WRAP))
         box.addView(tv("Edit class", 13f, Ui.CYAN, true).apply {
             setPadding(0, dp(14), 0, 0)
             minHeight = dp(40)
