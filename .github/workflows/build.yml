@@ -41,7 +41,7 @@ jobs:
         if: env.HAS_TOKEN == 'true'
         run: |
           if [ -z "${{ secrets.GH_PAT }}" ]; then echo "GH_PAT secret is NOT set"; exit 1; fi
-          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:main
+          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:main 2>&1 | sed "s/x-access-token:[^@]*/x-access-token:***//"
       - uses: actions/upload-artifact@v4
         with:
           name: SpectrumNotify-apks
