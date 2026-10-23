@@ -617,8 +617,8 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER_VERTICAL
             }
             val hasLink = c.link.isNotEmpty() && !c.manual
-            if (hasLink) actions.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
-            actions.addView(pill("Attendance", !hasLink) {
+            if (hasLink) actionsRow.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
+            actionsRow.addView(pill("Attendance", !hasLink) {
                 val au = Checker.attendanceUrl(this@MainActivity, c.courseId)
                 if (au.isNotEmpty()) openUrl(au) else openUrl(c.courseUrl)
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
