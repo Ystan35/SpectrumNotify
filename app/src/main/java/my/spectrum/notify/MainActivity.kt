@@ -125,23 +125,55 @@ class MainActivity : Activity() {
     private fun confirmOccDialog() {
         val st = State(this)
         val seen = st.j.optJSONObject("occ_seen") ?: return
+        val names = st.j.optJSONObject("occ_courses") ?: JSONObject()
         val codes = Courses.all(this).associate { it.id to it.code.uppercase() }
-        var needs = false
+        data class Ask(val code: String, val cname: String, val occs: List<String>, val current: String?)
+        val asks = ArrayList<Ask>()
         for (cidS in seen.keys()) {
             val code = codes[cidS.toLongOrNull() ?: -1L] ?: continue
             if (Prefs(this).occConfirmed(code)) continue
-            val hasOcc = (seen.optJSONArray(cidS) ?: JSONArray()).strs().any {
-                Regex("occ[0-9]+", RegexOption.IGNORE_CASE).containsMatchIn(it)
+            val occs = (seen.optJSONArray(cidS) ?: JSONArray()).strs()
+                .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+                .distinct().sortedBy { it.toIntOrNull() ?: 999 }
+            if (occs.isEmpty()) continue
+            val current = Regex(Regex.escape(code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE)
+                .find(p.myGroups)?.groupValues?.get(1)
+            asks.add(Ask(code, names.optString(cidS, code), occs, current))
+        }
+        if (asks.isEmpty()) return
+
+        // ONE dialog with every course: name + Occ dropdown each, one Save fills them all
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(10), dp(24), 0) }
+        val choices = IntArray(asks.size) { i ->
+            asks[i].current?.let { asks[i].occs.indexOf(it) } ?: -1
+        }
+        asks.forEachIndexed { i, a ->
+            box.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", 15f, Ui.TEXT, true).apply {
+                setPadding(0, if (i == 0) 0 else dp(14), 0, 0)
+            })
+            val sp = spinner(listOf("Choose Occ") + a.occs.map { "Occ $it" }, (choices[i] + 1).coerceAtLeast(0)) { pos ->
+                choices[i] = pos - 1
             }
-            if (hasOcc) { needs = true; break }
+            box.addView(sp, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
         }
-        if (needs) {
-            // straight to the real editor: Settings > Your classes, where each course has its Occ dropdown
-            startActivity(
-                Intent(this, SettingsActivity::class.java)
-                    .putExtra(SettingsActivity.EXTRA_OPEN, "yourclasses")
-            )
-        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Confirm your Occ")
+            .setMessage("Detected from Spectrum. Pick your Occ for every course — one Save fills them all.")
+            .setView(box)
+            .setPositiveButton("Save all") { _, _ ->
+                asks.forEachIndexed { i, a ->
+                    Prefs(this).setOccConfirmed(a.code)
+                    val v = choices[i]
+                    if (v >= 0) {
+                        val keep = p.myGroups.split(",").map { it.trim() }
+                            .filter { it.isNotEmpty() && !it.startsWith("${a.code}:", true) }
+                        p.myGroups = (keep + "${a.code}:occ${a.occs[v]}").joinToString(", ")
+                    }
+                }
+                ovAt = 0L
+            }
+            .setNegativeButton("Later", null)
+            .show()
     }
 
     override fun onPause() {
