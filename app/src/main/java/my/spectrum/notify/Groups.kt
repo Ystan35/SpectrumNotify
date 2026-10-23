@@ -81,6 +81,20 @@ object Groups {
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
             if (occs.isNotEmpty()) out[k] = occs.toMutableList()
         }
+        // merge in Occs detected from page availability (occ_seen, keyed by course id)
+        val seen = st.j.optJSONObject("occ_seen") ?: return out
+        val courseById = HashMap<Long, String>()
+        Courses.all(ctx).forEach { courseById[it.id] = it.code.uppercase() }
+        for (cidS in seen.keys()) {
+            val code = courseById[cidS.toLongOrNull() ?: continue] ?: continue
+            val occs = (seen.optJSONArray(cidS) ?: JSONArray()).strs()
+                .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+                .distinct().sortedBy { it.toIntOrNull() ?: 999 }
+            if (occs.isEmpty()) continue
+            val merged = (out[code] ?: mutableListOf()).toMutableSet()
+            merged.addAll(occs)
+            out[code] = merged.sortedBy { it.toIntOrNull() ?: 999 }.toMutableList()
+        }
         return out
     }
 
