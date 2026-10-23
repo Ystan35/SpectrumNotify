@@ -134,11 +134,9 @@ class MainActivity : Activity() {
             if (Prefs(this).occConfirmed(code)) continue
             // prediction = attendance/event-name learning (my_groups); options = ALL catalog occs,
             // falling back to predicted, then to availability-seen. Shown even when empty.
-            // prediction from attendance/event-name learning, e.g. ["2"] for occ2
-            val predictedNum = Groups.learnedPerCourse(this)[code.uppercase()]?.firstOrNull()
-            val predictedOccs = Groups.learnedPerCourse(this)[code.uppercase()] ?: emptyList()
+            // dropdown = ALL catalog occs (fallback: availability-seen); prefill = predictedOcc
+            val predictedNum = Groups.predictedOcc(this)[code.uppercase()]
             val occs = (Catalog.find(this, code)?.occs() ?: emptyList())
-                .ifEmpty { predictedOccs }
                 .ifEmpty {
                     (seen.optJSONArray(cidS) ?: JSONArray()).strs()
                         .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
@@ -157,22 +155,31 @@ class MainActivity : Activity() {
             asks[i].predicted?.let { pnum -> asks[i].occs.indexOf(pnum) } ?: -1
         }
         asks.forEachIndexed { i, a ->
-            content.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", 15f, Ui.TEXT, true).apply {
-                setPadding(0, if (i == 0) 0 else dp(14), 0, 0)
-            })
+            // single-line row: code·name on the left, occ dropdown on the right
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, if (i == 0) 0 else dp(8), 0, 0)
+            }
+            row.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", 13f, Ui.TEXT, true).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, WRAP, 1f))
             val hasPrediction = choices[i] >= 0
             val opts = when {
-                a.occs.isEmpty() -> listOf("Not available — set later")
-                hasPrediction -> a.occs.map { "Occ $it" }
-                else -> listOf("Choose Occ") + a.occs.map { "Occ $it" }
+                a.occs.isEmpty() -> listOf("N/A")
+                hasPrediction -> a.occs.map { it }
+                else -> listOf("?") + a.occs.map { it }
             }
-            val spinnerSel = if (hasPrediction) choices[i] + 1 else 0
+            val spinnerSel = if (hasPrediction) choices[i] else 0
             val sp = spinner(opts, spinnerSel) { pos -> choices[i] = pos - 1 }
-            content.addView(sp, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
+            sp.layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
+            row.addView(sp, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
+            content.addView(row, LinearLayout.LayoutParams(MATCH, WRAP))
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Confirm your Occ")
-            .setMessage("Prefilled from your attendance and materials. Please confirm your Occurrence for each course — one Save fills them all.")
+            .setMessage("Prefilled from your attendance and materials — please confirm each. Unlisted courses keep working without a filter.")
             .setView(box)
             .setPositiveButton("Save all") { _, _ ->
                 asks.forEachIndexed { i, a ->

@@ -70,6 +70,42 @@ object Groups {
         return (st.j.optJSONObject("my_groups")?.optJSONArray(up) ?: JSONArray()).strs().toSet()
     }
 
+    /**
+     * The single best-guess Occ per course, for prefilling the confirm dialog.
+     * Priority: attendance-event occ token (your own events name your Occ) >
+     * availability-detected occ (pages you can see). Returns code -> occ number, only when
+     * exactly one occ is known — several candidates mean we cannot guess.
+     */
+    fun predictedOcc(ctx: android.content.Context): Map<String, String> {
+        val st = State(ctx)
+        val out = LinkedHashMap<String, String>()
+        val occRe = Regex("occ([0-9]+)", RegexOption.IGNORE_CASE)
+        // attendance events (strongest signal)
+        val acc = LinkedHashMap<String, MutableSet<String>>()
+        for (e in Checker.myCalendar(st, Prefs(ctx))) {
+            if (!Checker.isAttEvent(e)) continue
+            for (t in tokens(e.str("name"))) {
+                occRe.find(t)?.groupValues?.get(1)?.let {
+                    acc.getOrPut(Timetable.courseCode(e.optJSONObject("course")).uppercase()) { LinkedHashSet() }.add(it)
+                }
+            }
+        }
+        for ((c, occs) in acc) if (occs.size == 1) out[c] = occs.first()
+        // availability detection (weaker; only fills courses with no attendance signal)
+        val seen = st.j.optJSONObject("occ_seen") ?: return out
+        val courseById = HashMap<Long, String>()
+        Courses.all(ctx).forEach { courseById[it.id] = it.code.uppercase() }
+        for (cidS in seen.keys()) {
+            val code = courseById[cidS.toLongOrNull() ?: continue] ?: continue
+            if (out.containsKey(code)) continue
+            val occs = (seen.optJSONArray(cidS) ?: JSONArray()).strs()
+                .mapNotNull { occRe.find(it)?.groupValues?.get(1) }
+                .distinct()
+            if (occs.size == 1) out[code] = occs.first()
+        }
+        return out
+    }
+
     /** Courses with their learned Occ numbers (from attendance event names), for the Settings chips. */
     fun learnedPerCourse(ctx: android.content.Context): Map<String, List<String>> {
         val st = State(ctx)
