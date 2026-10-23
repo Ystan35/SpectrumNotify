@@ -253,12 +253,12 @@ class NotificationsActivity : Activity() {
         box.addView(tv(
             if (!loggedIn) "Nothing here yet" else if (filter.isEmpty()) "You're all caught up" else "Nothing in this category",
             17f, Ui.TEXT, true,
-        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) })
+        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         box.addView(tv(
             if (!loggedIn) "Log in to start receiving class links, deadlines and materials."
             else "New class links, deadlines and materials will show up here.",
             13f, Ui.DIM,
-        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) })
+        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         return box
     }
 

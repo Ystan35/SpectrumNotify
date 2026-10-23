@@ -106,7 +106,10 @@ object Ui {
 @Volatile var lookChanged = false
 
 fun Activity.applyBars() {
-    requestWindowFeature(Window.FEATURE_NO_TITLE)  // every page draws the shared header; no system title bar
+    // every page draws the shared header; hide the system title bar.
+    // requestWindowFeature is only legal before setContentView; guard it so
+    // recreate() paths (theme toggle, look change) can never crash here.
+    try { requestWindowFeature(Window.FEATURE_NO_TITLE) } catch (_: Exception) { }
     val before = Ui.look
     Ui.setup(this)
     window.statusBarColor = Ui.BG
@@ -568,7 +571,7 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
             if (isActive) setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             maxLines = 1
-            includeFontPadding = false
+            minHeight = dp(16)
             setPadding(0, dp(2), 0, 0)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bar.addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
