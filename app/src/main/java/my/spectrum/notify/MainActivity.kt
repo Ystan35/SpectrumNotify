@@ -97,6 +97,7 @@ class MainActivity : Activity() {
         }
         buildUi()
         handleIntent(intent)
+        Scheduler.startupCheck(this)   // auto-detect courses + Occ on open when data is stale
         Scheduler.ensurePolling(this)
     }
 
