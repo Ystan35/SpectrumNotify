@@ -219,27 +219,34 @@ class TimetableActivity : Activity() {
             setPadding(0, dp(8), 0, 0)
         }
         att.addView(tv("Attendance", 12f, Ui.DIM, true))
-        if (link.isNotEmpty()) {
-            att.addView(tv(link.take(46) + if (link.length > 46) "…" else "", 12f, c, true).apply {
-                setPadding(dp(8), 0, 0, 0)
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-            }, LinearLayout.LayoutParams(0, WRAP, 1f))
-            val open = TextView(this).apply {
-                text = "Open"
-                textSize = 12f
-                setTextColor(Ui.CYAN)
-                setTypeface(typeface, Typeface.BOLD)
-                minHeight = dp(40)
-                gravity = Gravity.CENTER_VERTICAL
+        // compact buttons: one per link (user pasted several = one button each), plus a + to add more
+        val links = link.split(System.lineSeparator()).map { it.trim() }.filter { it.isNotEmpty() }
+        if (links.isNotEmpty()) {
+            for ((i, u) in links.withIndex()) {
+                val open = TextView(this).apply {
+                    text = if (links.size == 1) "Open" else "Open ${i + 1}"
+                    textSize = 12f
+                    setTextColor(Ui.CYAN)
+                    setTypeface(typeface, Typeface.BOLD)
+                    minHeight = dp(40)
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(10), 0, dp(10), 0)
+                    isClickable = true
+                    background = rippleBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, 18)
+                }
+                open.setOnClickListener {
+                    try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))) }
+                    catch (_: Exception) { Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show() }
+                }
+                att.addView(open, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
+            }
+            att.addView(tv("+", 14f, Ui.CYAN, true).apply {
+                minHeight = dp(40); minWidth = dp(32)
+                gravity = Gravity.CENTER
                 isClickable = true
-                background = rippleBg(Ui.BAR, 0, this@TimetableActivity, 10)
-            }
-            open.setOnClickListener {
-                try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))) }
-                catch (_: Exception) { Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show() }
-            }
-            att.addView(open)
+                background = rippleBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, 14)
+                setOnClickListener { pasteAttendance(s.course) }
+            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(4) })
         } else {
             att.addView(tv("no link yet — tap to paste", 12f, Ui.DIM).apply {
                 setPadding(dp(8), 0, 0, 0)
@@ -458,12 +465,75 @@ class TimetableActivity : Activity() {
                 setStroke(dp(1), c)
             }
             isClickable = true
-            setOnClickListener { openEdit(s) }
+            setOnClickListener { slotDetail(s) }   // tap anywhere: full detail popup
         }
         b.addView(tv(s.course, 12f, Ui.TEXT, true).apply { maxLines = 1 })
         val sub = if (narrow) s.kind.tag else listOf(s.kind.tag, Timetable.fmtMin(s.start)).filter { it.isNotEmpty() }.joinToString(" · ")
         if (sub.isNotEmpty()) b.addView(tv(sub, 10f, Ui.DIM).apply { maxLines = 1 })
+        // location line when there is room for it (not the narrow multi-lane blocks)
+        if (!narrow) {
+            val loc = Timetable.locationOf(this, s.course)
+            val line = when {
+                loc.startsWith("online:") -> "💻 Online"
+                loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
+                else -> ""
+            }
+            if (line.isNotEmpty()) b.addView(tv(line, 10f, Ui.DIM).apply { maxLines = 1 })
+        }
         return b
+    }
+
+    /** Popup with the full class detail: name, time, location, lecturer, attendance link(s). */
+    private fun slotDetail(s: Slot) {
+        val c = colours[s.course] ?: Ui.CYAN
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(12), dp(24), 0) }
+        box.addView(tv(s.course, 20f, c, true))
+        box.addView(tv("${Timetable.DAY_FULL[s.day - 1]} · ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}", 14f, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
+        if (s.kind != SlotKind.CLASS) box.addView(tv(s.kind.label, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        val loc = Timetable.locationOf(this, s.course)
+        val autoMeeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
+        val attUrl = Timetable.attendanceLink(this, s.course, Checker.attendanceUrl(this, courseIdOf(s.course)))
+        val locLine = when {
+            loc.startsWith("online:") -> "💻 Online" + (if (loc.removePrefix("online:").isNotEmpty()) " · link set" else "")
+            loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
+            else -> ""
+        }
+        val choice = Catalog.find(this, s.course)?.choices(s.kind)?.firstOrNull { ch ->
+            ch.occ == occOf(s) || ch.parts.any { it.day == s.day && it.start == s.start }
+        }
+        val catRoom = choice?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ") ?: ""
+        if (locLine.isNotEmpty()) box.addView(tv(locLine, 13f, Ui.TEXT).apply { setPadding(0, dp(10), 0, 0) })
+        else if (catRoom.isNotEmpty()) box.addView(tv("📍 $catRoom", 13f, Ui.TEXT).apply { setPadding(0, dp(10), 0, 0) })
+        val lecturer = choice?.detail() ?: ""
+        if (lecturer.isNotEmpty()) box.addView(tv("👤 $lecturer", 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        if (s.note.isNotEmpty()) box.addView(tv(s.note, 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
+        // attendance link as a button row
+        if (attUrl.isNotEmpty()) {
+            val ab = TextView(this).apply {
+                text = "Open attendance page"
+                textSize = 14f
+                setTextColor(onAccent())
+                setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                minHeight = dp(48)
+                background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(c) }
+            }
+            ab.setOnClickListener {
+                try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(attUrl))) }
+                catch (_: Exception) { Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show() }
+            }
+            box.addView(ab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        }
+        box.addView(tv("Edit class", 13f, Ui.CYAN, true).apply {
+            setPadding(0, dp(14), 0, 0)
+            minHeight = dp(40)
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+        }.also { it.setOnClickListener { openEdit(s) } })
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setView(box)
+            .setPositiveButton("Close", null)
+            .show()
     }
 
     // ------------------------------------------------------------ legend + hidden classes
