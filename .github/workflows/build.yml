@@ -4,6 +4,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+env:
+  HAS_TOKEN: ${{ secrets.GH_PAT != '' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,6 +21,21 @@ jobs:
           gradle-version: 8.9
       - name: Build debug + release APKs
         run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
+      - name: Sync latest.json with version in build.gradle.kts
+        run: |
+          CODE=$(grep -oP 'versionCode = \K\d+' app/build.gradle.kts)
+          NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          printf '{"versionCode": %s, "versionName": "%s", "notes": ""}
+' "$CODE" "$NAME" > latest.json
+          if ! git diff --quiet latest.json; then
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add latest.json
+            git commit -m "Update latest.json to $NAME ($CODE)"
+          fi
+      - name: Push latest.json (token auth)
+        if: env.HAS_TOKEN == 'true'
+        run: git push https://${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:main || echo "push skipped"
       - uses: actions/upload-artifact@v4
         with:
           name: SpectrumNotify-apks
