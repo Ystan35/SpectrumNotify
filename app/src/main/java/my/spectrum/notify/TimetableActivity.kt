@@ -191,8 +191,23 @@ class TimetableActivity : Activity() {
         val detail = listOf(s.title, s.note).filter { it.isNotEmpty() }.joinToString("  ·  ")
         val meta = listOf(detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  ")
         col.addView(tv(meta, 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
-        if (room.isNotEmpty()) col.addView(tv("📍 $room", 12f, Ui.TEXT).apply { setPadding(0, dp(2), 0, 0) })
-        if (lecturer.isNotEmpty()) col.addView(tv("👤 $lecturer", 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        // location: user override first; else the auto meeting link (Online) or the catalog room
+        val userLoc = Timetable.locationOf(this, s.course)
+        val autoMeeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
+        val locLine = when {
+            userLoc.startsWith("online:") -> "💻 Online" + (if (userLoc.removePrefix("online:").isNotEmpty()) " · link set" else "")
+            userLoc.startsWith("room:") -> "📍 " + userLoc.removePrefix("room:")
+            autoMeeting.isNotEmpty() -> "💻 Online (auto)"
+            room.isNotEmpty() -> "📍 $room"
+            else -> "📍 Tap to set location"
+        }
+        val loc = tv(locLine, 12f, if (userLoc.isEmpty() && room.isEmpty() && autoMeeting.isEmpty()) Ui.DIM else Ui.TEXT).apply {
+            setPadding(0, dp(2), 0, 0)
+            isClickable = true
+            background = rippleBg(Ui.BAR, 0, this@TimetableActivity, 10)
+        }
+        loc.setOnClickListener { editLocation(s.course, autoMeeting) }
+        col.addView(loc)
         // attendance field: auto-filled from the course's Spectrum attendance page,
         // placeholder when nothing is known, tap to paste one or more links
         val auto = Checker.attendanceUrl(this, courseIdOf(s.course))
@@ -245,6 +260,62 @@ class TimetableActivity : Activity() {
         getSharedPreferences("timetable", MODE_PRIVATE).getString("att:$course", "") ?: ""
 
     /** Dialog to paste one or more attendance links (one per line). Empty text clears. */
+    /** Location editor: Online (auto meeting link if found, else paste) or Physical room. */
+    private fun editLocation(course: String, autoMeeting: String) {
+        val names = listOf("💻 Online class", "📍 Physical room", "Clear")
+        val current = Timetable.locationOf(this, course)
+        val initial = when {
+            current.startsWith("online:") -> 0
+            current.startsWith("room:") -> 1
+            else -> 2
+        }
+        val mode = intArrayOf(if (current.isEmpty()) 0 else initial)
+        val linkField = android.widget.EditText(this).apply {
+            hint = "Meeting link (https://…)"
+            setText(if (current.startsWith("online:")) current.removePrefix("online:")
+                    else if (autoMeeting.isNotEmpty()) autoMeeting else "")
+            setTextIsSelectable(true)
+        }
+        val roomField = android.widget.EditText(this).apply {
+            hint = "Room, e.g. DK2"
+            setText(if (current.startsWith("room:")) current.removePrefix("room:") else "")
+        }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
+        box.addView(linkField)
+        box.addView(roomField, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        fun refresh() {
+            linkField.visibility = if (mode[0] == 0) android.view.View.VISIBLE else android.view.View.GONE
+            roomField.visibility = if (mode[0] == 1) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        refresh()
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Location — $course")
+            .setMessage(
+                "Online: the app looks for this course's meeting link automatically" +
+                    (if (autoMeeting.isNotEmpty()) " (one was found)" else " (none found — paste the link yourself)") + ". " +
+                    "Physical: type the room."
+            )
+            .setView(box)
+            .setSingleChoiceItems(names.toTypedArray(), if (current.isEmpty()) 0 else initial) { _, which -> mode[0] = which; refresh() }
+            .setPositiveButton("Save") { _, _ ->
+                when (mode[0]) {
+                    0 -> {
+                        val link = linkField.text.toString().trim()
+                        if (link.isEmpty() && autoMeeting.isEmpty()) {
+                            Toast.makeText(this, "No meeting link found — paste one, or choose Physical room.", Toast.LENGTH_LONG).show()
+                            return@setPositiveButton
+                        }
+                        Timetable.setLocation(this, course, "online:${link.ifEmpty { autoMeeting }}")
+                    }
+                    1 -> Timetable.setLocation(this, course, "room:" + roomField.text.toString().trim())
+                    else -> Timetable.setLocation(this, course, "")
+                }
+                render()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     /** Which Occ this slot belongs to: from the picker group id (cat-CODE-kind-N), else empty. */
     private fun occOf(s: Slot): String =
         if (s.grp.startsWith("cat-")) s.grp.split('-').getOrNull(3) ?: "" else ""

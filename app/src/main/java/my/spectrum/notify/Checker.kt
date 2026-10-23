@@ -42,7 +42,7 @@ object Checker {
         }
     }
 
-    private fun linkIsMeeting(url: String) = linkType(url) != "Teams channel/chat"
+    fun linkIsMeeting(url: String) = linkType(url) != "Teams channel/chat"
 
     private fun findLinks(text: String?): List<String> {
         val out = LinkedHashSet<String>()
@@ -119,6 +119,15 @@ object Checker {
     )
     data class DueItem(val name: String, val course: String, val ts: Long, val url: String)
     class Overview(val classes: List<ClassItem>, val due: List<DueItem>)
+
+    /** The latest meeting link recorded for a course (Teams/Meet etc.), or "" if none. */
+    fun courseMeetingLink(ctx: Context, courseId: Long): String {
+        if (courseId == 0L) return ""
+        val st = State(ctx)
+        val linksMap = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
+        val links: List<Link>? = linksMap[courseId.toString()]
+        return links?.firstOrNull { linkIsMeeting(it.url) }?.url ?: ""
+    }
 
     /** The Spectrum attendance page for a course, e.g. …/mod/attendance/view.php?id=1127746, or "" if unknown. */
     fun attendanceUrl(ctx: Context, courseId: Long): String {

@@ -166,7 +166,10 @@ class SettingsActivity : Activity() {
             val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
             val occs = if (catOccs.isNotEmpty()) catOccs else (learned[code.uppercase()] ?: learned[code] ?: emptyList())
             val current = Regex(Regex.escape(code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
-            target.label(code, 14f, Ui.TEXT, 14).setTypeface(null, android.graphics.Typeface.BOLD)
+            // show the course name too — users rarely recognise codes alone
+            val cname = Courses.all(this).firstOrNull { it.code.equals(code, true) }?.name
+                ?: Catalog.find(this, code)?.name ?: ""
+            target.label(if (cname.isNotEmpty()) "$code · $cname" else code, 14f, Ui.TEXT, 14).setTypeface(null, android.graphics.Typeface.BOLD)
             val names = listOf("Not set") + occs.map { "Occ $it" }
             val sel = occs.indexOf(current) + 1
             val sp = spinner(names, if (sel >= 0) sel else 0) { pos ->

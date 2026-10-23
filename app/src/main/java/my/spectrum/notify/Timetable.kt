@@ -243,6 +243,18 @@ object Timetable {
 
     fun attendanceKey(course: String) = "att:$course"
 
+    // ---------------------------------------------------------- location per course
+    // "online:<link>" = online class with a meeting link; "room:<text>" = physical room; "" = not set.
+
+    /** The location line shown for a course: user-set first, else the catalog room. */
+    fun locationOf(ctx: Context, course: String): String =
+        sp(ctx).getString("loc:$course", "") ?: ""
+
+    /** Sets the user location override; empty text clears it. */
+    fun setLocation(ctx: Context, course: String, value: String) {
+        sp(ctx).edit().putString("loc:$course", value.trim()).apply()
+    }
+
     private fun hiddenKeys(ctx: Context): MutableSet<String> = LinkedHashSet(readArr(ctx, "hidden").strs())
 
     fun hiddenCount(ctx: Context): Int = hiddenKeys(ctx).size
