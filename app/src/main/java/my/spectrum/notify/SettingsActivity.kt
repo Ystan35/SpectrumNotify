@@ -263,6 +263,12 @@ class SettingsActivity : Activity() {
             Scheduler.pollNow(this)
             Toast.makeText(this, "Checking Spectrum...", Toast.LENGTH_SHORT).show()
         }
+        target.action("Check for app update", "Compares this build with the latest release on GitHub. Shows the result here; a notification appears if a newer version exists.") {
+            Thread {
+                val msg = Updater.check(this, manual = true)
+                runOnUiThread { Toast.makeText(this, msg ?: "You are on the latest version.", Toast.LENGTH_LONG).show() }
+            }.start()
+        }
         target.action("Send test notification", "Sends one test message so you can see how notifications look and that tapping opens the app.") {
             Notifier.push(this, "Test", "Notifications are working.\nTap the button below to open Spectrum.", true, listOf(Pair("Open Spectrum", p.site)))
         }
