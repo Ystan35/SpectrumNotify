@@ -2,7 +2,13 @@ name: Build APK
 on:
   push:
     branches: [main, master]
+    paths:
+      - "app/**"
+      - "latest.json"
   workflow_dispatch:
+
+env:
+  HAS_TOKEN: ${{ secrets.GH_PAT != '' }}
 
 jobs:
   build:
@@ -16,9 +22,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.9
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+      - name: Build debug + release APKs
+        run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
+      - name: Stage release APK into repo (apk/SpectrumNotify.apk)
+        run: |
+          mkdir -p apk
+          cp app/build/outputs/apk/release/app-release.apk apk/SpectrumNotify.apk
+          git add apk/SpectrumNotify.apk
+      - name: Sync latest.json with version in build.gradle.kts
+        run: |
+          CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
+          NAME=$(grep -oP 'versionName = "[^"]+"' app/build.gradle.kts | cut -d'"' -f2)
+          node -e 'const fs=require("fs");const c=process.argv[1],n=process.argv[2];fs.writeFileSync("latest.json",JSON.stringify({versionCode:Number(c),versionName:n,notes:""}))' "$CODE" "$NAME"
+          if ! git diff --cached --quiet latest.json apk/SpectrumNotify.apk; then
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add latest.json apk/SpectrumNotify.apk
+            git commit -m "Publish $NAME ($CODE): latest.json + APK"
+          fi
+      - name: Push latest.json + APK (token auth)
+        if: env.HAS_TOKEN == 'true'
+        run: |
+          if [ -z "${{ secrets.GH_PAT }}" ]; then echo "GH_PAT secret is NOT set"; exit 1; fi
+          # checkout persists its own read-only credential; remove it so our PAT is used
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:main
       - uses: actions/upload-artifact@v4
         with:
-          name: SpectrumNotify-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: SpectrumNotify-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release.apk

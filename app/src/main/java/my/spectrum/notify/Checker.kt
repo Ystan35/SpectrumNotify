@@ -42,7 +42,7 @@ object Checker {
         }
     }
 
-    private fun linkIsMeeting(url: String) = linkType(url) != "Teams channel/chat"
+    fun linkIsMeeting(url: String) = linkType(url) != "Teams channel/chat"
 
     private fun findLinks(text: String?): List<String> {
         val out = LinkedHashSet<String>()
@@ -115,9 +115,27 @@ object Checker {
     data class ClassItem(
         val name: String, val course: String, val full: String,
         val start: Long, val end: Long, val link: String, val courseUrl: String, val manual: Boolean,
+        val courseId: Long = 0L,
     )
     data class DueItem(val name: String, val course: String, val ts: Long, val url: String)
     class Overview(val classes: List<ClassItem>, val due: List<DueItem>)
+
+    /** The latest meeting link recorded for a course (Teams/Meet etc.), or "" if none. */
+    fun courseMeetingLink(ctx: Context, courseId: Long): String {
+        if (courseId == 0L) return ""
+        val st = State(ctx)
+        val linksMap = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
+        val links: List<Link>? = linksMap[courseId.toString()]
+        return links?.firstOrNull { linkIsMeeting(it.url) }?.url ?: ""
+    }
+
+    /** The Spectrum attendance page for a course, e.g. …/mod/attendance/view.php?id=1127746, or "" if unknown. */
+    fun attendanceUrl(ctx: Context, courseId: Long): String {
+        if (courseId == 0L) return ""
+        val id = try { State(ctx).j.optJSONObject("attcmid")?.optLong(courseId.toString(), 0L) ?: 0L } catch (_: Exception) { 0L }
+        val site = Prefs(ctx).site
+        return if (id != 0L && site.isNotEmpty()) "$site/mod/attendance/view.php?id=$id" else ""
+    }
 
     /** Classes (not yet finished) and deadlines from the cached data, for the main screen. */
     fun overview(ctx: Context): Overview {
@@ -138,7 +156,7 @@ object Checker {
                 start, start + (if (dur > 0) dur else 3600L),
                 linksForEvent(e, cal, links).firstOrNull()?.first ?: "",
                 if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site,
-                isManual(e, p),
+                isManual(e, p), cid,
             )
         }.filter { it.end > now }.sortedBy { it.start }
         val due = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().mapNotNull { e ->
@@ -195,7 +213,8 @@ object Checker {
 
     // ------------------------------------------------------------ materials
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
-                               secOf: MutableMap<String, String>, secNames: MutableMap<String, String>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
+                               secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
+                               attCmids: MutableMap<Long, Long>, occSeen: MutableMap<Long, MutableSet<String>>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
         val raw = ArrayList<Triple<String, String, Long>>()
         val cid = c.optLong("id")
@@ -216,6 +235,19 @@ object Checker {
                 secOf[key] = skey
                 val desc = clean(m.str("description"), 300)
                 if (desc.isNotEmpty()) extra[key] = desc
+                if (m.str("modname") == "attendance" && m.optLong("id") != 0L && !attCmids.containsKey(cid)) {
+                    attCmids[cid] = m.optLong("id")   // for <site>/mod/attendance/view.php?id=<cmid>
+                }
+                // Occ detection via availability: a module the user CAN see that names an Occ
+                // means the user belongs to it (Spectrum restricts other Occs' pages).
+                if (m.optBoolean("uservisible", true)) {
+                    val toks = groupTokens(m.str("name") + " " + m.str("intro"))
+                    for (t in toks) {
+                        if (t.contains("occ")) {
+                            occSeen[cid] = (occSeen[cid] ?: LinkedHashSet()).apply { add(t) }
+                        }
+                    }
+                }
                 if (m.str("modname") in MEETING_MODS && m.optBoolean("uservisible", true) && url.isNotEmpty()) {
                     raw.add(Triple(url, clean(name), mt))
                 }
@@ -273,6 +305,8 @@ object Checker {
     private fun checkCourses(ctx: Context, api: Moodle, p: Prefs, userid: Long, st: State) {
         val prevLinks = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
         val linksByCourse = LinkedHashMap<String, List<Link>>()
+        val attCmids = HashMap<Long, Long>()
+        val occSeen = HashMap<Long, MutableSet<String>>()
         val enrolled = api.arr("core_enrol_get_users_courses", mapOf("userid" to userid)).objs()
         Courses.remember(st, enrolled)
         for (c in enrolled) {
@@ -282,7 +316,7 @@ object Checker {
             val secOf = HashMap<String, String>()
             val secNames = LinkedHashMap<String, String>()
             val result = try {
-                snapshotCourse(api, p.site, c, extra, secOf, secNames)
+                snapshotCourse(api, p.site, c, extra, secOf, secNames, attCmids, occSeen)
             } catch (e: Exception) {
                 Log.w(TAG, "course $cid skipped: $e")
                 prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }
@@ -290,6 +324,22 @@ object Checker {
             }
             val snap = result.first
             Sections.remember(st, cid, secNames)
+            if (attCmids.containsKey(cid)) {
+                val am = st.j.optJSONObject("attcmid") ?: JSONObject()
+                am.put(cid.toString(), attCmids[cid]!!)
+                st.j.put("attcmid", am)
+            }
+            if (occSeen.containsKey(cid)) {
+                val om = st.j.optJSONObject("occ_seen") ?: JSONObject()
+                om.put(cid.toString(), jarr(occSeen[cid]!!.toList()))
+                st.j.put("occ_seen", om)
+            }
+            // track per-course "seen occs" so the startup dialog can ask the user to confirm
+            if (occSeen.containsKey(cid)) {
+                val cm = st.j.optJSONObject("occ_courses") ?: JSONObject()
+                cm.put(cid.toString(), c.str("shortname").ifEmpty { c.str("fullname") })
+                st.j.put("occ_courses", cm)
+            }
             linksByCourse["$cid"] = result.second
             val known = st.j.has(ckey)
             val old = st.strings(ckey)
@@ -618,7 +668,6 @@ object Checker {
                 p.userName = info.str("fullname").ifEmpty { info.str("username") }
                 checkNotes(ctx, api, p, userid, st, first)
                 checkCourses(ctx, api, p, userid, st)
-                try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
                 val nowS = System.currentTimeMillis() / 1000
                 try {
                     st.j.put("deadlines", jobjs(checkDeadlines(ctx, api, p, st, nowS)))
@@ -642,18 +691,31 @@ object Checker {
             } catch (e: Exception) {
                 val msg = (e.message ?: e.toString())
                 Log.w(TAG, "poll failed: $msg")
+                // Keep what this run already learned/notified, or the next good check re-sends it.
+                try { st.save() } catch (_: Exception) {}
                 p.fails = p.fails + 1
                 p.lastError = msg.take(200)
-                NotifyLog.sys(ctx, "Check failed: ${msg.take(150)}")
+                NotifyLog.sys(ctx, "Check failed: ${friendly(msg).take(150)}")
                 if ((p.fails >= 3 || "invalidtoken" in msg) && !p.alerted) {
                     Notifier.push(
                         ctx, "Spectrum Notify is failing",
-                        "${msg.take(300)}\n\nIf this says invalidtoken, log in again in the app.", true,
+                        "${friendly(msg).take(300)}\n\nIf this says invalidtoken, log in again in the app.", true,
                     )
                     p.alerted = true
                 }
             }
         }
+        try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
         Scheduler.scheduleAll(ctx)
+    }
+
+    /** Raw exception text is noise (ports, IPs, "after 20000ms"). One plain line per failure family. */
+    fun friendly(msg: String): String = when {
+        "invalidtoken" in msg -> msg
+        "ConnectException" in msg || "failed to connect" in msg.lowercase() -> "Could not reach the Spectrum site. It may be down, or the phone has no internet."
+        "SocketTimeout" in msg || "timeout" in msg.lowercase() || "timed out" in msg.lowercase() -> "The Spectrum site did not answer in time. It may be slow or down."
+        "UnknownHost" in msg || "Unable to resolve" in msg -> "No internet connection (site name could not be resolved)."
+        "SSL" in msg || "ssl" in msg -> "Secure connection to the Spectrum site failed."
+        else -> msg
     }
 }

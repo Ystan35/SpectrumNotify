@@ -73,13 +73,14 @@ object Catalog {
             cache?.let { return it }
             val app = ctx.applicationContext
             // The downloaded copy wins over the bundled one when it is not older.
+            // A corrupt or empty stored copy counts as "no stored copy".
             val (bundledDate, bundledSem, bundled) =
                 readText(app.assets.open("catalog.json").bufferedReader().use { it.readText() })
             val stored = prefs(app).getString("json", null)
-            val picked = if (stored != null) {
+            val picked = if (stored != null) try {
                 val (storedDate, storedSem, storedMap) = readText(stored)
-                if (storedDate >= bundledDate) Triple(storedDate, storedSem, storedMap) else null
-            } else null
+                if (storedMap.isNotEmpty() && storedDate >= bundledDate) Triple(storedDate, storedSem, storedMap) else null
+            } catch (_: Exception) { null } else null
             val (date, sem, map) = picked ?: Triple(bundledDate, bundledSem, bundled)
             semester = sem
             generatedAt = date
@@ -115,6 +116,9 @@ object Catalog {
             } finally {
                 conn.disconnect()
             }
+            // load() first: generatedAt is empty until then, and comparing against it
+            // alone would let an older remote file overwrite a newer stored copy.
+            load(ctx)
             val (date, sem, map) = readText(text)
             if (map.isEmpty() || date < generatedAt) return
             prefs(ctx).edit().putString("json", text).apply()

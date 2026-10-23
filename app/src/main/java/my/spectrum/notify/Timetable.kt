@@ -227,6 +227,34 @@ object Timetable {
         writeManual(ctx, manual(ctx).filter { it.grp != grp })
     }
 
+    // ---------------------------------------------------------- attendance links per course
+    // User-pasted attendance links win over the auto-detected Spectrum attendance module page.
+
+    /** The attendance link shown for a course: user-pasted one first, else the auto one. */
+    fun attendanceLink(ctx: Context, course: String, autoUrl: String): String {
+        val mine = sp(ctx).getString("att:$course", "") ?: ""
+        return mine.ifEmpty { autoUrl }
+    }
+
+    /** User-pasted attendance link(s) for a course (one per line allowed); empty string clears it. */
+    fun setAttendanceLink(ctx: Context, course: String, links: String) {
+        sp(ctx).edit().putString("att:$course", links.trim()).apply()
+    }
+
+    fun attendanceKey(course: String) = "att:$course"
+
+    // ---------------------------------------------------------- location per course
+    // "online:<link>" = online class with a meeting link; "room:<text>" = physical room; "" = not set.
+
+    /** The location line shown for a course: user-set first, else the catalog room. */
+    fun locationOf(ctx: Context, course: String): String =
+        sp(ctx).getString("loc:$course", "") ?: ""
+
+    /** Sets the user location override; empty text clears it. */
+    fun setLocation(ctx: Context, course: String, value: String) {
+        sp(ctx).edit().putString("loc:$course", value.trim()).apply()
+    }
+
     private fun hiddenKeys(ctx: Context): MutableSet<String> = LinkedHashSet(readArr(ctx, "hidden").strs())
 
     fun hiddenCount(ctx: Context): Int = hiddenKeys(ctx).size

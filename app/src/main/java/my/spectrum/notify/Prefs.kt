@@ -103,4 +103,48 @@ class Prefs(ctx: Context) {
     var alerted: Boolean
         get() = health.getBoolean("alerted", false)
         set(v) { health.edit().putBoolean("alerted", v).apply() }
+
+    // ---------------- appearance / accessibility
+    /** Theme override: 0 = follow phone, 1 = light, 2 = dark. */
+    var themeMode: Int
+        get() = sp.getInt("themeMode", 0)
+        set(v) { sp.edit().putInt("themeMode", v).apply() }
+    /** Text scale: 0 = normal (1.0), 1 = large (1.2), 2 = extra large (1.4). */
+    var textScale: Int
+        get() = sp.getInt("textScale", 0)
+        set(v) { sp.edit().putInt("textScale", v).apply() }
+    /** Higher-contrast text (darker greys / brighter accents). */
+    var highContrast: Boolean
+        get() = sp.getBoolean("highContrast", false)
+        set(v) { sp.edit().putBoolean("highContrast", v).apply() }
+    /** Bigger touch targets (56 dp instead of 48 dp). */
+    var bigTouch: Boolean
+        get() = sp.getBoolean("bigTouch", false)
+        set(v) { sp.edit().putBoolean("bigTouch", v).apply() }
+
+    /** versionCode of this installed build (to detect updates). */
+    var buildVersionCode: Int
+        get() = sp.getInt("buildVersionCode", 0)
+        set(v) { sp.edit().putInt("buildVersionCode", v).apply() }
+    /** Latest versionCode the user has already been notified about (remind once per version). */
+    var updateSeenCode: Int
+        get() = sp.getInt("updateSeenCode", 0)
+        set(v) { sp.edit().putInt("updateSeenCode", v).apply() }
+
+    /** Show debug/system lines (Check OK, skipped-item notes) in the notification list. Default off. */
+    var debugLog: Boolean
+        get() = sp.getBoolean("debugLog", false)
+        set(v) { sp.edit().putBoolean("debugLog", v).apply() }
+
+    /** Occ confirmed by the user in the startup dialog (per course code). */
+    fun occConfirmed(code: String): Boolean = sp.getBoolean("occconf:$code", false)
+    fun setOccConfirmed(code: String) { sp.edit().putBoolean("occconf:$code", true).apply() }
+
+    /** Attendance duplicate labels per course, e.g. attlabel:WIX1003 = "0=Lecture,1=Tutorial". */
+    fun attendanceLabel(course: String): String? =
+        health.getString("attlabel:$course", null)
+
+    fun setAttendanceLabel(course: String, first: String, second: String) {
+        health.edit().putString("attlabel:$course", "0=$first,1=$second").apply()
+    }
 }

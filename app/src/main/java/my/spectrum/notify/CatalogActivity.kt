@@ -22,6 +22,11 @@ class CatalogActivity : Activity() {
     private lateinit var holder: LinearLayout
     private lateinit var status: TextView
 
+    override fun onResume() {
+        super.onResume()
+        recreateIfLookChanged()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val col = screen("Pick from UM timetable")
@@ -147,7 +152,7 @@ class CatalogActivity : Activity() {
             private fun style(v: View, bg: Int): View {
                 (v as TextView).apply {
                     setTextColor(Ui.TEXT)
-                    textSize = 14f
+                    textSize = 14f * Ui.fontScale
                     setPadding(dp(12), dp(12), dp(12), dp(12))
                     setBackgroundColor(bg)
                 }

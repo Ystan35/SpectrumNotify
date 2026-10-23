@@ -15,6 +15,10 @@ object NotifyLog {
         val title: String,
         val body: String,
         val buttons: List<Pair<String, String>> = emptyList(),
+        /** Wall-clock seconds for display/unread; ts is only a unique id. Old records have no "at" and fall back to ts. */
+        val at: Long = ts,
+        /** How many times this repeated sys line has fired (1 = once). */
+        val n: Int = 1,
     )
 
     private fun file(ctx: Context) = File(ctx.applicationContext.filesDir, "console.json")
@@ -35,30 +39,45 @@ object NotifyLog {
     ): Long {
         val old = readArr(ctx)
         val last = old.optJSONObject(old.length() - 1)
-        // repeated "Check OK" lines collapse into one that keeps the latest time
-        val collapse = kind == "sys" && title == "Check OK" && last != null &&
-            last.optString("kind") == "sys" && last.optString("title") == "Check OK"
+        // sys lines repeat every poll (Check OK, or the same failure while the host is down):
+        // collapse into the previous one, keeping the latest text and a repeat count.
+        val collapse = kind == "sys" && last != null && last.optString("kind") == "sys" &&
+            (title == last.optString("title") || (title == "Check OK" && last.optString("title") == "Check OK") ||
+                (title.startsWith("Check failed") && last.optString("title").startsWith("Check failed")))
         val end = if (collapse) old.length() - 1 else old.length()
         val out = JSONArray()
         for (i in maxOf(0, end - (MAX - 1)) until end) out.put(old.opt(i))
-        val ts = System.currentTimeMillis() / 1000
+        // NanoTime, not wall-clock seconds: two notifications in the same poll second
+        // would otherwise share an id (tap-to-open picks the wrong record, swipe deletes two).
+        val ts = System.nanoTime()
         val bs = JSONArray()
         for ((l, u) in buttons.take(3)) if (u.isNotEmpty()) bs.put(JSONObject().put("l", l).put("u", u))
-        out.put(
-            JSONObject().put("ts", ts).put("kind", kind).put("title", title).put("body", body).put("buttons", bs)
-        )
+        val o = JSONObject().put("ts", ts).put("at", System.currentTimeMillis() / 1000)
+            .put("kind", kind).put("title", title).put("body", body).put("buttons", bs)
+        if (collapse) o.put("n", last.optInt("n", 1) + 1)
+        out.put(o)
         try { file(ctx).writeText(out.toString()) } catch (e: Exception) { }
         return ts
     }
 
-    fun sys(ctx: Context, text: String) { add(ctx, "sys", text) }
+    /** System/debug line. Hidden while the debug toggle is off, except lines that matter. */
+    fun sys(ctx: Context, text: String) {
+        // shown even with debug off: check failures and login events (the user must know)
+        val important = text.startsWith("Check failed") || text.startsWith("Last crash") ||
+            text.startsWith("Logged in") || text.startsWith("Logged out") || text.startsWith("Token")
+        if (!important && !Prefs(ctx).debugLog) return
+        add(ctx, "sys", text)
+    }
 
     @Synchronized
     fun entries(ctx: Context): List<Entry> =
         readArr(ctx).objs().map { o ->
             val bs = (o.optJSONArray("buttons") ?: JSONArray()).objs().map { Pair(it.str("l"), it.str("u")) }
-            Entry(o.optLong("ts"), o.str("kind"), o.str("title"), o.str("body"), bs)
+            Entry(o.optLong("ts"), o.str("kind"), o.str("title"), o.str("body"), bs, o.optLong("at", o.optLong("ts")), o.optInt("n", 1))
         }
+
+    /** Wall-clock seconds a record was created (for "X min ago" and unread marks). */
+    fun atOf(e: Entry): Long = e.at
 
     @Synchronized
     fun remove(ctx: Context, ts: Long) {
@@ -73,4 +92,20 @@ object NotifyLog {
 
     @Synchronized
     fun clear(ctx: Context) { file(ctx).delete() }
+
+    /** Remove debug-class sys lines (keeps Check failed / crash / login events). */
+    @Synchronized
+    fun purgeDebug(ctx: Context) {
+        val old = readArr(ctx)
+        val out = JSONArray()
+        for (i in 0 until old.length()) {
+            val o = old.optJSONObject(i) ?: continue
+            val t = o.optString("title")
+            val keep = o.optString("kind") != "sys" ||
+                t.startsWith("Check failed") || t.startsWith("Last crash") ||
+                t.startsWith("Logged in") || t.startsWith("Logged out") || t.startsWith("Token")
+            if (keep) out.put(o)
+        }
+        try { file(ctx).writeText(out.toString()) } catch (_: Exception) { }
+    }
 }

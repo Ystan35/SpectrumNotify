@@ -62,7 +62,7 @@ class NotificationsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
-        content = screen("Notifications")
+        content = screen("Notifications", navTo = NotificationsActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
         scroll = content.parent as ScrollView
 
         val recHead = LinearLayout(this).apply {
@@ -71,6 +71,30 @@ class NotificationsActivity : Activity() {
             setPadding(dp(2), dp(4), 0, dp(4))
         }
         recHead.addView(tv("Your notifications", 14f, Ui.DIM), lp(0, WRAP, 1f))
+        // debug toggle: shows/hides system lines like "Check OK" and skipped-item notes
+        val dbg = TextView(this).apply {
+            text = if (p.debugLog) "🐞 On" else "🐞 Off"
+            textSize = 13f
+            setTextColor(if (p.debugLog) Ui.CYAN else Ui.DIM)
+            minHeight = dp(44)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, dp(8), 0)
+            isClickable = true
+            background = rippleBg(Ui.BAR, 0, this@NotificationsActivity, 10)
+        }
+        dbg.setOnClickListener {
+            p.debugLog = !p.debugLog
+            dbg.text = if (p.debugLog) "🐞 On" else "🐞 Off"
+            dbg.setTextColor(if (p.debugLog) Ui.CYAN else Ui.DIM)
+            if (!p.debugLog) {
+                // purge already-saved debug lines so Off is immediate, not just for new ones
+                NotifyLog.purgeDebug(this)
+                logStamp = -1L
+            }
+            recSig = ""
+            render()
+        }
+        recHead.addView(dbg)
         recHead.addView(tv("Clear all", 14f, Ui.CYAN, true).apply {
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             minHeight = dp(44)
@@ -98,6 +122,7 @@ class NotificationsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         seenBefore = p.lastSeen
         recSig = ""
         handler.post(ticker)
@@ -119,7 +144,7 @@ class NotificationsActivity : Activity() {
     private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = size
+            textSize = size * Ui.fontScale
             setTextColor(color)
             if (bold) setTypeface(typeface, Typeface.BOLD)
         }
@@ -168,7 +193,11 @@ class NotificationsActivity : Activity() {
         val st = NotifyLog.stamp(this)
         if (st != logStamp) {
             logStamp = st
-            entries = NotifyLog.entries(this).filter { !(it.kind == "sys" && it.title == "Check OK") }.asReversed()
+            entries = NotifyLog.entries(this).filter {
+                !(it.kind == "sys" && it.title == "Check OK") &&
+                (p.debugLog || it.kind != "sys" || it.title.startsWith("Check failed") || it.title.startsWith("Last crash") ||
+                 it.title.startsWith("Logged in") || it.title.startsWith("Logged out") || it.title.startsWith("Token"))
+            }.asReversed()
         }
         renderChips()
         renderRecords(loggedIn)
@@ -219,7 +248,7 @@ class NotificationsActivity : Activity() {
         recordsBox.removeAllViews()
         cards.clear()
         if (shown.isEmpty()) {
-            recordsBox.addView(emptyState(loggedIn))
+            recordsBox.addView(emptyState(loggedIn), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             return
         }
         for (e in shown) {
@@ -228,7 +257,8 @@ class NotificationsActivity : Activity() {
                 cards[e.ts] = c
                 recordsBox.addView(c, lp(MATCH, WRAP).apply { bottomMargin = dp(10) })
             } else {
-                recordsBox.addView(tv("${ago(e.ts)} · ${e.title}", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
+                val count = if (e.n > 1) " (×${e.n})" else ""
+                recordsBox.addView(tv("${ago(NotifyLog.atOf(e))} · ${e.title}$count", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
             }
         }
         if (openTs > 0) {
@@ -251,12 +281,12 @@ class NotificationsActivity : Activity() {
         box.addView(tv(
             if (!loggedIn) "Nothing here yet" else if (filter.isEmpty()) "You're all caught up" else "Nothing in this category",
             17f, Ui.TEXT, true,
-        ).apply { setPadding(0, dp(12), 0, 0) })
+        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         box.addView(tv(
             if (!loggedIn) "Log in to start receiving class links, deadlines and materials."
             else "New class links, deadlines and materials will show up here.",
             13f, Ui.DIM,
-        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) })
+        ).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         return box
     }
 
@@ -294,7 +324,7 @@ class NotificationsActivity : Activity() {
         }
         val meta = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         meta.addView(tv(Cat.label(cat), 11f, col, true).apply { letterSpacing = 0.06f })
-        meta.addView(tv("· ${ago(e.ts)}", 12f, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
+        meta.addView(tv("· ${ago(NotifyLog.atOf(e))}", 12f, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
         col2.addView(meta)
         val title = tv(e.title, 15f, Ui.TEXT, true).apply {
             ellipsize = TextUtils.TruncateAt.END
@@ -313,7 +343,7 @@ class NotificationsActivity : Activity() {
             col2.addView(body)
         }
         row.addView(col2, lp(0, WRAP, 1f))
-        val unread = e.ts > seenBefore
+        val unread = NotifyLog.atOf(e) > seenBefore
         val dot = View(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.CYAN) }
             visibility = if (unread) View.VISIBLE else View.GONE

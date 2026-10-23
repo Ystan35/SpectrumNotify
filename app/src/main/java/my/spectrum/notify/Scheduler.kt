@@ -61,6 +61,19 @@ object Scheduler {
         pi.cancel()
     }
 
+    /**
+     * On-startup catch-up: when the app opens (or boots) and the user is logged in but the
+     * last check is stale (>30 min), fire one immediately. This re-detects courses and Occs
+     * without the user pressing anything.
+     */
+    fun startupCheck(ctx: Context) {
+        val p = Prefs(ctx)
+        if (p.token.isEmpty() || p.site.isEmpty()) return
+        if (p.lastRunTs == 0L || System.currentTimeMillis() / 1000 - p.lastRunTs > 30 * 60) {
+            pollNow(ctx)
+        }
+    }
+
     fun pollNow(ctx: Context) {
         val req = OneTimeWorkRequestBuilder<PollWorker>().setConstraints(net).build()
         WorkManager.getInstance(ctx).enqueueUniqueWork("poll_now", ExistingWorkPolicy.REPLACE, req)

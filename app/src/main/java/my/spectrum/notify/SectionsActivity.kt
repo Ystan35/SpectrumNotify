@@ -38,6 +38,7 @@ class SectionsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         if (cid > 0L) render()
     }
 
@@ -57,7 +58,7 @@ class SectionsActivity : Activity() {
             val sw = Switch(this)
             sw.text = title.ifEmpty { "(unnamed page)" }
             sw.setTextColor(Ui.TEXT)
-            sw.textSize = 15f
+            sw.textSize = 15f * Ui.fontScale
             sw.isChecked = !Sections.isOff(this, cid, key)
             sw.setPadding(dp(4), dp(12), dp(4), dp(12))
             sw.setOnCheckedChangeListener { _, on -> Sections.setOn(this@SectionsActivity, cid, key, on) }

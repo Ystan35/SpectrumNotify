@@ -24,18 +24,19 @@ class CoursesActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        box = screen("Courses")
+        box = screen("Courses", navTo = CoursesActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
     }
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         render()
     }
 
     private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = size
+            textSize = size * Ui.fontScale
             setTextColor(color)
             if (bold) setTypeface(typeface, Typeface.BOLD)
         }
@@ -99,7 +100,22 @@ class CoursesActivity : Activity() {
         }
 
         if (c.slots.isEmpty()) {
-            col.addView(tv("No class times known yet", 12f, Ui.DIM).apply { setPadding(0, dp(8), 0, 0) })
+            val nh = tv("No class times known yet", 12f, Ui.DIM).apply { setPadding(0, dp(8), 0, 0) }
+            col.addView(nh)
+            // refresh line: re-pull the timetable from Spectrum (Occ may have changed or not fetched yet)
+            val rf = tv("↻ Refresh class times", 13f, Ui.CYAN, true).apply {
+                setPadding(0, dp(4), 0, 0)
+                minHeight = dp(40)
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                background = rippleBg(Ui.BAR, 0, this@CoursesActivity, 10)
+            }
+            rf.setOnClickListener {
+                Scheduler.pollNow(this)
+                nh.text = "Checking Spectrum…"
+                Toast.makeText(this, "Checking Spectrum — class times update when the check finishes.", Toast.LENGTH_SHORT).show()
+            }
+            col.addView(rf)
         } else {
             for (s in c.slots) {
                 val kind = if (s.kind == SlotKind.CLASS) "" else "  ·  ${s.kind.label}"

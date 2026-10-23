@@ -11,11 +11,13 @@ import android.widget.Button
 import android.webkit.CookieManager
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 
 class SettingsActivity : Activity() {
+    companion object { const val EXTRA_OPEN = "open_section" }
     private lateinit var p: Prefs
     private val fields = LinkedHashMap<String, EditText>()
     private lateinit var alarmBtn: Button
@@ -27,7 +29,7 @@ class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
-        val col = screen("Settings")
+        val col = screen("Settings", navTo = SettingsActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
         var target: LinearLayout = col   // the open-able body of the current section
 
         fun add(key: String, title: String, help: String, value: String, hint: String = "", kind: Int = 0) {
@@ -36,7 +38,74 @@ class SettingsActivity : Activity() {
 
         col.label("Changes are saved automatically when you leave this screen.", 12f, Ui.DIM, 4)
 
-        target = accordion(col, "PROFILE")
+        // search: type a keyword, matching sections are listed; tapping one opens it
+        var searchBox: EditText? = null
+        var searchResults: LinearLayout? = null
+        fun buildSearch() {
+            val results = searchResults ?: return
+            results.removeAllViews()
+            val q = searchBox?.text?.toString()?.trim()?.lowercase() ?: return
+            if (q.isEmpty()) return
+            val hits = sections.filter { s ->
+                q in s.name.lowercase() || s.contents.any { q in it.lowercase() } || s.key.contains(q)
+            }
+            if (hits.isEmpty()) {
+                results.label("Nothing matches \"$q\".", 13f, Ui.DIM, 8)
+                return
+            }
+            for (s in hits) {
+                val r = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    minimumHeight = dp(48)
+                    isClickable = true
+                    background = rippleBg(Ui.BAR, 0, this@SettingsActivity, 12)
+                }
+                if (s.icon != 0) {
+                    r.addView(ImageView(this).apply {
+                        setImageResource(s.icon)
+                        setColorFilter(Ui.CYAN)
+                    }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(10) })
+                }
+                r.addView(TextView(this).apply {
+                    text = s.name.lowercase().replaceFirstChar { it.uppercase() }
+                    textSize = 14f * Ui.fontScale
+                    setTextColor(Ui.TEXT)
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                r.addView(TextView(this).apply {
+                    text = "Open ▸"
+                    textSize = 13f * Ui.fontScale
+                    setTextColor(Ui.CYAN)
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                })
+                r.setOnClickListener {
+                    openSection(s, col)
+                    searchBox?.setText("")
+                    // highlight the section briefly so the user can spot where it opened
+                    s.body.post {
+                        s.body.background = roundBg(Ui.tint(Ui.CYAN, 30), Ui.CYAN, this@SettingsActivity, 12)
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            s.body.background = null
+                        }, 1200)
+                    }
+                }
+                results.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+            }
+        }
+
+        col.label("Search settings", 13f, Ui.TEXT, 12).setTypeface(null, android.graphics.Typeface.BOLD)
+        searchBox = col.field("", "e.g. quiet, filter, theme, check", kind = 0)
+        searchResults = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(searchResults, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        searchBox?.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) { buildSearch() }
+        })
+
+        target = accordion(col, "PROFILE", icon = R.drawable.ic_settings,
+            contents = listOf("Site URL", "Log in / log out", "Token"))
         profileStatus = target.label("", 15f, Ui.TEXT, 8)
         target.label("Spectrum site URL", 12f, Ui.DIM, 12)
         siteField = target.field(p.site)
@@ -70,18 +139,53 @@ class SettingsActivity : Activity() {
             refreshProfile()
         }
 
-        target = accordion(col, 
-            "QUIET HOURS",
-            "During these hours the app does not check Spectrum, so you are not woken up. Use the 24-hour clock: 0 = midnight, 13 = 1 pm."
-        )
+        target = accordion(col, "QUIET HOURS",
+            "During these hours the app does not check Spectrum, so you are not woken up. Use the 24-hour clock: 0 = midnight, 13 = 1 pm.",
+            icon = R.drawable.ic_cat_daily, contents = listOf("Quiet from", "Quiet until"))
         add("quietStart", "Quiet from (hour)", "Start of the quiet period. Example: 1 means 1 am.", p.quietStart.toString(), "1", 1)
         add("quietEnd", "Quiet until (hour)", "End of the quiet period. Example: 7 means 7 am.", p.quietEnd.toString(), "7", 1)
 
-        target = accordion(col, "DAILY MESSAGES", "Two short messages each day. Type the time as HH:MM, for example 07:05. Leave a box empty to turn that message off.")
+        target = accordion(col, "DAILY MESSAGES",
+            "Two short messages each day. Type the time as HH:MM, for example 07:05. Leave a box empty to turn that message off.",
+            icon = R.drawable.ic_cat_news, contents = listOf("Morning summary", "Afternoon check-in"))
         add("summaryTime", "Morning summary", "Sent once each morning with today's classes and deadlines.", p.summaryTime, "07:05", 2)
         add("afternoonTime", "Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00", 2)
 
-        target = accordion(col, "YOUR CLASSES")
+        target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
+            contents = listOf("My Occ", "Classes to ignore", "Teams-recording courses"))
+        // My Occ per course as a dropdown (like the UM-timetable picker):
+        // catalog occs first; if the course is missing from the catalog, fall back to learned occs.
+        val learned = Groups.learnedPerCourse(this)
+        val courses = LinkedHashSet<String>()
+        Courses.all(this).forEach { courses.add(it.code.uppercase()) }
+        learned.keys.forEach { courses.add(it.uppercase()) }
+        if (courses.isEmpty()) {
+            target.label("Your courses appear here after the first check (or pick one from the UM timetable below).", 13f, Ui.DIM, 8)
+        }
+        for (code in courses) {
+            val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
+            val occs = if (catOccs.isNotEmpty()) catOccs else (learned[code.uppercase()] ?: learned[code] ?: emptyList())
+            val current = Regex(Regex.escape(code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
+            // show the course name too — users rarely recognise codes alone
+            val cname = Courses.all(this).firstOrNull { it.code.equals(code, true) }?.name
+                ?: Catalog.find(this, code)?.name ?: ""
+            target.label(if (cname.isNotEmpty()) "$code · $cname" else code, 14f, Ui.TEXT, 14).setTypeface(null, android.graphics.Typeface.BOLD)
+            val names = listOf("Not set") + occs.map { "Occ $it" }
+            val sel = occs.indexOf(current) + 1
+            val sp = spinner(names, if (sel >= 0) sel else 0) { pos ->
+                val keep = p.myGroups.split(",").map { it.trim() }
+                    .filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
+                p.myGroups = (if (pos <= 0) keep else keep + "$code:occ${occs[pos - 1]}").joinToString(", ")
+                fields["myGroups"]?.setText(p.myGroups)
+            }
+            target.addView(sp, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+            if (catOccs.isEmpty() && occs.isNotEmpty()) {
+                target.label("Occs learned from Spectrum (course not in the bundled UM list).", 11f, Ui.DIM, 2)
+            }
+        }
+        target.action("Pick a course from the UM timetable", "Adds the class times and sets your Occ here.") {
+            startActivity(android.content.Intent(this, CatalogActivity::class.java))
+        }
         add(
             "skipClasses", "Classes to ignore",
             "Use this when a course has classes for another group. Write the course code, then @ and the day. " +
@@ -95,30 +199,24 @@ class SettingsActivity : Activity() {
                 "Write course codes separated by commas, for example WIA2010.",
             p.manualCourses, "WIA2010",
         )
-
-        target = accordion(col, "OTHER GROUPS' POSTS")
-        target.action(
-            "Choose my Occ from a list",
-            "Pick a course, then your Occ from a drop-down. It fills your lecture and tutorial times and the My group box below.",
-        ) { startActivity(android.content.Intent(this, CatalogActivity::class.java)) }
+        // advanced escape hatch
+        target.label("Advanced: raw group text", 13f, Ui.TEXT, 18).setTypeface(null, android.graphics.Typeface.BOLD)
         add(
-            "myGroups", "My group",
-            "Another lecturer's materials and announcements for a different Occ or tutorial group are hidden. " +
-                "Leave this empty and the app works out your group from your class names. " +
-                "To set it yourself write the course, a colon and the group, for example WIX1003:occ2, WIX1003:t3. " +
-                "Write just occ2 to use it for every course. Write off to turn the filter off. " +
-                "Posts that do not name any group are always shown.",
+            "myGroups", "Raw groups",
+            "Format: COURSE:occN, comma separated. Write off to disable the filter.",
             p.myGroups, "WIX1003:occ2, WIX1003:t3",
         )
 
-        target = accordion(col, "DEADLINES")
+        target = accordion(col, "DEADLINES", icon = R.drawable.ic_cat_deadline,
+            contents = listOf("Remind me before a deadline"))
         add(
             "deadlineHours", "Remind me before a deadline",
             "Number of hours before the deadline, separated by commas. 24,3 means one reminder a day before and another 3 hours before.",
             p.deadlineHours, "24,3",
         )
 
-        target = accordion(col, "BACKGROUND CHECKS")
+        target = accordion(col, "BACKGROUND CHECKS", icon = R.drawable.ic_refresh,
+            contents = listOf("Check every (minutes)"))
         add(
             "pollMinutes", "Check Spectrum every (minutes)",
             "How often the app looks for new materials, announcements and notifications. The lowest is 10. " +
@@ -126,7 +224,37 @@ class SettingsActivity : Activity() {
             p.pollMinutes.toString(), "10", 1,
         )
 
-        target = accordion(col, "TOOLS")
+        target = accordion(col, "APPEARANCE & ACCESSIBILITY",
+            "Change how the app looks. Tap a chip to apply it right away — the screen redraws with your choice.",
+            icon = R.drawable.ic_settings, contents = listOf("Colour mode", "Text size", "High contrast"), key = "appearance",
+        )
+        target.label("Colour mode", 15f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+        target.chips(listOf("Phone", "Light", "Dark"), setOf(p.themeMode), false) { sel ->
+            val v = sel.firstOrNull() ?: 0
+            if (v != p.themeMode) { p.themeMode = v; recreate() }
+        }
+        target.label("Text size", 15f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        target.chips(listOf("Normal", "Large", "Extra large"), setOf(p.textScale), false) { sel ->
+            val v = sel.firstOrNull() ?: 0
+            if (v != p.textScale) { p.textScale = v; recreate() }
+        }
+        target.label("Easier to see and touch", 15f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        val initial = buildSet {
+            if (p.highContrast) add(0)
+            if (p.bigTouch) add(1)
+        }
+        target.chips(listOf("High contrast", "Big touch targets"), initial, true) { sel ->
+            val hc = 0 in sel
+            val bt = 1 in sel
+            if (hc != p.highContrast || bt != p.bigTouch) {
+                p.highContrast = hc
+                p.bigTouch = bt
+                recreate()
+            }
+        }
+        target.label("High contrast uses stronger text colours. Big touch targets make every button and box 56 dp tall.", 12f, Ui.DIM, 8)
+        target = accordion(col, "TOOLS", icon = R.drawable.ic_add,
+            contents = listOf("Save", "Check now", "Test notification", "Alarms", "Battery"))
         target.action("Save settings", "Saves everything above now.") {
             save(); Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
         }
@@ -134,6 +262,12 @@ class SettingsActivity : Activity() {
             save()
             Scheduler.pollNow(this)
             Toast.makeText(this, "Checking Spectrum...", Toast.LENGTH_SHORT).show()
+        }
+        target.action("Check for app update", "Compares this build with the latest release on GitHub. Shows the result here; a notification appears if a newer version exists.") {
+            Thread {
+                val msg = Updater.check(this, manual = true)
+                runOnUiThread { Toast.makeText(this, msg ?: "You are on the latest version.", Toast.LENGTH_LONG).show() }
+            }.start()
         }
         target.action("Send test notification", "Sends one test message so you can see how notifications look and that tapping opens the app.") {
             Notifier.push(this, "Test", "Notifications are working.\nTap the button below to open Spectrum.", true, listOf(Pair("Open Spectrum", p.site)))
@@ -153,15 +287,47 @@ class SettingsActivity : Activity() {
         }
         // not logged in yet: open the Profile section so the login buttons are in view
         if (p.token.isEmpty() && sections.isNotEmpty()) {
-            sections[0].first.visibility = View.VISIBLE
-            sections[0].second.text = "▾"
+            sections[0].body.visibility = View.VISIBLE
+            sections[0].arrow.text = "▾"
+        }
+        // deep links: open a specific section (toolbox -> appearance, startup -> your classes)
+        intent.getStringExtra(EXTRA_OPEN)?.let { key ->
+            sections.firstOrNull { it.key == key }?.let {
+                it.body.visibility = View.VISIBLE
+                it.arrow.text = "▾"
+            }
         }
     }
 
-    private val sections = ArrayList<Pair<LinearLayout, TextView>>()
+    /** One settings section: its views plus the metadata the search and headers show. */
+    class Section(
+        val body: LinearLayout,
+        val arrow: TextView,
+        val name: String,
+        val icon: Int,
+        val contents: List<String>,
+        val key: String,
+    )
 
-    /** A tappable section header; its content is hidden until the header is pressed. Only one section is open at a time. */
-    private fun accordion(col: LinearLayout, title: String, intro: String = ""): LinearLayout {
+    private val sections = ArrayList<Section>()
+
+    /** Opens one section and closes the others (shared by headers and search results). */
+    private fun openSection(s: Section, col: LinearLayout) {
+        android.transition.TransitionManager.beginDelayedTransition(col, android.transition.AutoTransition().setDuration(160))
+        for (x in sections) { x.body.visibility = View.GONE; x.arrow.text = "▸" }
+        s.body.visibility = View.VISIBLE
+        s.arrow.text = "▾"
+    }
+
+    /** A tappable section header with icon, name and a one-line contents list; one open at a time. */
+    private fun accordion(
+        col: LinearLayout,
+        title: String,
+        intro: String = "",
+        key: String = "",
+        icon: Int = 0,
+        contents: List<String> = emptyList(),
+    ): LinearLayout {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundBg(Ui.BAR, Ui.BORDER, this@SettingsActivity, 14)
@@ -173,7 +339,7 @@ class SettingsActivity : Activity() {
         }
         val arrow = TextView(this).apply {
             text = "▸"
-            textSize = 16f
+            textSize = 16f * Ui.fontScale
             setTextColor(Ui.DIM)
         }
         val head = LinearLayout(this).apply {
@@ -182,31 +348,51 @@ class SettingsActivity : Activity() {
             minimumHeight = dp(54)
             setPadding(dp(14), 0, dp(14), 0)
             isClickable = true
-            contentDescription = title
+            contentDescription = "$title: ${contents.joinToString(", ")}"
         }
-        head.addView(TextView(this).apply {
-            text = title.lowercase().replaceFirstChar { it.uppercase() }
-            textSize = 15f
-            setTextColor(Ui.TEXT)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        if (icon != 0) {
+            head.addView(ImageView(this).apply {
+                setImageResource(icon)
+                setColorFilter(Ui.CYAN)
+            }, LinearLayout.LayoutParams(dp(26), dp(26)).apply { rightMargin = dp(12) })
+        }
+        head.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@SettingsActivity).apply {
+                text = title.lowercase().replaceFirstChar { it.uppercase() }
+                textSize = 15f * Ui.fontScale
+                setTextColor(Ui.TEXT)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            if (contents.isNotEmpty()) addView(TextView(this@SettingsActivity).apply {
+                text = contents.joinToString("  ·  ")
+                textSize = 12f * Ui.fontScale
+                setTextColor(Ui.DIM)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(arrow)
+        val s = Section(body, arrow, title, icon, contents, key)
         head.setOnClickListener {
-            val open = body.visibility != View.VISIBLE
-            android.transition.TransitionManager.beginDelayedTransition(col, android.transition.AutoTransition().setDuration(160))
-            for ((b, a) in sections) { b.visibility = View.GONE; a.text = "▸" }
-            if (open) { body.visibility = View.VISIBLE; arrow.text = "▾" }
+            if (body.visibility == View.VISIBLE) {
+                // tapping the open section closes it again
+                android.transition.TransitionManager.beginDelayedTransition(col, android.transition.AutoTransition().setDuration(160))
+                body.visibility = View.GONE
+                arrow.text = "▸"
+            } else openSection(s, col)
         }
         card.addView(head)
         card.addView(body)
         col.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         if (intro.isNotEmpty()) body.label(intro, 12f, Ui.DIM, 0)
-        sections.add(Pair(body, arrow))
+        sections.add(s)
         return body
     }
 
     override fun onResume() {
         super.onResume()
+        recreateIfLookChanged()
         val vis = if (Scheduler.canExact(this)) View.GONE else View.VISIBLE
         alarmBtn.visibility = vis
         alarmHelp?.visibility = vis
@@ -229,15 +415,29 @@ class SettingsActivity : Activity() {
     private fun f(key: String) = fields[key]?.text?.toString()?.trim() ?: ""
 
     private fun save() {
-        p.quietStart = f("quietStart").toIntOrNull() ?: 1
-        p.quietEnd = f("quietEnd").toIntOrNull() ?: 7
-        p.summaryTime = f("summaryTime")
-        p.afternoonTime = f("afternoonTime")
+        // Validate before storing: bad input keeps the old value and marks the box red,
+        // so a typo can never silently kill the daily messages or the reminders.
+        var ok = true
+        fun bad(key: String) { fields[key]?.setBackgroundResource(0); fields[key]?.background = roundBg(Ui.tint(Ui.RED, 80), Ui.RED, this); ok = false }
+        fun good(key: String) { fields[key]?.background = rippleBg(Ui.BAR, Ui.BORDER, this) }
+
+        val qs = f("quietStart").toIntOrNull()
+        if (qs == null || qs !in 0..23) bad("quietStart") else { good("quietStart"); p.quietStart = qs }
+        val qe = f("quietEnd").toIntOrNull()
+        if (qe == null || qe !in 0..23) bad("quietEnd") else { good("quietEnd"); p.quietEnd = qe }
+        val pm = f("pollMinutes").toIntOrNull()
+        if (pm == null) bad("pollMinutes") else { good("pollMinutes"); p.pollMinutes = maxOf(10, pm) }  // 10 min is the documented floor
+        for (key in listOf("summaryTime", "afternoonTime")) {
+            val v = f(key)
+            if (v.isEmpty() || parseHm(v) != null) { good(key); if (key == "summaryTime") p.summaryTime = v else p.afternoonTime = v }
+            else bad(key)
+        }
+        if (!ok) Toast.makeText(this, "Some boxes are red — fix them or the related messages will not work.", Toast.LENGTH_LONG).show()
+
         p.manualCourses = f("manualCourses")
         p.skipClasses = f("skipClasses")
         p.myGroups = f("myGroups")
         p.deadlineHours = f("deadlineHours")
-        p.pollMinutes = f("pollMinutes").toIntOrNull() ?: 10
         Scheduler.ensurePolling(this)
         Scheduler.scheduleAll(this)
     }
