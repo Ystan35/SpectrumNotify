@@ -31,7 +31,7 @@ jobs:
           CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
           NAME=$(grep -oP 'versionName = "[^"]+"' app/build.gradle.kts | cut -d'"' -f2)
           node -e 'const fs=require("fs");const c=process.argv[1],n=process.argv[2];fs.writeFileSync("latest.json",JSON.stringify({versionCode:Number(c),versionName:n,notes:""}))' "$CODE" "$NAME"
-          if ! git diff --quiet latest.json apk/SpectrumNotify.apk; then
+          if ! git diff --cached --quiet latest.json apk/SpectrumNotify.apk; then
             git config user.name "github-actions"
             git config user.email "actions@github.com"
             git add latest.json apk/SpectrumNotify.apk
