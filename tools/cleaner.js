@@ -1,5 +1,16 @@
 const fs = require('fs');
 
+// Some modules (e.g. GUL1001) have no "Year + Period" in their details; derive it from
+// the Module Offering in their event details (format: CODE/2026/S1/1).
+function deriveYearPeriod(module) {
+  for (const e of module.events || []) {
+    const offering = e.html_details && e.html_details["Module Offering"];
+    const m = offering && offering.match(/\/(\d{4}\/S[12])\//);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 function cleanTimetableData(jsonData, lecturerData, activitiesToInclude) {
   const cleanedModules = {};
   const lecturerMap = new Map();
@@ -18,7 +29,7 @@ function cleanTimetableData(jsonData, lecturerData, activitiesToInclude) {
           moduleName: module.details["English Description"] ?? null,
           moduleCode: moduleCode,
           credit: parseNumber(module.details["Credit"]),
-          yearPeriod: module.details["Year + Period"] ?? null,
+          yearPeriod: module.details["Year + Period"] ?? deriveYearPeriod(module),
           overallTargetStudent: parseNumber(module.details["Overall Target Student"]),
           level: module.details["Level Description"] ?? null,
           faculty: module.details["Faculty Description"] ?? null,
