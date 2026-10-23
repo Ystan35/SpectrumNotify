@@ -21,19 +21,24 @@ jobs:
           gradle-version: 8.9
       - name: Build debug + release APKs
         run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
+      - name: Stage release APK into repo (apk/SpectrumNotify.apk)
+        run: |
+          mkdir -p apk
+          cp app/build/outputs/apk/release/app-release.apk apk/SpectrumNotify.apk
+          git add apk/SpectrumNotify.apk
       - name: Sync latest.json with version in build.gradle.kts
         run: |
           CODE=$(grep -oP 'versionCode = \K\d+' app/build.gradle.kts)
           NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           printf '{"versionCode": %s, "versionName": "%s", "notes": ""}
 ' "$CODE" "$NAME" > latest.json
-          if ! git diff --quiet latest.json; then
+          if ! git diff --quiet latest.json apk/SpectrumNotify.apk; then
             git config user.name "github-actions"
             git config user.email "actions@github.com"
-            git add latest.json
-            git commit -m "Update latest.json to $NAME ($CODE)"
+            git add latest.json apk/SpectrumNotify.apk
+            git commit -m "Publish $NAME ($CODE): latest.json + APK"
           fi
-      - name: Push latest.json (token auth)
+      - name: Push latest.json + APK (token auth)
         if: env.HAS_TOKEN == 'true'
         run: git push https://${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:main || echo "push skipped"
       - uses: actions/upload-artifact@v4
