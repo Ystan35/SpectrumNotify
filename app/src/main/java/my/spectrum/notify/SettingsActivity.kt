@@ -142,6 +142,8 @@ class SettingsActivity : Activity() {
         target = accordion(col, "QUIET HOURS",
             "During these hours the app does not check Spectrum, so you are not woken up. Use the 24-hour clock: 0 = midnight, 13 = 1 pm.",
             icon = R.drawable.ic_cat_daily, contents = listOf("Quiet from", "Quiet until"))
+        add("quietStart", "Quiet from (hour)", "Start of the quiet period. Example: 1 means 1 am.", p.quietStart.toString(), "1", 1)
+        add("quietEnd", "Quiet until (hour)", "End of the quiet period. Example: 7 means 7 am.", p.quietEnd.toString(), "7", 1)
 
         target = accordion(col, "DAILY MESSAGES",
             "Two short messages each day. Type the time as HH:MM, for example 07:05. Leave a box empty to turn that message off.",
@@ -150,7 +152,28 @@ class SettingsActivity : Activity() {
         add("afternoonTime", "Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00", 2)
 
         target = accordion(col, "YOUR CLASSES", icon = R.drawable.ic_cat_class,
-            contents = listOf("Classes to ignore", "Teams-recording courses"))
+            contents = listOf("My Occ", "Classes to ignore", "Teams-recording courses"))
+        // My Occ per course as chips (learned from checks): CODE -> Occ N, one tap
+        val learned = Groups.learnedPerCourse(this)
+        if (learned.isEmpty()) {
+            target.label("Your courses and their Occs appear here after the first check (or pick one from the UM timetable).", 13f, Ui.DIM, 8)
+        }
+        for ((code, occs) in learned) {
+            val current = Regex(Regex.escape(code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
+            target.label(code, 14f, Ui.TEXT, 14).setTypeface(null, android.graphics.Typeface.BOLD)
+            val names = listOf("Not set") + occs.map { "Occ $it" }
+            val sel = occs.indexOf(current) + 1
+            target.chips(names, setOf(if (sel >= 0) sel else 0), false) { picked ->
+                val v = picked.firstOrNull() ?: 0
+                val keep = p.myGroups.split(",").map { it.trim() }
+                    .filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
+                p.myGroups = (if (v == 0) keep else keep + "$code:occ${occs[v - 1]}").joinToString(", ")
+                fields["myGroups"]?.setText(p.myGroups)
+            }
+        }
+        target.action("Pick a course from the UM timetable", "Adds the class times and sets your Occ here.") {
+            startActivity(android.content.Intent(this, CatalogActivity::class.java))
+        }
         add(
             "skipClasses", "Classes to ignore",
             "Use this when a course has classes for another group. Write the course code, then @ and the day. " +
@@ -164,20 +187,11 @@ class SettingsActivity : Activity() {
                 "Write course codes separated by commas, for example WIA2010.",
             p.manualCourses, "WIA2010",
         )
-
-        target = accordion(col, "OTHER GROUPS' POSTS", icon = R.drawable.ic_cat_material,
-            contents = listOf("My Occ picker", "My group"))
-        target.action(
-            "Choose my Occ from a list",
-            "Pick a course, then your Occ from a drop-down. It fills your lecture and tutorial times and the My group box below.",
-        ) { startActivity(android.content.Intent(this, CatalogActivity::class.java)) }
+        // advanced escape hatch
+        target.label("Advanced: raw group text", 13f, Ui.TEXT, 18).setTypeface(null, android.graphics.Typeface.BOLD)
         add(
-            "myGroups", "My group",
-            "Another lecturer's materials and announcements for a different Occ or tutorial group are hidden. " +
-                "Leave this empty and the app works out your group from your class names. " +
-                "To set it yourself write the course, a colon and the group, for example WIX1003:occ2, WIX1003:t3. " +
-                "Write just occ2 to use it for every course. Write off to turn the filter off. " +
-                "Posts that do not name any group are always shown.",
+            "myGroups", "Raw groups",
+            "Format: COURSE:occN, comma separated. Write off to disable the filter.",
             p.myGroups, "WIX1003:occ2, WIX1003:t3",
         )
 

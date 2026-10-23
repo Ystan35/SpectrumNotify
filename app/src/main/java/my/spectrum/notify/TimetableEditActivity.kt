@@ -145,6 +145,25 @@ class TimetableEditActivity : Activity() {
         col.label("Room or note (optional)", 13f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
         val noteField = col.field(first?.note ?: "", "Hall 3, bring laptop")
 
+        col.label("Attendance", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("How is attendance taken for this class?", 12f, Ui.DIM, 2)
+        // mode: Spectrum link (auto/paste) or manual by lecturer (no link needed)
+        val attModes = listOf("Spectrum link", "Manual by lecturer", "None")
+        var attMode = when {
+            (first?.note ?: "").startsWith("[manual-att]") -> 1
+            (first?.note ?: "").startsWith("[att]") -> 0
+            else -> 2
+        }
+        val attLinks = (first?.note ?: "").removePrefix("[att]").removePrefix("[manual-att]").trim()
+        val attLinksField = col.field(attLinks, "Paste attendance link(s), one per line")
+        attLinksField.visibility = if (attMode == 0) android.view.View.VISIBLE else android.view.View.GONE
+        col.chips(attModes, setOf(attMode), false) { sel ->
+            attMode = sel.firstOrNull() ?: 2
+            attLinksField.visibility = if (attMode == 0) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        col.label("Spectrum link = the app finds the attendance page automatically, and you can paste extra links. " +
+            "Manual by lecturer = the lecturer marks attendance in person, so no link is needed.", 12f, Ui.DIM, 6)
+
         col.label("Colour", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label("One colour per course, so every class of the same course looks the same.", 12f, Ui.DIM, 2)
         setSwatch = col.swatches(colourIdx) { colourIdx = it; colourTouched = true }
@@ -156,9 +175,15 @@ class TimetableEditActivity : Activity() {
                 days.isEmpty() -> toast("Choose at least one day")
                 end <= start -> toast("The end time must be after the start time")
                 else -> {
+                    val baseNote = noteField.text.toString().trim()
+                    val attNote = when (attMode) {
+                        0 -> "[att]" + attLinksField.text.toString().trim()
+                        1 -> "[manual-att]"
+                        else -> baseNote
+                    }
                     Timetable.saveManual(
                         this, if (editing) grp else Timetable.newGroup(), code, titleField.text.toString().trim(),
-                        days, start, end, kinds[kindIdx], noteField.text.toString().trim(),
+                        days, start, end, kinds[kindIdx], attNote,
                     )
                     if (colourTouched || Timetable.colourIndexOrNull(this, code) == null) {
                         Timetable.setColourIndex(this, code, colourIdx)

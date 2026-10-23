@@ -70,6 +70,20 @@ object Groups {
         return (st.j.optJSONObject("my_groups")?.optJSONArray(up) ?: JSONArray()).strs().toSet()
     }
 
+    /** Courses with their learned Occ numbers (from attendance event names), for the Settings chips. */
+    fun learnedPerCourse(ctx: android.content.Context): Map<String, List<String>> {
+        val st = State(ctx)
+        val out = LinkedHashMap<String, MutableList<String>>()
+        val o = st.j.optJSONObject("my_groups") ?: return out
+        for (k in o.keys()) {
+            val occs = (o.optJSONArray(k) ?: JSONArray()).strs()
+                .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+                .distinct().sortedBy { it.toIntOrNull() ?: 999 }
+            if (occs.isNotEmpty()) out[k] = occs.toMutableList()
+        }
+        return out
+    }
+
     /** Every group token you have in any course (for notifications that do not say which course). */
     fun mineAnywhere(st: State, p: Prefs): Set<String> {
         if (p.groupsOff) return emptySet()
