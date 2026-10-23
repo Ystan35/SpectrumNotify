@@ -334,6 +334,12 @@ object Checker {
                 om.put(cid.toString(), jarr(occSeen[cid]!!.toList()))
                 st.j.put("occ_seen", om)
             }
+            // track per-course "seen occs" so the startup dialog can ask the user to confirm
+            if (occSeen.containsKey(cid)) {
+                val cm = st.j.optJSONObject("occ_courses") ?: JSONObject()
+                cm.put(cid.toString(), c.str("shortname").ifEmpty { c.str("fullname") })
+                st.j.put("occ_courses", cm)
+            }
             linksByCourse["$cid"] = result.second
             val known = st.j.has(ckey)
             val old = st.strings(ckey)

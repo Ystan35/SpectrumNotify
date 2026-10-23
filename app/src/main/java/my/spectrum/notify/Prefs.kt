@@ -136,6 +136,10 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("debugLog", false)
         set(v) { sp.edit().putBoolean("debugLog", v).apply() }
 
+    /** Occ confirmed by the user in the startup dialog (per course code). */
+    fun occConfirmed(code: String): Boolean = sp.getBoolean("occconf:$code", false)
+    fun setOccConfirmed(code: String) { sp.edit().putBoolean("occconf:$code", true).apply() }
+
     /** Attendance duplicate labels per course, e.g. attlabel:WIX1003 = "0=Lecture,1=Tutorial". */
     fun attendanceLabel(course: String): String? =
         health.getString("attlabel:$course", null)

@@ -7,6 +7,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import org.json.JSONArray
+import org.json.JSONObject
 import android.graphics.Typeface
 import android.view.MotionEvent
 import kotlin.math.abs
@@ -112,6 +114,54 @@ class MainActivity : Activity() {
         recreateIfLookChanged()
         ovAt = 0L
         handler.post(ticker)
+        confirmOccDialog()
+    }
+
+    /**
+     * After the auto-detection finds courses with visible Occ pages, ask the user to confirm
+     * each one (the detection is a good guess, but only the user knows their real Occ).
+     * One dialog per course; "Skip" leaves it unconfirmed and it is asked again next launch.
+     */
+    private fun confirmOccDialog() {
+        val st = State(this)
+        val seen = st.j.optJSONObject("occ_seen") ?: return
+        val names = st.j.optJSONObject("occ_courses") ?: JSONObject()
+        val codes = Courses.all(this).associate { it.id to it.code.uppercase() }
+        for (cidS in seen.keys()) {
+            val code = codes[cidS.toLongOrNull() ?: continue] ?: continue
+            val occs = (seen.optJSONArray(cidS) ?: JSONArray()).strs()
+                .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+                .distinct().sortedBy { it.toIntOrNull() ?: 999 }
+            if (occs.isEmpty()) continue
+            if (Prefs(this).occConfirmed(code)) continue
+            val current = Regex(Regex.escape(code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE)
+                .find(p.myGroups)?.groupValues?.get(1)
+            val cname = names.optString(cidS, code)
+            val options = occs.map { "Occ $it" }
+            val preselect = current?.let { occs.indexOf(it) } ?: -1
+            val checked = IntArray(1) { if (preselect >= 0) preselect else 0 }
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("$code — which Occ are you in?")
+                .setMessage(
+                    "Spectrum shows you these Occ pages for $cname." +
+                        (if (preselect >= 0) "\nWe pre-selected Occ ${occs[preselect]} from what we detected." else "") +
+                        "\nConfirm so posts from other groups are hidden correctly."
+                )
+                .setSingleChoiceItems(options.toTypedArray(), if (preselect >= 0) preselect else 0) { _, which -> checked[0] = which }
+                .setPositiveButton("Confirm") { _, _ ->
+                    val chosen = occs.getOrNull(checked[0])
+                    if (chosen != null) {
+                        val keep = p.myGroups.split(",").map { it.trim() }
+                            .filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
+                        p.myGroups = (keep + "$code:occ$chosen").joinToString(", ")
+                    }
+                    Prefs(this).setOccConfirmed(code)
+                    ovAt = 0L
+                }
+                .setNegativeButton("Skip", null)
+                .show()
+            return  // one dialog per launch; the rest ask next time
+        }
     }
 
     override fun onPause() {
