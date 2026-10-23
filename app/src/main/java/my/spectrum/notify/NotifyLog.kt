@@ -60,7 +60,13 @@ object NotifyLog {
         return ts
     }
 
-    fun sys(ctx: Context, text: String) { add(ctx, "sys", text) }
+    /** System/debug line. Hidden while the debug toggle is off, except lines that matter. */
+    fun sys(ctx: Context, text: String) {
+        val important = text.startsWith("Check failed") || text.startsWith("Last crash") ||
+            text.startsWith("Logged in") || text.startsWith("Logged out") || text.startsWith("Token")
+        if (!important && !Prefs(ctx).debugLog) return
+        add(ctx, "sys", text)
+    }
 
     @Synchronized
     fun entries(ctx: Context): List<Entry> =

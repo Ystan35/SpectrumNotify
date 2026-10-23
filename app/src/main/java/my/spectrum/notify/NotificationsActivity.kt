@@ -71,6 +71,25 @@ class NotificationsActivity : Activity() {
             setPadding(dp(2), dp(4), 0, dp(4))
         }
         recHead.addView(tv("Your notifications", 14f, Ui.DIM), lp(0, WRAP, 1f))
+        // debug toggle: shows/hides system lines like "Check OK" and skipped-item notes
+        val dbg = TextView(this).apply {
+            text = if (p.debugLog) "🐞 On" else "🐞 Off"
+            textSize = 13f
+            setTextColor(if (p.debugLog) Ui.CYAN else Ui.DIM)
+            minHeight = dp(44)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, dp(8), 0)
+            isClickable = true
+            background = rippleBg(Ui.BAR, 0, this@NotificationsActivity, 10)
+        }
+        dbg.setOnClickListener {
+            p.debugLog = !p.debugLog
+            dbg.text = if (p.debugLog) "🐞 On" else "🐞 Off"
+            dbg.setTextColor(if (p.debugLog) Ui.CYAN else Ui.DIM)
+            recSig = ""; logStamp = -1L
+            render()
+        }
+        recHead.addView(dbg)
         recHead.addView(tv("Clear all", 14f, Ui.CYAN, true).apply {
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             minHeight = dp(44)
@@ -169,7 +188,11 @@ class NotificationsActivity : Activity() {
         val st = NotifyLog.stamp(this)
         if (st != logStamp) {
             logStamp = st
-            entries = NotifyLog.entries(this).filter { !(it.kind == "sys" && it.title == "Check OK") }.asReversed()
+            entries = NotifyLog.entries(this).filter {
+                !(it.kind == "sys" && it.title == "Check OK") &&
+                (p.debugLog || it.kind != "sys" || it.title.startsWith("Check failed") || it.title.startsWith("Last crash") ||
+                 it.title.startsWith("Logged in") || it.title.startsWith("Logged out") || it.title.startsWith("Token"))
+            }.asReversed()
         }
         renderChips()
         renderRecords(loggedIn)
