@@ -15,6 +15,7 @@ import android.view.ViewGroup
 import android.graphics.drawable.GradientDrawable
 import android.widget.Button
 import android.widget.ImageButton
+import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -580,6 +581,38 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
     }
     bar.tag = dot
     return bar
+}
+
+/** A styled dropdown (the same look as the UM-timetable picker). */
+fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit): android.widget.Spinner {
+    val sp = android.widget.Spinner(this)
+    val ad = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
+        private fun style(v: View, bg: Int): View {
+            (v as TextView).apply {
+                setTextColor(Ui.TEXT)
+                textSize = 14f * Ui.fontScale
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                setBackgroundColor(bg)
+            }
+            return v
+        }
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val v = style(super.getView(position, convertView, parent), 0)
+            (v as TextView).text = (getItem(position) ?: "") + "  ▾"
+            return v
+        }
+        override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View = style(super.getDropDownView(position, convertView, parent), Ui.BAR)
+    }
+    ad.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+    sp.adapter = ad
+    sp.background = roundBg(Ui.BAR, Ui.BORDER, this)
+    sp.setPopupBackgroundDrawable(roundBg(Ui.BAR, Ui.BORDER, this))
+    sp.setSelection(selected, false)
+    sp.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) = onSelect(position)
+        override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+    }
+    return sp
 }
 
 /** The unread dot on the bar's bell tab; returns null if this page's bar has no bell. */

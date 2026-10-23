@@ -153,22 +153,31 @@ class SettingsActivity : Activity() {
 
         target = accordion(col, "YOUR CLASSES", icon = R.drawable.ic_cat_class,
             contents = listOf("My Occ", "Classes to ignore", "Teams-recording courses"))
-        // My Occ per course as chips (learned from checks): CODE -> Occ N, one tap
+        // My Occ per course as a dropdown (like the UM-timetable picker):
+        // catalog occs first; if the course is missing from the catalog, fall back to learned occs.
         val learned = Groups.learnedPerCourse(this)
-        if (learned.isEmpty()) {
-            target.label("Your courses and their Occs appear here after the first check (or pick one from the UM timetable).", 13f, Ui.DIM, 8)
+        val courses = LinkedHashSet<String>()
+        Courses.all(this).forEach { courses.add(it.code.uppercase()) }
+        learned.keys.forEach { courses.add(it.uppercase()) }
+        if (courses.isEmpty()) {
+            target.label("Your courses appear here after the first check (or pick one from the UM timetable below).", 13f, Ui.DIM, 8)
         }
-        for ((code, occs) in learned) {
+        for (code in courses) {
+            val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
+            val occs = if (catOccs.isNotEmpty()) catOccs else (learned[code.uppercase()] ?: learned[code] ?: emptyList())
             val current = Regex(Regex.escape(code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
             target.label(code, 14f, Ui.TEXT, 14).setTypeface(null, android.graphics.Typeface.BOLD)
             val names = listOf("Not set") + occs.map { "Occ $it" }
             val sel = occs.indexOf(current) + 1
-            target.chips(names, setOf(if (sel >= 0) sel else 0), false) { picked ->
-                val v = picked.firstOrNull() ?: 0
+            val sp = spinner(names, if (sel >= 0) sel else 0) { pos ->
                 val keep = p.myGroups.split(",").map { it.trim() }
                     .filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
-                p.myGroups = (if (v == 0) keep else keep + "$code:occ${occs[v - 1]}").joinToString(", ")
+                p.myGroups = (if (pos <= 0) keep else keep + "$code:occ${occs[pos - 1]}").joinToString(", ")
                 fields["myGroups"]?.setText(p.myGroups)
+            }
+            target.addView(sp, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+            if (catOccs.isEmpty() && occs.isNotEmpty()) {
+                target.label("Occs learned from Spectrum (course not in the bundled UM list).", 11f, Ui.DIM, 2)
             }
         }
         target.action("Pick a course from the UM timetable", "Adds the class times and sets your Occ here.") {

@@ -34,6 +34,7 @@ class TimetableActivity : Activity() {
     private var day = LocalDate.now(zone()).dayOfWeek.value // 1 = Mon .. 7 = Sun
     private var slots: List<Slot> = emptyList()
     private var colours: Map<String, Int> = emptyMap()
+    private var zoom = 1.0f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -124,7 +125,10 @@ class TimetableActivity : Activity() {
                 nowMin >= 0 && s.start == nextStart -> "NEXT"
                 else -> ""
             }
-            box.addView(slotCard(s, badge), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+            val card = slotCard(s, badge)
+            card.scaleX = zoom
+            card.scaleY = zoom
+            box.addView(card, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = (dp(10) * zoom).toInt() })
         }
     }
 
@@ -178,10 +182,17 @@ class TimetableActivity : Activity() {
 
         val dur = s.end - s.start
         val durS = (if (dur >= 60) "${dur / 60}h" else "") + (if (dur % 60 != 0) (if (dur >= 60) " " else "") + "${dur % 60}m" else "")
+        // room + lecturer from the UM catalog when this slot matches a catalog choice
+        val choice = Catalog.find(this, s.course)?.choices(s.kind)?.firstOrNull { ch ->
+            ch.occ == occOf(s) || ch.parts.any { it.day == s.day && it.start == s.start }
+        }
+        val room = choice?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ") ?: ""
+        val lecturer = choice?.detail() ?: ""
         val detail = listOf(s.title, s.note).filter { it.isNotEmpty() }.joinToString("  ·  ")
-        col.addView(tv(listOf(detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  "), 12f, Ui.DIM).apply {
-            setPadding(0, dp(6), 0, 0)
-        })
+        val meta = listOf(detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  ")
+        col.addView(tv(meta, 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
+        if (room.isNotEmpty()) col.addView(tv("📍 $room", 12f, Ui.TEXT).apply { setPadding(0, dp(2), 0, 0) })
+        if (lecturer.isNotEmpty()) col.addView(tv("👤 $lecturer", 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
         // attendance field: auto-filled from the course's Spectrum attendance page,
         // placeholder when nothing is known, tap to paste one or more links
         val auto = Checker.attendanceUrl(this, courseIdOf(s.course))
@@ -234,6 +245,10 @@ class TimetableActivity : Activity() {
         getSharedPreferences("timetable", MODE_PRIVATE).getString("att:$course", "") ?: ""
 
     /** Dialog to paste one or more attendance links (one per line). Empty text clears. */
+    /** Which Occ this slot belongs to: from the picker group id (cat-CODE-kind-N), else empty. */
+    private fun occOf(s: Slot): String =
+        if (s.grp.startsWith("cat-")) s.grp.split('-').getOrNull(3) ?: "" else ""
+
     private fun pasteAttendance(course: String) {
         val field = android.widget.EditText(this).apply {
             setText(userAttLink(course))
@@ -254,12 +269,46 @@ class TimetableActivity : Activity() {
 
     // ------------------------------------------------------------ week view
     private fun renderWeek() {
-        box.addView(weekGrid(), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14) })
+        box.addView(zoomBar(), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+        val grid = weekGrid()
+        attachPinch(grid)
+        box.addView(grid, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14) })
+    }
+
+    /** +/- buttons next to a zoom % label; persisted for the session. */
+    private fun zoomBar(): View {
+        val row = LinearLayout(this).apply { gravity = Gravity.END }
+        fun btn(t: String): TextView = TextView(this).apply {
+            text = t; textSize = 18f * Ui.fontScale; setTextColor(Ui.CYAN)
+            setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
+            minHeight = dp(40); minWidth = dp(40)
+            background = rippleBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, 20)
+        }
+        val minus = btn("−")
+        minus.setOnClickListener { zoom = (zoom - 0.15f).coerceAtLeast(0.7f); render() }
+        val label = tv("${(zoom * 100).toInt()}%", 12f, Ui.DIM, true)
+        label.gravity = Gravity.CENTER; label.minWidth = dp(48)
+        val plus = btn("+")
+        plus.setOnClickListener { zoom = (zoom + 0.15f).coerceAtMost(2f); render() }
+        row.addView(minus); row.addView(label); row.addView(plus)
+        return row
+    }
+
+    /** Pinch to zoom: adjusts [zoom] and re-renders on release. */
+    private fun attachPinch(v: View) {
+        val scale = android.view.ScaleGestureDetector(this, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(det: android.view.ScaleGestureDetector): Boolean {
+                zoom = (zoom * det.scaleFactor).coerceIn(0.7f, 2f)
+                return true
+            }
+            override fun onScaleEnd(det: android.view.ScaleGestureDetector) { render() }
+        })
+        v.setOnTouchListener { _, ev -> scale.onTouchEvent(ev); false }
     }
 
     private fun weekGrid(): View {
-        val hourH = dp(56)
-        val colW = dp(104)
+        val hourH = (dp(56) * zoom).toInt()
+        val colW = (dp(104) * zoom).toInt()
         val headH = dp(30)
         val gutterW = dp(44)
         val minH = minOf(8, slots.minOf { it.start } / 60)
