@@ -127,22 +127,24 @@ class MainActivity : Activity() {
         val seen = st.j.optJSONObject("occ_seen") ?: return
         val names = st.j.optJSONObject("occ_courses") ?: JSONObject()
         val codes = Courses.all(this).associate { it.id to it.code.uppercase() }
-        data class Ask(val code: String, val cname: String, val occs: List<String>)
+        data class Ask(val code: String, val cname: String, val occs: List<String>, val predicted: String?)
         val asks = ArrayList<Ask>()
         for (cidS in seen.keys()) {
             val code = codes[cidS.toLongOrNull() ?: -1L] ?: continue
             if (Prefs(this).occConfirmed(code)) continue
             // prediction = attendance/event-name learning (my_groups); options = ALL catalog occs,
             // falling back to predicted, then to availability-seen. Shown even when empty.
-            val predicted = Groups.learnedPerCourse(this)[code.uppercase()] ?: emptyList()
+            // prediction from attendance/event-name learning, e.g. ["2"] for occ2
+            val predictedNum = Groups.learnedPerCourse(this)[code.uppercase()]?.firstOrNull()
+            val predictedOccs = Groups.learnedPerCourse(this)[code.uppercase()] ?: emptyList()
             val occs = (Catalog.find(this, code)?.occs() ?: emptyList())
-                .ifEmpty { predicted }
+                .ifEmpty { predictedOccs }
                 .ifEmpty {
                     (seen.optJSONArray(cidS) ?: JSONArray()).strs()
                         .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
                 }
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
-            asks.add(Ask(code, names.optString(cidS, code), occs))
+            asks.add(Ask(code, names.optString(cidS, code), occs, predictedNum))
         }
         if (asks.isEmpty()) return
 
@@ -150,13 +152,22 @@ class MainActivity : Activity() {
         // sized below the app header
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(10), dp(24), 0) }
         val box = ScrollView(this).apply { addView(content) }
-        val choices = IntArray(asks.size) { -1 }
+        // prefill from the attendance-learning prediction, mapped into the full option list
+        val choices = IntArray(asks.size) { i ->
+            asks[i].predicted?.let { pnum -> asks[i].occs.indexOf(pnum) } ?: -1
+        }
         asks.forEachIndexed { i, a ->
             content.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", 15f, Ui.TEXT, true).apply {
                 setPadding(0, if (i == 0) 0 else dp(14), 0, 0)
             })
-            val opts = if (a.occs.isEmpty()) listOf("Not available — set later") else listOf("Choose Occ") + a.occs.map { "Occ $it" }
-            val sp = spinner(opts, 0) { pos -> choices[i] = pos - 1 }
+            val hasPrediction = choices[i] >= 0
+            val opts = when {
+                a.occs.isEmpty() -> listOf("Not available — set later")
+                hasPrediction -> a.occs.map { "Occ $it" }
+                else -> listOf("Choose Occ") + a.occs.map { "Occ $it" }
+            }
+            val spinnerSel = if (hasPrediction) choices[i] + 1 else 0
+            val sp = spinner(opts, spinnerSel) { pos -> choices[i] = pos - 1 }
             content.addView(sp, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
