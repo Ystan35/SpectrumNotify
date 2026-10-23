@@ -182,6 +182,7 @@ class MainActivity : Activity() {
             .setMessage("Prefilled from your attendance and materials — please confirm each. Unlisted courses keep working without a filter.")
             .setView(box)
             .setPositiveButton("Save all") { _, _ ->
+                val notInCatalog = ArrayList<String>()
                 asks.forEachIndexed { i, a ->
                     Prefs(this).setOccConfirmed(a.code)
                     val v = choices[i]
@@ -189,7 +190,14 @@ class MainActivity : Activity() {
                         val keep = p.myGroups.split(",").map { it.trim() }
                             .filter { it.isNotEmpty() && !it.startsWith("${a.code}:", true) }
                         p.myGroups = (keep + "${a.code}:occ${a.occs[v]}").joinToString(", ")
+                        val setup = Timetable.autoSetup(this, a.code, a.occs[v])
+                        if (!setup) notInCatalog.add(a.code)
                     }
+                }
+                if (notInCatalog.isNotEmpty()) {
+                    Toast.makeText(this,
+                        "${notInCatalog.joinToString(", ")}: class times will be learned from Spectrum automatically.",
+                        Toast.LENGTH_LONG).show()
                 }
                 ovAt = 0L
             }
@@ -503,6 +511,7 @@ class MainActivity : Activity() {
         spin?.cancel()
         refreshBtn.rotation = 0f
         ovAt = 0L
+        try { NextClassWidget.updateAll(this) } catch (_: Exception) { }
         Toast.makeText(
             this,
             when {

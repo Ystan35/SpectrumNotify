@@ -219,7 +219,35 @@ class TimetableEditActivity : Activity() {
                 if (s.title.isNotEmpty()) "\n${s.title}" else "",
             15f, Ui.TEXT, 4,
         )
-        col.label("This class comes from Spectrum, so its day and time follow Spectrum.", 12f, Ui.DIM, 6)
+        col.label("This class comes from Spectrum. You can override its time and meeting link below.", 12f, Ui.DIM, 6)
+
+        // time override (the Spectrum event may cover all sessions; yours may differ)
+        val ov = Timetable.timeOverride(this, s.key)
+        col.label("Time override", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Only if your session time differs from what Spectrum lists. Leave untouched to follow Spectrum.", 12f, Ui.DIM, 2)
+        val times = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val startBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val endBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        var newStart = ov?.first ?: s.start
+        var newEnd = ov?.second ?: s.end
+        lateinit var endOvField: TimeField
+        val startOvField = timeField(newStart) {
+            newStart = it
+            if (newEnd <= it) { newEnd = minOf(24 * 60 - 1, it + 60); endOvField.set(newEnd) }
+        }
+        endOvField = timeField(newEnd) { newEnd = it }
+        startBox.label("Starts", 12f, Ui.DIM, 0)
+        startBox.addView(startOvField.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        endBox.label("Ends", 12f, Ui.DIM, 0)
+        endBox.addView(endOvField.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        times.addView(startBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        times.addView(endBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(12) })
+        col.addView(times, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+
+        // meeting link override
+        col.label("Meeting link", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Detected automatically from Spectrum. Paste your own to override, or clear to go back.", 12f, Ui.DIM, 2)
+        val mlinkField = col.field(Timetable.meetingLinkOf(this, s.course), "https://teams.microsoft.com/…")
 
         col.label("Type", 13f, Ui.TEXT, 24).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label(
@@ -236,7 +264,19 @@ class TimetableEditActivity : Activity() {
         col.btn("Save") {
             Timetable.setKind(this, s.key, kinds[kindIdx])
             Timetable.setColourIndex(this, s.course, colourIdx)
+            // write overrides only when they differ from Spectrum's values
+            val hasChanged = newStart != s.start || newEnd != s.end
+            if (hasChanged) Timetable.setTimeOverride(this, s.key, newStart, newEnd)
+            else Timetable.clearTimeOverride(this, s.key)
+            Timetable.setMeetingLink(this, s.course, mlinkField.text.toString().trim())
             finish()
+        }
+        if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course).isNotEmpty()) {
+            dangerBtn(col, "Reset to Spectrum values") {
+                Timetable.clearTimeOverride(this, s.key)
+                Timetable.setMeetingLink(this, s.course, "")
+                finish()
+            }
         }
         dangerBtn(col, "Remove from my timetable") {
             Timetable.hide(this, s.key)

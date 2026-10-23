@@ -11,8 +11,8 @@ android {
         applicationId = "my.spectrum.notify"
         minSdk = 26
         targetSdk = 34
-        versionCode = 21
-        versionName = "0.9.3"
+        versionCode = 24
+        versionName = "0.10.1"
     }
 
     signingConfigs {

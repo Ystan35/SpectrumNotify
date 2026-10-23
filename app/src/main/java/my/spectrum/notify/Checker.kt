@@ -212,6 +212,8 @@ object Checker {
     }
 
     // ------------------------------------------------------------ materials
+    private fun mt0Of(sec: JSONObject): Long = 0L
+
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
                                secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
                                attCmids: MutableMap<Long, Long>, occSeen: MutableMap<Long, MutableSet<String>>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
@@ -221,6 +223,10 @@ object Checker {
         for (sec in api.arr("core_course_get_contents", mapOf("courseid" to cid)).objs()) {
             val sname = sec.str("name")
             val skey = sec.optLong("id").toString()
+            // section descriptions often hold the weekly meeting links (e.g. "Online Lecture Link …: <href>")
+            val secSummary = sec.optJSONObject("summary")
+            val secDesc = if (secSummary != null) clean(secSummary.optString("text"), 2000) else ""
+            for (u in findLinks(secDesc)) raw.add(Triple(u, "section: " + clean(sname, 50), mt0Of(sec)))
             val mods = (sec.optJSONArray("modules") ?: JSONArray()).objs()
             if (mods.isNotEmpty()) {
                 secNames[skey] = sname.ifEmpty { if (sec.optInt("section") == 0) "General" else "Page ${sec.optInt("section")}" }
@@ -706,6 +712,7 @@ object Checker {
             }
         }
         try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
+        try { NextClassWidget.updateAll(ctx) } catch (e: Exception) { Log.w(TAG, "widget: $e") }
         Scheduler.scheduleAll(ctx)
     }
 
