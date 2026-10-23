@@ -151,7 +151,7 @@ class SettingsActivity : Activity() {
         add("summaryTime", "Morning summary", "Sent once each morning with today's classes and deadlines.", p.summaryTime, "07:05", 2)
         add("afternoonTime", "Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00", 2)
 
-        target = accordion(col, "YOUR CLASSES", icon = R.drawable.ic_cat_class,
+        target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
             contents = listOf("My Occ", "Classes to ignore", "Teams-recording courses"))
         // My Occ per course as a dropdown (like the UM-timetable picker):
         // catalog occs first; if the course is missing from the catalog, fall back to learned occs.
@@ -290,9 +290,9 @@ class SettingsActivity : Activity() {
             sections[0].body.visibility = View.VISIBLE
             sections[0].arrow.text = "▾"
         }
-        // deep link from the floating toolbox on home: open the appearance section directly
-        if (intent.getStringExtra(EXTRA_OPEN) == "appearance") {
-            sections.firstOrNull { it.key == "appearance" }?.let {
+        // deep links: open a specific section (toolbox -> appearance, startup -> your classes)
+        intent.getStringExtra(EXTRA_OPEN)?.let { key ->
+            sections.firstOrNull { it.key == key }?.let {
                 it.body.visibility = View.VISIBLE
                 it.arrow.text = "▾"
             }
