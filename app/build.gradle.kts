@@ -27,6 +27,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            isDebuggable = false
+            // same fixed key as debug builds, so release APKs install over existing installs
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

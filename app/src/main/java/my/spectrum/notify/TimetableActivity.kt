@@ -219,27 +219,32 @@ class TimetableActivity : Activity() {
             setPadding(0, dp(8), 0, 0)
         }
         att.addView(tv("Attendance", 12f, Ui.DIM, true))
-        // compact buttons: one per link (user pasted several = one button each), plus a + to add more
-        val links = link.split(System.lineSeparator()).map { it.trim() }.filter { it.isNotEmpty() }
-        if (links.isNotEmpty()) {
-            for ((i, u) in links.withIndex()) {
-                val open = TextView(this).apply {
-                    text = if (links.size == 1) "Open" else "Open ${i + 1}"
-                    textSize = 12f
-                    setTextColor(Ui.CYAN)
-                    setTypeface(typeface, Typeface.BOLD)
-                    minHeight = dp(40)
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(10), 0, dp(10), 0)
-                    isClickable = true
-                    background = rippleBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, 18)
-                }
-                open.setOnClickListener {
-                    try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))) }
-                    catch (_: Exception) { Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show() }
-                }
-                att.addView(open, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
+        // single compact row: meeting link if detected (auto or pasted), tap row to open, long labels truncate
+        val meeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
+        if (link.isNotEmpty() || meeting.isNotEmpty()) {
+            val u = link.ifEmpty { meeting }
+            val isMeeting = link.isEmpty()
+            att.addView(tv((if (isMeeting) "💻 Meeting link" else u.take(40) + if (u.length > 40) "…" else ""), 12f, c, true).apply {
+                setPadding(dp(8), 0, 0, 0)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, WRAP, 1f))
+            val open = TextView(this).apply {
+                text = "Open"
+                textSize = 12f
+                setTextColor(Ui.CYAN)
+                setTypeface(typeface, Typeface.BOLD)
+                minHeight = dp(40)
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                background = rippleBg(Ui.BAR, 0, this@TimetableActivity, 10)
             }
+            open.setOnClickListener {
+                try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))) }
+                catch (_: Exception) { Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show() }
+            }
+            att.addView(open)
+            // always allow adding/pasting an attendance link
             att.addView(tv("+", 14f, Ui.CYAN, true).apply {
                 minHeight = dp(40); minWidth = dp(32)
                 gravity = Gravity.CENTER

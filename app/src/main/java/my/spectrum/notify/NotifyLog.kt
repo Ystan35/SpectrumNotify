@@ -62,6 +62,7 @@ object NotifyLog {
 
     /** System/debug line. Hidden while the debug toggle is off, except lines that matter. */
     fun sys(ctx: Context, text: String) {
+        // shown even with debug off: check failures and login events (the user must know)
         val important = text.startsWith("Check failed") || text.startsWith("Last crash") ||
             text.startsWith("Logged in") || text.startsWith("Logged out") || text.startsWith("Token")
         if (!important && !Prefs(ctx).debugLog) return
