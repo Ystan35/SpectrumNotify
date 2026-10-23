@@ -166,7 +166,7 @@ class MainActivity : Activity() {
             isVerticalScrollBarEnabled = false
             addView(content)
         }
-        setupPullToRefresh(scroll)
+        attachPullToRefresh(scroll) { startRefresh() }
         // scrollable column, bottom bar pinned under it (weighted heights so scrolling works)
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         page.addView(scroll, lp(MATCH, 0, 1f))
@@ -335,24 +335,6 @@ class MainActivity : Activity() {
             }
         }
         root.addView(sheet, lp)
-    }
-
-    /** Pull the list down past a threshold at the very top to trigger a check. */
-    private fun setupPullToRefresh(sv: ScrollView) {
-        var startY = 0f
-        var pulling = false
-        sv.setOnTouchListener { _, ev ->
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { startY = ev.rawY; pulling = sv.scrollY == 0; false }
-                MotionEvent.ACTION_MOVE -> {
-                    if (pulling && sv.scrollY == 0) {
-                        val d = ev.rawY - startY
-                        if (d > dp(120)) { pulling = false; startRefresh(); true } else false
-                    } else false
-                }
-                else -> { pulling = false; false }
-            }
-        }
     }
 
     private fun closeQuickSheet(root: FrameLayout) {

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Typeface
 import android.os.Build
+import android.view.MotionEvent
 import android.view.View
 import android.view.Window
 import android.text.InputType
@@ -183,6 +184,7 @@ fun Activity.screen(
     actionDesc: String = "",
     onAction: (() -> Unit)? = null,
     navTo: Class<*>? = null,
+    onRefresh: (() -> Unit)? = null,
 ): LinearLayout {
     applyBars()
     val root = LinearLayout(this).apply {
@@ -233,7 +235,9 @@ fun Activity.screen(
         orientation = LinearLayout.VERTICAL
         setPadding(dp(20), dp(4), dp(20), if (navTo != null) dp(12) else dp(32))
     }
-    root.addView(ScrollView(this).apply { addView(col) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    val sv = ScrollView(this).apply { addView(col) }
+    if (onRefresh != null) attachPullToRefresh(sv, onRefresh)
+    root.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
     if (navTo != null) addNavBar(root, navTo)
     setContentView(root)
     return col
@@ -613,6 +617,60 @@ fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit
         override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
     }
     return sp
+}
+
+/** Pull-down-to-refresh for any ScrollView: pull past 120dp at the very top to fire [onRefresh].
+ *  Shows a small "pull / release" hint bar that grows with the finger. */
+fun Activity.attachPullToRefresh(sv: ScrollView, onRefresh: () -> Unit) {
+    var startY = 0f
+    var pulling = false
+    var fired = false
+    var hint: TextView? = null
+    var dist = 0f
+    sv.setOnTouchListener { v, ev ->
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                startY = ev.rawY; pulling = sv.scrollY == 0; fired = false; dist = 0f
+                false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (pulling && !fired) {
+                    if (sv.scrollY > 0) { pulling = false; hint?.let { (it.parent as? ViewGroup)?.removeView(it) }; return@setOnTouchListener false }
+                    dist = ev.rawY - startY
+                    if (dist > dp(24)) {
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                        if (hint == null) {
+                            hint = TextView(this).apply {
+                                gravity = Gravity.CENTER
+                                textSize = 12f * Ui.fontScale
+                                setTextColor(Ui.CYAN)
+                                minHeight = dp(36)
+                            }
+                            (v.parent as? ViewGroup)?.addView(hint, 0, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(0)))
+                        }
+                        hint?.text = if (dist > dp(120)) "Release to check Spectrum" else "Pull down to check…"
+                        hint?.layoutParams = (hint?.layoutParams ?: ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0)).also { it.height = (dist * 0.5f).toInt().coerceAtMost(dp(60)) }
+                        hint?.requestLayout()
+                    }
+                    return@setOnTouchListener true   // consume while pulling so the list does not fight
+                }
+                false
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (pulling && !fired && dist > dp(120)) {
+                    fired = true
+                    onRefresh()
+                }
+                pulling = false
+                hint?.let { h ->
+                    h.animate().alpha(0f).setDuration(250).withEndAction { (h.parent as? ViewGroup)?.removeView(h) }.start()
+                }
+                hint = null
+                false
+            }
+            else -> false
+        }
+    }
 }
 
 /** The unread dot on the bar's bell tab; returns null if this page's bar has no bell. */

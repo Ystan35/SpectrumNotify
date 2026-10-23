@@ -24,7 +24,7 @@ class CoursesActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        box = screen("Courses", navTo = CoursesActivity::class.java)
+        box = screen("Courses", navTo = CoursesActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
     }
 
     override fun onResume() {

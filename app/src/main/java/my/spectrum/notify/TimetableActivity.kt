@@ -38,7 +38,7 @@ class TimetableActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        box = screen("Timetable", navTo = TimetableActivity::class.java, actionIcon = R.drawable.ic_add, actionDesc = "Add a class", onAction = { openEdit(null) })
+        box = screen("Timetable", navTo = TimetableActivity::class.java, onRefresh = { Scheduler.pollNow(this) }, actionIcon = R.drawable.ic_add, actionDesc = "Add a class", onAction = { openEdit(null) })
     }
 
     override fun onResume() {

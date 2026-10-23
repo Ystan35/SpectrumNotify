@@ -29,7 +29,7 @@ class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
-        val col = screen("Settings", navTo = SettingsActivity::class.java)
+        val col = screen("Settings", navTo = SettingsActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
         var target: LinearLayout = col   // the open-able body of the current section
 
         fun add(key: String, title: String, help: String, value: String, hint: String = "", kind: Int = 0) {
