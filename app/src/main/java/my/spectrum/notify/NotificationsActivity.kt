@@ -86,7 +86,12 @@ class NotificationsActivity : Activity() {
             p.debugLog = !p.debugLog
             dbg.text = if (p.debugLog) "🐞 On" else "🐞 Off"
             dbg.setTextColor(if (p.debugLog) Ui.CYAN else Ui.DIM)
-            recSig = ""; logStamp = -1L
+            if (!p.debugLog) {
+                // purge already-saved debug lines so Off is immediate, not just for new ones
+                NotifyLog.purgeDebug(this)
+                logStamp = -1L
+            }
+            recSig = ""
             render()
         }
         recHead.addView(dbg)

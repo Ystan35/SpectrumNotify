@@ -92,4 +92,20 @@ object NotifyLog {
 
     @Synchronized
     fun clear(ctx: Context) { file(ctx).delete() }
+
+    /** Remove debug-class sys lines (keeps Check failed / crash / login events). */
+    @Synchronized
+    fun purgeDebug(ctx: Context) {
+        val old = readArr(ctx)
+        val out = JSONArray()
+        for (i in 0 until old.length()) {
+            val o = old.optJSONObject(i) ?: continue
+            val t = o.optString("title")
+            val keep = o.optString("kind") != "sys" ||
+                t.startsWith("Check failed") || t.startsWith("Last crash") ||
+                t.startsWith("Logged in") || t.startsWith("Logged out") || t.startsWith("Token")
+            if (keep) out.put(o)
+        }
+        try { file(ctx).writeText(out.toString()) } catch (_: Exception) { }
+    }
 }
