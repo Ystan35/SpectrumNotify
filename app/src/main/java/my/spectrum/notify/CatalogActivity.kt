@@ -123,18 +123,7 @@ class CatalogActivity : Activity() {
     private fun prefix(code: String) = "cat-$code-"
 
     private fun save(c: Catalog.Course, occ: String) {
-        // replace what was added earlier for this course (own hand-made entries use other ids and stay)
-        Timetable.manual(this).map { it.grp }.filter { it.startsWith(prefix(c.code)) }.distinct()
-            .forEach { Timetable.deleteManual(this, it) }
-        for ((kind, choice) in c.forOcc(occ)) {
-            choice.parts.forEachIndexed { i, p ->
-                Timetable.saveManual(
-                    this, prefix(c.code) + kind.tag + "-" + occ + "-" + i, c.code, "${kind.label} Occ $occ",
-                    listOf(p.day), p.start, p.end, kind, p.room,
-                )
-            }
-        }
-        if (Timetable.colourIndexOrNull(this, c.code) == null) Timetable.setColourIndex(this, c.code, Timetable.nextColourIndex(this))
+        Timetable.autoSetup(this, c.code, occ)
         setMyGroup(c.code, occ)
     }
 

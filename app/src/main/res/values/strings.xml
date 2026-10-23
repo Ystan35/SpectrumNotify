@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_desc">Shows your next class from Spectrum</string>
+    <string name="widget_no_class">No classes coming up</string>
+    <string name="widget_not_logged_in">Open Spectrum Notify to log in</string>
+    <string name="widget_open">Open Spectrum Notify</string>
+</resources>

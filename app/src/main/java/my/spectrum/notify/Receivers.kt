@@ -13,6 +13,7 @@ class AlarmReceiver : BroadcastReceiver() {
         Thread {
             try {
                 Checker.fromCache(app)   // instant, uses cached calendar and links
+                try { NextClassWidget.updateAll(app) } catch (_: Exception) { }
                 Scheduler.startupCheck(app)   // then refresh; also re-arms the next alarms
             } catch (e: Exception) {
                 Log.w("SpectrumNotify", "alarm: $e")

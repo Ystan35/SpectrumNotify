@@ -236,6 +236,52 @@ object Timetable {
         return mine.ifEmpty { autoUrl }
     }
 
+    /**
+     * Auto-setup: write the LEC/TUT/LAB slots of one catalog Occ into the timetable.
+     * Slots use grp "cat-CODE-kind-occ-i" so they are editable/deletable like any manual entry.
+     * Also assigns a course colour. Returns true when slots were written (course in catalog).
+     */
+    fun autoSetup(ctx: Context, code: String, occ: String): Boolean {
+        val course = Catalog.find(ctx, code) ?: return false
+        manual(ctx).map { it.grp }.filter { it.startsWith("cat-${course.code}-") }.distinct()
+            .forEach { deleteManual(ctx, it) }
+        for ((kind, choice) in course.forOcc(occ)) {
+            choice.parts.forEachIndexed { i, p ->
+                saveManual(
+                    ctx, "cat-${course.code}-${kind.tag}-$occ-$i", course.code, "${kind.label} Occ $occ",
+                    listOf(p.day), p.start, p.end, kind, p.room,
+                )
+            }
+        }
+        if (colourIndexOrNull(ctx, course.code) == null) setColourIndex(ctx, course.code, nextColourIndex(ctx))
+        return true
+    }
+
+    // ---------------------------------------------------------- user overrides for learned slots
+
+    /** Meeting link override for a course (user pasted); empty = use the auto-detected one. */
+    fun meetingLinkOf(ctx: Context, course: String): String =
+        sp(ctx).getString("mlink:$course", "") ?: ""
+
+    fun setMeetingLink(ctx: Context, course: String, url: String) {
+        sp(ctx).edit().putString("mlink:$course", url.trim()).apply()
+    }
+
+    /** Time override for one learned slot: stored as "start,end" minutes, keyed by slot key. */
+    fun timeOverride(ctx: Context, key: String): Pair<Int, Int>? {
+        val v = sp(ctx).getString("ttime:$key", "") ?: return null
+        val parts = v.split(",").map { it.trim().toIntOrNull() ?: -1 }
+        return if (parts.size == 2 && parts[0] >= 0 && parts[1] > parts[0]) Pair(parts[0], parts[1]) else null
+    }
+
+    fun setTimeOverride(ctx: Context, key: String, start: Int, end: Int) {
+        sp(ctx).edit().putString("ttime:$key", "$start,$end").apply()
+    }
+
+    fun clearTimeOverride(ctx: Context, key: String) {
+        sp(ctx).edit().remove("ttime:$key").apply()
+    }
+
     /** User-pasted attendance link(s) for a course (one per line allowed); empty string clears it. */
     fun setAttendanceLink(ctx: Context, course: String, links: String) {
         sp(ctx).edit().putString("att:$course", links.trim()).apply()
@@ -330,7 +376,9 @@ object Timetable {
         val hidden = hiddenKeys(ctx)
         val overrides = readObj(ctx, "kinds")
         val auto = merged.filter { it.key !in hidden && !isSkipped(it, p) }.map { s ->
-            if (overrides.has(s.key)) s.copy(kind = SlotKind.parse(overrides.optString(s.key))) else s
+            var out = if (overrides.has(s.key)) s.copy(kind = SlotKind.parse(overrides.optString(s.key))) else s
+            timeOverride(ctx, s.key)?.let { (t0, t1) -> out = out.copy(start = t0, end = t1) }
+            out
         }
         // The same class must not show twice. Same course + day + overlapping time = one class; the one kept is
         // the Spectrum one, then one picked from the UM timetable list (Occ), then a hand-made entry.
