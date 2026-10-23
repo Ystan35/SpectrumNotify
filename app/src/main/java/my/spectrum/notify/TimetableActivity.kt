@@ -218,7 +218,7 @@ class TimetableActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(8), 0, 0)
         }
-        att.addView(tv("Mark attendance", 12f, Ui.DIM, true))
+
         val meeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
         fun openBtn(label: String, url: String, filled: Boolean): TextView = TextView(this).apply {
             text = label
