@@ -132,9 +132,13 @@ class MainActivity : Activity() {
         for (cidS in seen.keys()) {
             val code = codes[cidS.toLongOrNull() ?: -1L] ?: continue
             if (Prefs(this).occConfirmed(code)) continue
-            val occs = (seen.optJSONArray(cidS) ?: JSONArray()).strs()
-                .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
-                .distinct().sortedBy { it.toIntOrNull() ?: 999 }
+            // unconfirmed course: show ALL occs of the course (catalog list when available),
+            // with the detected ones guaranteed present
+            val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
+            val occs = (catOccs.ifEmpty {
+                (seen.optJSONArray(cidS) ?: JSONArray()).strs()
+                    .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+            }).distinct().sortedBy { it.toIntOrNull() ?: 999 }
             if (occs.isEmpty()) continue
             val current = Regex(Regex.escape(code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE)
                 .find(p.myGroups)?.groupValues?.get(1)
