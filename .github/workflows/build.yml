@@ -39,7 +39,9 @@ jobs:
           fi
       - name: Push latest.json + APK (token auth)
         if: env.HAS_TOKEN == 'true'
-        run: git push https://${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:main || echo "push skipped"
+        run: |
+          if [ -z "${{ secrets.GH_PAT }}" ]; then echo "GH_PAT secret is NOT set"; exit 1; fi
+          git push https://${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:main
       - uses: actions/upload-artifact@v4
         with:
           name: SpectrumNotify-apks
