@@ -146,16 +146,18 @@ class MainActivity : Activity() {
         }
         if (asks.isEmpty()) return
 
-        // one dialog with the My-classes layout: every course, no prefill, one Save fills all
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(10), dp(24), 0) }
+        // one dialog with the My-classes layout: scrollable content (last courses reachable),
+        // sized below the app header
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(10), dp(24), 0) }
+        val box = ScrollView(this).apply { addView(content) }
         val choices = IntArray(asks.size) { -1 }
         asks.forEachIndexed { i, a ->
-            box.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", 15f, Ui.TEXT, true).apply {
+            content.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", 15f, Ui.TEXT, true).apply {
                 setPadding(0, if (i == 0) 0 else dp(14), 0, 0)
             })
             val opts = if (a.occs.isEmpty()) listOf("Not available — set later") else listOf("Choose Occ") + a.occs.map { "Occ $it" }
             val sp = spinner(opts, 0) { pos -> choices[i] = pos - 1 }
-            box.addView(sp, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
+            content.addView(sp, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Confirm your Occ")
