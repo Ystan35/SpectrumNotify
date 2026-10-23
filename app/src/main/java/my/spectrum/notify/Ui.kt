@@ -165,9 +165,11 @@ fun Activity.headerRow(homeMode: Boolean): LinearLayout {
         }
     }, LinearLayout.LayoutParams(dp(Ui.touch(44)), dp(Ui.touch(44))))
     if (!homeMode) {
-        titleRow.setOnClickListener { goToHome() }
-        titleRow.isClickable = true
-        titleRow.foreground = rippleBg(0, 0, this@headerRow, 18)
+        // only logo + title go Home; the theme toggle keeps its own click
+        titleRow.isClickable = false
+        titleRow.isFocusable = false
+        (titleRow.getChildAt(0) as View).setOnClickListener { goToHome() }
+        (titleRow.getChildAt(1) as View).setOnClickListener { goToHome() }
     }
     return titleRow
 }
