@@ -81,7 +81,7 @@ class MainActivity : Activity() {
     private val ticker = object : Runnable {
         override fun run() {
             render()
-            handler.postDelayed(this, 2000)
+            handler.postDelayed(this, 30000)  // 30s: only the countdown text needs frequent updates, and now it comes from sig-free rebuilds
         }
     }
 
@@ -518,7 +518,7 @@ class MainActivity : Activity() {
         val sig = when {
             !loggedIn -> "out"
             next == null -> "none:${ov.due.firstOrNull()?.ts}:${ov.due.firstOrNull()?.let { relShort(it.ts - now) }}"
-            else -> ov.classes.joinToString("|") { "${it.start}:${it.end}:${it.link}" } + ":${if (now >= next.start) relIn(next.end - now) else relIn(next.start - now)}"
+            else -> ov.classes.joinToString("|") { "${it.start}:${it.end}:${it.link}" }
         }
         if (sig == heroSig && !heroAnim) return
         heroSig = sig
@@ -676,7 +676,7 @@ class MainActivity : Activity() {
     private fun renderDue() {
         val now = System.currentTimeMillis() / 1000
         val items = ov.due.filter { it.ts - now < 14 * 86400 }.take(8)
-        val sig = items.joinToString("|") { "${it.ts}${it.name}${relShort(it.ts - now)}" }
+        val sig = items.joinToString("|") { "${it.ts}${it.name}" }
         if (sig == dueSig) return
         dueSig = sig
         dueSection.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
