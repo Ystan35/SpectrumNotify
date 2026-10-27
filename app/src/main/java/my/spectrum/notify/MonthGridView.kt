@@ -1,6 +1,7 @@
 package my.spectrum.notify
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
@@ -34,10 +35,115 @@ object MonthGridView {
     }
 
     /** Renders the whole month view into [box]. [onChanged] after edits. */
+    /** Day sheet: what's on this date — academic marker, classes, events, add-event row. */
+    private fun openDaySheet(
+        activity: Activity,
+        date: LocalDate,
+        events: List<Events.Event>,
+        onChanged: () -> Unit,
+        redraw: () -> Unit,
+    ) {
+        val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
+        val sheet = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(20))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(22).toFloat()
+                setColor(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt())
+                setStroke(dp(1), if (Ui.dark) 0xFF3A4150.toInt() else 0xFFD8D4CA.toInt())
+            }
+        }
+        sheet.addView(TextView(activity).apply {
+            text = EventsUi.fmtDate(date)
+            textSize = 20f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+        })
+
+        val academic = AcademicCalendar.describe(activity, date)
+        if (academic != null) sheet.addView(TextView(activity).apply {
+            text = academic
+            textSize = 13f; setTextColor(Ui.ORANGE); setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(6), 0, 0)
+        })
+
+        val inTeaching = AcademicCalendar.inTeaching(activity, date)
+        val dow = date.dayOfWeek.value
+        val classList = if (inTeaching) Timetable.all(activity).filter { it.day == dow }.sortedBy { it.start } else emptyList()
+
+        fun sectionLabel(t: String) {
+            sheet.addView(TextView(activity).apply {
+                text = t; textSize = 13f; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(12), 0, dp(2))
+            })
+        }
+        fun itemRow(title: String, sub: String, onClick: (() -> Unit)? = null) {
+            val r = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(12))
+                background = roundBg(Ui.BAR, Ui.BORDER, activity, 12)
+                isClickable = onClick != null
+                if (onClick != null) setOnClickListener { onChanged(); onClick() }
+            }
+            r.addView(TextView(activity).apply { text = title; textSize = 14f; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD) })
+            r.addView(TextView(activity).apply { text = sub; textSize = 12f; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            sheet.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+        }
+
+        if (classList.isNotEmpty()) {
+            sectionLabel("Classes")
+            for (sl in classList) {
+                itemRow(
+                    Shorts.display(activity, sl.course) + (if (sl.title.isNotEmpty()) " · " + sl.title else ""),
+                    EventsUi.fmtMin(sl.start) + "–" + EventsUi.fmtMin(sl.end),
+                )
+            }
+        }
+        if (events.isNotEmpty()) {
+            sectionLabel("Events")
+            for (ev in events.sortedBy { it.startTime }) {
+                itemRow(
+                    ev.title,
+                    EventsUi.fmtMin(ev.startTime) + "–" + EventsUi.fmtMin(ev.endTime) + (if (ev.note.isNotEmpty()) " · " + ev.note else ""),
+                ) { EventsUi.editor(activity, ev, onChanged) }
+            }
+        }
+        if (classList.isEmpty() && events.isEmpty()) {
+            sheet.addView(TextView(activity).apply {
+                text = if (inTeaching) "Nothing on this day." else "No classes (holiday mode) and no events."
+                textSize = 13f; setTextColor(Ui.DIM); setPadding(0, dp(10), 0, 0)
+            })
+        }
+        itemRow("Add an event on this day", "Opens the event editor with this date filled in") {
+            EventsUi.editor(activity, null, onChanged, prefillDate = date)
+        }
+
+        val dialog = AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_DayNight)
+            .setView(sheet)
+            .create()
+        dialog.show()
+        dialog.window?.setLayout(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        dialog.window?.setGravity(Gravity.BOTTOM)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.setDimAmount(0.55f)
+    }
+
     fun render(activity: Activity, box: LinearLayout, onChanged: () -> Unit) {
         val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
         var month: YearMonth = YearMonth.now()
         var selected: LocalDate = LocalDate.now()
+
+        // what each day holds: class days (Mon-Sun during teaching weeks), event days,
+        // academic markers. Days with NOTHING stay completely plain — no color at all.
+        val slots = Timetable.all(activity)
+        val classDays = slots.map { it.day }.toSet()
+        val eventsByDate = HashMap<LocalDate, MutableList<Events.Event>>()
+        for (e in Events.all(activity)) {
+            for ((d, _) in e.upcoming(month.atDay(1).minusMonths(1), 3 * 31 + 10L)) {
+                eventsByDate.getOrPut(d) { ArrayList() }.add(e)
+            }
+        }
 
         val holder = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         box.addView(holder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -78,7 +184,7 @@ object MonthGridView {
             // ---- grid
             val gridHolder = FrameLayout(activity)
             val grid = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-            val eventsOn = eventsOn(activity, month)
+            val eventsOn = eventsByDate.filterKeys { it.monthValue == month.monthValue && it.year == month.year }
             val first = month.atDay(1)
             val lead = (first.dayOfWeek.value + 6) % 7 // Monday-first
             val days = month.lengthOfMonth()
@@ -105,22 +211,33 @@ object MonthGridView {
                 val date = month.atDay(dayNum)
                 val isSel = date == selected
                 val isToday = date == LocalDate.now()
-                val academic = AcademicCalendar.describe(activity, date)
                 val hasEvents = eventsOn[date]?.isNotEmpty() == true
+                // class days only count when the day is inside teaching weeks (holiday mode)
+                val hasClasses = date.dayOfWeek.value in classDays && AcademicCalendar.inTeaching(activity, date)
+                val hasAnything = hasEvents || hasClasses
 
                 val cellBox = LinearLayout(activity).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
                     setPadding(dp(2), dp(4), dp(2), dp(4))
+                    // ONLY tint cells that hold something; empty/break days stay plain
                     background = android.graphics.drawable.GradientDrawable().apply {
                         cornerRadius = dp(8).toFloat()
-                        setColor(if (isSel) Ui.tint(Ui.CYAN, 0x30) else 0x00000000)
+                        when {
+                            isSel -> setColor(Ui.tint(Ui.CYAN, 0x30))
+                            hasAnything -> setColor(Ui.tint(Ui.CYAN, 0x14))
+                            else -> setColor(0x00000000)
+                        }
                         setStroke(dp(1), if (isToday) Ui.CYAN else 0x00000000)
                     }
                     isClickable = true
                     contentDescription = "Day $dayNum ${month.format(DateTimeFormatter.ofPattern("MMMM yyyy"))}" +
-                        (academic?.let { ", $it" } ?: "") + (if (hasEvents) ", has events" else "")
-                    setOnClickListener { selected = date; redraw() }
+                        (if (hasClasses) ", has classes" else "") +
+                        (if (hasEvents) ", has events" else "")
+                    setOnClickListener {
+                        selected = date
+                        openDaySheet(activity, date, eventsOn[date] ?: emptyList(), onChanged, redraw)
+                    }
                 }
                 cellBox.addView(TextView(activity).apply {
                     text = dayNum.toString()
@@ -129,9 +246,9 @@ object MonthGridView {
                     setTypeface(typeface, if (isToday || isSel) Typeface.BOLD else Typeface.NORMAL)
                     gravity = Gravity.CENTER
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                // marker row: up to 3 dots
+                // marker row: orange dot = classes that day, cyan dot = events; plain days have none
                 val dots = LinearLayout(activity).apply { gravity = Gravity.CENTER }
-                if (academic != null) dots.addView(dot(activity, Ui.RED))
+                if (hasClasses) dots.addView(dot(activity, Ui.ORANGE))
                 if (hasEvents) dots.addView(dot(activity, Ui.CYAN))
                 if (dots.childCount > 0) cellBox.addView(dots, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)))
                 else cellBox.addView(View(activity), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)))
