@@ -935,7 +935,10 @@ class MainActivity : Activity() {
         val d2 = localDt(c.start).dayOfWeek.value
         val s2 = localDt(c.start).let { it.hour * 60 + it.minute }
         val e2 = localDt(c.end).let { it.hour * 60 + it.minute }
-        val (meeting, att, coursePage) = Checker.linksForCourse(this, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = c.name.contains("lecture", true) || c.name.contains("kuliah", true), day = d2, startMin = s2, endMin = e2)
+        val (meetingResolved, attResolved, coursePage) = Checker.linksForCourse(this, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = c.name.contains("lecture", true) || c.name.contains("kuliah", true), day = d2, startMin = s2, endMin = e2)
+        // the card's own link is the authoritative, per-event match — use it first
+        val meeting = c.link.ifEmpty { meetingResolved }
+        val att = if (c.link.isNotEmpty()) c.link else attResolved
         fun row(title: String, subText: String, url: String?) {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
