@@ -130,35 +130,36 @@ object Checker {
     }
 
     /** The Spectrum attendance page for a course, e.g. …/mod/attendance/view.php?id=1127746, or "" if unknown. */
-    fun attendanceUrl(ctx: Context, courseId: Long): String {
+    fun attendanceUrl(ctx: Context, courseId: Long, preferLec: Boolean? = null): String {
         if (courseId == 0L) return ""
         val site = Prefs(ctx).site
         val st = State(ctx)
-        // prefer the multi-attendance store: score each module by how well its group tokens
-        // (e.g. "occ2") match the user's OWN occ for this course — Spectrum lists one
-        // attendance module per occ, and first-wins gave the WRONG occ's page
+        val labels = st.j.optJSONObject("attlabels")
         val multi = st.j.optJSONObject("attcmids")
         if (multi != null && multi.length() > 0) {
             val mine = Groups.mine(st, Prefs(ctx), Courses.all(ctx).firstOrNull { it.id == courseId }?.code ?: "")
-            var best: Triple<Long, Int, Boolean>? = null  // cmid, score, isLectureLike
+            data class Cand(val cmid: Long, val score: Int, val kind: String, val name: String)
+            val cands = ArrayList<Cand>()
             for (k in multi.keys()) {
                 if (!k.startsWith("$courseId:")) continue
                 val cmid = k.substringAfter(':').toLongOrNull() ?: continue
                 val toks = multi.optJSONArray(k)?.let { arr -> (0 until arr.length()).map { arr.optString(it) } } ?: emptyList()
-                val score = toks.intersect(mine).size
-                // tie-breaker: a lecture attendance page covers every occ; a tutorial-only
-                // page belongs to one group. Prefer lecture-like modules on ties.
-                val lectureLike = toks.size > 1 || toks.any { it.length > 4 } // multi-occ lists look like "occ4","occ5"...
-                val label = st.j.optJSONObject("attlabels")?.optString("$courseId:$cmid", "") ?: ""
-                val isLec = label.contains("lecture", true) || label.contains("kuliah", true) || lectureLike
-                if (best == null || score > best.second || (score == best.second && isLec && !best.third)) {
-                    best = Triple(cmid, score, isLec)
-                }
+                val name = labels?.optJSONObject("$courseId:$cmid")?.optString("name", "") ?: ""
+                val kind = labels?.optJSONObject("$courseId:$cmid")?.optString("kind", "other") ?: "other"
+                cands.add(Cand(cmid, toks.intersect(mine).size, kind, name))
             }
-            val picked = best?.first
-                ?: multi.keys().asSequence().filter { it.startsWith("$courseId:") }
-                    .map { it.substringAfter(':').toLongOrNull() ?: 0L }.firstOrNull()
-            return if (picked != null && picked != 0L && site.isNotEmpty()) "$site/mod/attendance/view.php?id=$picked" else ""
+            if (cands.isNotEmpty()) {
+                // USER RULE: filter attendance titles by lecture / L / tutorial / class.
+                // preferLec explicitly picks the kind; null = token score decides, ties prefer lec.
+                val kindWanted = when (preferLec) { true -> "lec"; false -> "tut"; null -> null }
+                val filtered = if (kindWanted != null) cands.filter { it.kind == kindWanted } else cands
+                val pool = filtered.ifEmpty { cands }
+                val best = pool.maxByOrNull { it.score }
+                val picked = (if (best != null && best.score > 0) best
+                    else pool.firstOrNull { it.kind == "lec" } ?: pool.firstOrNull())?.cmid
+                    ?: 0L
+                return if (picked != 0L && site.isNotEmpty()) "$site/mod/attendance/view.php?id=$picked" else ""
+            }
         }
         // legacy single-value fallback
         val id = try { st.j.optJSONObject("attcmid")?.optLong(courseId.toString(), 0L) ?: 0L } catch (_: Exception) { 0L }
@@ -174,10 +175,10 @@ object Checker {
      * and the hero card, so every screen shows the same thing for the same class.
      * Returns (meeting, attendance, coursePage); any may be "".
      */
-    fun linksForCourse(ctx: Context, code: String, courseId: Long, extraTokens: Set<String> = emptySet()): Triple<String, String, String> {
+    fun linksForCourse(ctx: Context, code: String, courseId: Long, extraTokens: Set<String> = emptySet(), preferLec: Boolean? = null): Triple<String, String, String> {
         val p = Prefs(ctx)
         val id = if (courseId != 0L) courseId else courseIdForCode(ctx, code)
-        val att = Timetable.userAttLinkRaw(ctx, code).ifEmpty { attendanceUrl(ctx, id) }
+        val att = Timetable.userAttLinkRaw(ctx, code).ifEmpty { attendanceUrl(ctx, id, preferLec) }
         val meeting = Timetable.meetingLinkOf(ctx, code).ifEmpty {
             if (id == 0L) "" else {
                 val ls = linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
@@ -335,12 +336,20 @@ object Checker {
                     // "Attendance Occ 4"). Remember every one with its group tokens so the
                     // resolver can pick the user's OWN occ page instead of the first captured.
                     val attKey = m.optLong("id")
-                    val toks = groupTokens(m.str("name") + " " + m.str("intro"))
+                    val nm = m.str("name")
+                    val toks = groupTokens(nm + " " + m.str("intro"))
                     if (attCmids[cid] == null) attCmids[cid] = HashMap()
                     (attCmids[cid] as HashMap<Long, MutableSet<String>>)[attKey] = toks.toMutableSet()
-                    // remember the module name so the resolver can prefer lecture pages on ties
+                    // remember the module name AND its kind so the resolver can filter
+                    // directly by lecture/tutorial (user request: filter titles containing
+                    // lecture / L / tutorial / class)
+                    val kind = when {
+                        nm.contains("lecture", true) || nm.contains("kuliah", true) || nm.contains("\bL\b", true) -> "lec"
+                        nm.contains("tutorial", true) || nm.contains("tutor", true) || nm.contains("\bT\b", true) || nm.contains("kelas", true) || nm.contains("class", true) -> "tut"
+                        else -> "other"
+                    }
                     val lbl = st.j.optJSONObject("attlabels") ?: JSONObject()
-                    lbl.put("$cid:$attKey", m.str("name"))
+                    lbl.put("$cid:$attKey", JSONObject().put("name", nm).put("kind", kind))
                     st.j.put("attlabels", lbl)
                 }
                 // Occ detection via availability: a module the user CAN see that names an Occ
