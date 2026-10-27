@@ -800,13 +800,13 @@ class MainActivity : Activity() {
             val hasLink = c.link.isNotEmpty()
             if (hasLink) actionsRow.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Attendance", !hasLink) {
-                // same resolver as the timetable: pasted link, else the auto-detected page,
-                // else the course page so the button never dead-ends
+                // the card's own link first: it came from THIS event, already scored against
+                // its name/day/occ — reverse-engineer it, don't re-resolve from the course pool
                 val d1 = localDt(c.start).dayOfWeek.value
                 val s1 = localDt(c.start).let { it.hour * 60 + it.minute }
                 val e1 = localDt(c.end).let { it.hour * 60 + it.minute }
                 val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = c.name.contains("lecture", true) || c.name.contains("kuliah", true), day = d1, startMin = s1, endMin = e1)
-                val target = att.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
+                val target = c.link.ifEmpty { att }.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
                 if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
