@@ -13,6 +13,7 @@ import android.widget.TextView
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Month-grid calendar (replaces the flat Events list, per user decision):
@@ -91,9 +92,25 @@ object MonthGridView {
         if (classList.isNotEmpty()) {
             sectionLabel("Classes")
             for (sl in classList) {
+                val fullName: String = run {
+                    var n = ""
+                    val codeUpper = sl.course.uppercase(java.util.Locale.ROOT)
+                    for (cc in Courses.all(activity)) if (cc.code.uppercase(java.util.Locale.ROOT) == codeUpper) n = cc.name
+                    if (n.isEmpty()) {
+                        val cc = Catalog.load(activity)[codeUpper]
+                        if (cc != null) n = cc.name
+                    }
+                    n
+                }
+                // place: user-set location first, else the slot's own note/room
+                val place = Timetable.locationOf(activity, sl.course)
+                    .ifEmpty { sl.note }
+                    .ifEmpty { "Room not set" }
                 itemRow(
                     Shorts.display(activity, sl.course) + (if (sl.title.isNotEmpty()) " · " + sl.title else ""),
-                    EventsUi.fmtMin(sl.start) + "–" + EventsUi.fmtMin(sl.end),
+                    EventsUi.fmtMin(sl.start) + "–" + EventsUi.fmtMin(sl.end) +
+                        (if (fullName.isNotEmpty()) " · " + fullName else "") +
+                        " · " + place,
                 )
             }
         }
@@ -173,10 +190,22 @@ object MonthGridView {
                     setOnClickListener { onClick() }
                 }
             head.addView(arrowBtn("‹", "Previous month") { month = month.minusMonths(1); redraw() })
+            // center = date picker: jump straight to any month (faster than ‹ › spamming)
             head.addView(TextView(activity).apply {
                 text = month.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
                 textSize = 16f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
                 gravity = Gravity.CENTER
+                isClickable = true
+                contentDescription = "Choose month"
+                background = rippleBg(Ui.BAR, 0, activity, 12)
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                setOnClickListener {
+                    android.app.DatePickerDialog(activity, { _, y, m, d ->
+                        month = YearMonth.of(y, m + 1)
+                        selected = if (selected.month == month.month && selected.year == month.year) selected else month.atDay(1)
+                        redraw()
+                    }, month.year, month.monthValue - 1, 1).show()
+                }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             head.addView(arrowBtn("›", "Next month") { month = month.plusMonths(1); redraw() })
             holder.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
