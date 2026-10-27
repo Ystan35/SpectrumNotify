@@ -207,31 +207,6 @@ class SettingsActivity : Activity() {
             p.myGroups, "WIX1003:occ2, WIX1003:t3",
         )
 
-        target = accordion(col, "CLOUD PUSH", icon = R.drawable.ic_refresh,
-            contents = listOf("Server URL", "Server key"))
-        target.label(
-            "Push alerts come from a server that checks Spectrum for you, so they arrive even when Android stops background checks. " +
-                "The server (a Cloudflare Worker) is run by the app's maintainer and holds your Spectrum token — enable only if you accept that.",
-            12f, Ui.DIM, 8,
-        )
-        add(
-            "workerUrl", "Server URL",
-            "Address of the cloud poller's register endpoint, for example https://your-worker.your-subdomain.workers.dev/register",
-            p.workerUrl, "https://...workers.dev/register",
-        )
-        add(
-            "workerKey", "Server key",
-            "The shared key the server checks. Ask the person who set up the server for it.",
-            p.workerKey, "",
-        )
-        target.chips(listOf("Cloud push on"), buildSet { if (p.cloudPush) add(0) }, true) { sel ->
-            val on = 0 in sel
-            if (on != p.cloudPush) {
-                p.cloudPush = on
-                if (on) PushService.registerWithWorker(this)
-            }
-        }
-
         target = accordion(col, "DEADLINES", icon = R.drawable.ic_cat_deadline,
             contents = listOf("Remind me before a deadline"))
         add(
@@ -467,11 +442,6 @@ class SettingsActivity : Activity() {
 
         p.manualCourses = f("manualCourses")
         p.skipClasses = f("skipClasses")
-        p.workerUrl = f("workerUrl")
-        p.workerKey = f("workerKey")
-        if (p.cloudPush && p.workerUrl.isNotEmpty() && p.workerKey.isNotEmpty() && p.token.isNotEmpty()) {
-            Thread { PushService.registerWithWorker(applicationContext) }.start()
-        }
         // p.myGroups is owned by the Courses page now — never written here
         p.deadlineHours = f("deadlineHours")
         Scheduler.ensurePolling(this)

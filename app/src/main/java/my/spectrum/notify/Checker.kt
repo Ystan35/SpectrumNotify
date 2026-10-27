@@ -140,13 +140,20 @@ object Checker {
         val multi = st.j.optJSONObject("attcmids")
         if (multi != null && multi.length() > 0) {
             val mine = Groups.mine(st, Prefs(ctx), Courses.all(ctx).firstOrNull { it.id == courseId }?.code ?: "")
-            var best: Pair<Long, Int>? = null
+            var best: Triple<Long, Int, Boolean>? = null  // cmid, score, isLectureLike
             for (k in multi.keys()) {
                 if (!k.startsWith("$courseId:")) continue
                 val cmid = k.substringAfter(':').toLongOrNull() ?: continue
                 val toks = multi.optJSONArray(k)?.let { arr -> (0 until arr.length()).map { arr.optString(it) } } ?: emptyList()
                 val score = toks.intersect(mine).size
-                if (best == null || score > best.second) best = cmid to score
+                // tie-breaker: a lecture attendance page covers every occ; a tutorial-only
+                // page belongs to one group. Prefer lecture-like modules on ties.
+                val lectureLike = toks.size > 1 || toks.any { it.length > 4 } // multi-occ lists look like "occ4","occ5"...
+                val label = st.j.optJSONObject("attlabels")?.optString("$courseId:$cmid", "") ?: ""
+                val isLec = label.contains("lecture", true) || label.contains("kuliah", true) || lectureLike
+                if (best == null || score > best.second || (score == best.second && isLec && !best.third)) {
+                    best = Triple(cmid, score, isLec)
+                }
             }
             val picked = best?.first
                 ?: multi.keys().asSequence().filter { it.startsWith("$courseId:") }
@@ -297,7 +304,8 @@ object Checker {
 
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
                                secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
-                               attCmids: MutableMap<Long, HashMap<Long, MutableSet<String>>>, occSeen: MutableMap<Long, MutableSet<String>>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
+                               attCmids: MutableMap<Long, HashMap<Long, MutableSet<String>>>, occSeen: MutableMap<Long, MutableSet<String>>,
+                               st: State): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
         val raw = ArrayList<Triple<String, String, Long>>()
         val cid = c.optLong("id")
@@ -330,6 +338,10 @@ object Checker {
                     val toks = groupTokens(m.str("name") + " " + m.str("intro"))
                     if (attCmids[cid] == null) attCmids[cid] = HashMap()
                     (attCmids[cid] as HashMap<Long, MutableSet<String>>)[attKey] = toks.toMutableSet()
+                    // remember the module name so the resolver can prefer lecture pages on ties
+                    val lbl = st.j.optJSONObject("attlabels") ?: JSONObject()
+                    lbl.put("$cid:$attKey", m.str("name"))
+                    st.j.put("attlabels", lbl)
                 }
                 // Occ detection via availability: a module the user CAN see that names an Occ
                 // means the user belongs to it (Spectrum restricts other Occs' pages).
@@ -409,7 +421,7 @@ object Checker {
             val secOf = HashMap<String, String>()
             val secNames = LinkedHashMap<String, String>()
             val result = try {
-                snapshotCourse(api, p.site, c, extra, secOf, secNames, attCmids, occSeen)
+                snapshotCourse(api, p.site, c, extra, secOf, secNames, attCmids, occSeen, st)
             } catch (e: Exception) {
                 Log.w(TAG, "course $cid skipped: $e")
                 prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }
