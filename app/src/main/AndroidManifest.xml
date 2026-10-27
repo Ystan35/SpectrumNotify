@@ -35,6 +35,7 @@
         </activity>
 
         <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".CalendarWebActivity" android:exported="false" />
         <activity android:name=".NotificationsActivity" android:exported="false" android:launchMode="singleTop" />
         <activity android:name=".TimetableActivity" android:exported="false" />
         <activity android:name=".CoursesActivity" android:exported="false" />
@@ -56,6 +57,7 @@
                 android:resource="@xml/next_class_widget_info" />
         </receiver>
         <receiver android:name=".PollAlarmReceiver" android:exported="false" />
+        <receiver android:name=".EventAlarmReceiver" android:exported="false" />
 
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
@@ -63,5 +65,12 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+            <service
+            android:name=".PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

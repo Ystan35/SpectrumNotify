@@ -1,0 +1,1426 @@
+package my.spectrum.notify;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.net.Uri;
+import android.text.SpannableString;
+import android.text.style.ForegroundColorSpan;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.Spinner;
+import android.widget.SpinnerAdapter;
+import android.widget.TextView;
+import androidx.core.view.GravityCompat;
+import com.google.firebase.encoders.json.BuildConfig;
+import com.google.firebase.messaging.Constants;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+import kotlin.Metadata;
+import kotlin.Unit;
+import kotlin.collections.CollectionsKt;
+import kotlin.jvm.functions.Function0;
+import kotlin.jvm.functions.Function1;
+import kotlin.jvm.internal.Intrinsics;
+import kotlin.jvm.internal.Ref;
+import kotlin.ranges.RangesKt;
+import my.spectrum.notify.Shortcuts;
+
+/* compiled from: Ui.kt */
+@Metadata(d1 = {"\u0000°\u0001\n\u0000\n\u0002\u0010\u000b\n\u0002\b\u0005\n\u0002\u0010\b\n\u0000\n\u0002\u0018\u0002\n\u0002\b\u0003\n\u0002\u0018\u0002\n\u0002\b\u0002\n\u0002\u0018\u0002\n\u0000\n\u0002\u0018\u0002\n\u0002\u0018\u0002\n\u0000\n\u0002\u0010\u000e\n\u0002\b\u0002\n\u0002\u0018\u0002\n\u0002\u0010\u0002\n\u0000\n\u0002\u0018\u0002\n\u0002\b\u0002\n\u0002\u0018\u0002\n\u0002\b\u0003\n\u0002\u0018\u0002\n\u0002\b\u0003\n\u0002\u0018\u0002\n\u0002\b\u0003\n\u0002\u0018\u0002\n\u0002\b\u0004\n\u0002\u0010\u0007\n\u0002\b\u0004\n\u0002\u0010 \n\u0000\n\u0002\u0010\"\n\u0002\b\u0002\n\u0002\u0018\u0002\n\u0002\b\u0004\n\u0002\u0018\u0002\n\u0002\b\u000b\n\u0002\u0018\u0002\n\u0002\b\r\n\u0002\u0018\u0002\n\u0002\b\u0003\n\u0002\u0018\u0002\n\u0002\b\u0005\n\u0002\u0018\u0002\n\u0002\b\u0002\u001a\u0006\u0010\u0006\u001a\u00020\u0007\u001a(\u0010\b\u001a\u00020\t2\u0006\u0010\n\u001a\u00020\u00072\u0006\u0010\u000b\u001a\u00020\u00072\u0006\u0010\f\u001a\u00020\r2\b\b\u0002\u0010\u000e\u001a\u00020\u0007\u001a(\u0010\u000f\u001a\u00020\u00102\u0006\u0010\n\u001a\u00020\u00072\u0006\u0010\u000b\u001a\u00020\u00072\u0006\u0010\f\u001a\u00020\r2\b\b\u0002\u0010\u000e\u001a\u00020\u0007\u001a(\u0010\u0011\u001a\u00020\u0012*\u00020\u00132\u0006\u0010\u0014\u001a\u00020\u00152\u0006\u0010\u0016\u001a\u00020\u00152\f\u0010\u0017\u001a\b\u0012\u0004\u0012\u00020\u00190\u0018\u001a\u001e\u0010\u001a\u001a\u00020\u0019*\u00020\u001b2\u0006\u0010\u001c\u001a\u00020\u00132\n\u0010\u001d\u001a\u0006\u0012\u0002\b\u00030\u001e\u001a\n\u0010\u001f\u001a\u00020\u0019*\u00020\u001b\u001a \u0010 \u001a\u00020\u0019*\u00020\u001b2\u0006\u0010!\u001a\u00020\"2\f\u0010#\u001a\b\u0012\u0004\u0012\u00020\u00190\u0018\u001a\u0012\u0010$\u001a\u00020\u0019*\u00020\u001b2\u0006\u0010%\u001a\u00020&\u001a\u0016\u0010'\u001a\u00020\u0013*\u00020\u001b2\n\u0010\u001d\u001a\u0006\u0012\u0002\b\u00030\u001e\u001a \u0010(\u001a\u00020\u0012*\u00020\u00132\u0006\u0010\u0014\u001a\u00020\u00152\f\u0010\u0017\u001a\b\u0012\u0004\u0012\u00020\u00190\u0018\u001aP\u0010)\u001a\u00020**\u00020\r2\u0006\u0010+\u001a\u00020\u00152\u0006\u0010,\u001a\u00020\u00012\b\b\u0002\u0010-\u001a\u00020\u00072\b\b\u0002\u0010.\u001a\u00020/2\b\b\u0002\u00100\u001a\u00020\u00072\b\b\u0002\u00101\u001a\u00020\u00072\f\u0010\u0017\u001a\b\u0012\u0004\u0012\u00020\u00190\u0018\u001aH\u00102\u001a\u00020\u0013*\u00020\u00132\f\u00103\u001a\b\u0012\u0004\u0012\u00020\u0015042\f\u00105\u001a\b\u0012\u0004\u0012\u00020\u0007062\u0006\u00107\u001a\u00020\u00012\u0018\u00108\u001a\u0014\u0012\n\u0012\b\u0012\u0004\u0012\u00020\u000706\u0012\u0004\u0012\u00020\u001909\u001a\u0012\u0010:\u001a\u00020\u0019*\u00020\u001b2\u0006\u0010%\u001a\u00020&\u001a\u0012\u0010;\u001a\u00020\u0007*\u00020\r2\u0006\u0010<\u001a\u00020\u0007\u001a0\u0010=\u001a\u00020>*\u00020\u00132\u0006\u0010?\u001a\u00020\u00152\b\b\u0002\u0010@\u001a\u00020\u00152\b\b\u0002\u0010A\u001a\u00020\u00012\b\b\u0002\u0010B\u001a\u00020\u0007\u001a\n\u0010C\u001a\u00020\u0019*\u00020\u001b\u001a\u0012\u0010D\u001a\u00020\u0013*\u00020\u001b2\u0006\u0010E\u001a\u00020\u0001\u001a0\u0010+\u001a\u00020**\u00020\u00132\u0006\u0010F\u001a\u00020\u00152\b\b\u0002\u0010.\u001a\u00020/2\b\b\u0002\u0010G\u001a\u00020\u00072\b\b\u0002\u0010H\u001a\u00020\u0007\u001a\n\u0010I\u001a\u00020J*\u00020\u0013\u001a\n\u0010K\u001a\u00020\u0019*\u00020\u001b\u001aZ\u0010L\u001a\u00020\u0013*\u00020\u001b2\u0006\u0010M\u001a\u00020\u00152\b\b\u0002\u0010N\u001a\u00020\u00072\b\b\u0002\u0010O\u001a\u00020\u00152\u0010\b\u0002\u0010P\u001a\n\u0012\u0004\u0012\u00020\u0019\u0018\u00010\u00182\u000e\b\u0002\u0010Q\u001a\b\u0012\u0002\b\u0003\u0018\u00010\u001e2\u0010\b\u0002\u0010#\u001a\n\u0012\u0004\u0012\u00020\u0019\u0018\u00010\u0018\u001a\u001c\u0010R\u001a\u00020\u0019*\u00020\u00132\u0006\u0010M\u001a\u00020\u00152\b\b\u0002\u0010S\u001a\u00020\u0015\u001a6\u0010T\u001a\u00020>*\u00020\u00132\u0006\u0010M\u001a\u00020\u00152\u0006\u0010\u0016\u001a\u00020\u00152\u0006\u0010?\u001a\u00020\u00152\b\b\u0002\u0010@\u001a\u00020\u00152\b\b\u0002\u0010B\u001a\u00020\u0007\u001a0\u0010U\u001a\u00020\u0019*\u00020\u001b2\u0006\u0010V\u001a\u00020*2\u0006\u0010W\u001a\u00020X2\u0006\u0010%\u001a\u00020&2\f\u0010Y\u001a\b\u0012\u0004\u0012\u00020\u00190\u0018\u001a\u001a\u0010Z\u001a\u00020\u0019*\u00020\u001b2\u0006\u0010%\u001a\u00020&2\u0006\u0010W\u001a\u00020X\u001a4\u0010[\u001a\u00020\\*\u00020\u001b2\f\u0010]\u001a\b\u0012\u0004\u0012\u00020\u0015042\u0006\u0010,\u001a\u00020\u00072\u0012\u0010^\u001a\u000e\u0012\u0004\u0012\u00020\u0007\u0012\u0004\u0012\u00020\u001909\u001a2\u0010_\u001a\u000e\u0012\u0004\u0012\u00020\u0007\u0012\u0004\u0012\u00020\u001909*\u00020\u00132\u0006\u0010,\u001a\u00020\u00072\u0012\u0010`\u001a\u000e\u0012\u0004\u0012\u00020\u0007\u0012\u0004\u0012\u00020\u001909\u001a&\u0010a\u001a\u00020b*\u00020\r2\u0006\u0010c\u001a\u00020\u00072\u0012\u0010`\u001a\u000e\u0012\u0004\u0012\u00020\u0007\u0012\u0004\u0012\u00020\u001909\"\u001a\u0010\u0000\u001a\u00020\u0001X\u0086\u000e¢\u0006\u000e\n\u0000\u001a\u0004\b\u0002\u0010\u0003\"\u0004\b\u0004\u0010\u0005¨\u0006d"}, d2 = {"lookChanged", BuildConfig.FLAVOR, "getLookChanged", "()Z", "setLookChanged", "(Z)V", "onAccent", BuildConfig.FLAVOR, "rippleBg", "Landroid/graphics/drawable/RippleDrawable;", "fill", "stroke", "ctx", "Landroid/content/Context;", "radius", "roundBg", "Landroid/graphics/drawable/GradientDrawable;", "action", "Landroid/widget/Button;", "Landroid/widget/LinearLayout;", "text", BuildConfig.FLAVOR, "help", "onClick", "Lkotlin/Function0;", BuildConfig.FLAVOR, "addNavBar", "Landroid/app/Activity;", "page", "active", "Ljava/lang/Class;", "applyBars", "attachPullToRefresh", "sv", "Landroid/widget/ScrollView;", "onRefresh", "attachToolbox", "root", "Landroid/widget/FrameLayout;", "bottomNav", "btn", "chip", "Landroid/widget/TextView;", Constants.ScionAnalytics.PARAM_LABEL, "selected", "accent", "size", BuildConfig.FLAVOR, "padH", "dot", "chips", "labels", BuildConfig.FLAVOR, "initial", BuildConfig.FLAVOR, "multi", "onChange", "Lkotlin/Function1;", "closeQuickSheet", "dp", "n", "field", "Landroid/widget/EditText;", "value", "hint", "password", "kind", "goToHome", "headerRow", "homeMode", "t", "color", "top", "navBellDot", "Landroid/view/View;", "recreateIfLookChanged", "screen", "title", "actionIcon", "actionDesc", "onAction", "navTo", "section", "intro", "setting", "setupFabDrag", "fab", "fabLp", "Landroid/widget/FrameLayout$LayoutParams;", "onTap", "showQuickSheet", "spinner", "Landroid/widget/Spinner;", "items", "onSelect", "swatches", "onPick", "timeField", "Lmy/spectrum/notify/TimeField;", "minutes", "app_release"}, k = 2, mv = {1, 9, 0}, xi = 48)
+/* loaded from: classes.dex */
+public final class UiKt {
+    private static volatile boolean lookChanged;
+
+    public static final Button action(LinearLayout linearLayout, String text, String help, Function0<Unit> onClick) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Intrinsics.checkNotNullParameter(text, "text");
+        Intrinsics.checkNotNullParameter(help, "help");
+        Intrinsics.checkNotNullParameter(onClick, "onClick");
+        Button btn = btn(linearLayout, text, onClick);
+        label(linearLayout, help, 12.0f, Ui.INSTANCE.getDIM(), 4);
+        return btn;
+    }
+
+    public static final void addNavBar(Activity activity, LinearLayout page, Class<?> active) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(page, "page");
+        Intrinsics.checkNotNullParameter(active, "active");
+        View view = new View(activity);
+        view.setBackgroundColor(Ui.INSTANCE.getBORDER());
+        page.addView(view, new LinearLayout.LayoutParams(-1, 1));
+        page.addView(bottomNav(activity, active), new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    public static final void applyBars(Activity activity) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        try {
+            activity.requestWindowFeature(1);
+        } catch (Exception unused) {
+        }
+        String look = Ui.INSTANCE.getLook();
+        Ui.INSTANCE.setup(activity);
+        activity.getWindow().setStatusBarColor(Ui.INSTANCE.getBG());
+        activity.getWindow().setNavigationBarColor(Ui.INSTANCE.getBG());
+        if (!Ui.INSTANCE.getDark()) {
+            activity.getWindow().getDecorView().setSystemUiVisibility(activity.getWindow().getDecorView().getSystemUiVisibility() | 8208);
+        }
+        if (look.length() <= 0 || Intrinsics.areEqual(look, Ui.INSTANCE.getLook())) {
+            return;
+        }
+        lookChanged = true;
+    }
+
+    public static final void attachPullToRefresh(final Activity activity, final ScrollView sv, final Function0<Unit> onRefresh) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(sv, "sv");
+        Intrinsics.checkNotNullParameter(onRefresh, "onRefresh");
+        final Ref.FloatRef floatRef = new Ref.FloatRef();
+        final Ref.BooleanRef booleanRef = new Ref.BooleanRef();
+        final Ref.BooleanRef booleanRef2 = new Ref.BooleanRef();
+        final Ref.ObjectRef objectRef = new Ref.ObjectRef();
+        final Ref.FloatRef floatRef2 = new Ref.FloatRef();
+        sv.setOnTouchListener(new View.OnTouchListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda4
+            @Override // android.view.View.OnTouchListener
+            public final boolean onTouch(View view, MotionEvent motionEvent) {
+                boolean attachPullToRefresh$lambda$59;
+                attachPullToRefresh$lambda$59 = UiKt.attachPullToRefresh$lambda$59(Ref.FloatRef.this, booleanRef, sv, booleanRef2, floatRef2, objectRef, activity, onRefresh, view, motionEvent);
+                return attachPullToRefresh$lambda$59;
+            }
+        });
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    /* JADX WARN: Code restructure failed: missing block: B:8:0x0049, code lost:
+    
+        if (r6 != 3) goto L75;
+     */
+    /* JADX WARN: Multi-variable type inference failed */
+    /* JADX WARN: Type inference failed for: r0v20, types: [T, android.widget.TextView] */
+    /*
+        Code decompiled incorrectly, please refer to instructions dump.
+        To view partially-correct add '--show-bad-code' argument
+    */
+    public static final boolean attachPullToRefresh$lambda$59(kotlin.jvm.internal.Ref.FloatRef r15, kotlin.jvm.internal.Ref.BooleanRef r16, android.widget.ScrollView r17, kotlin.jvm.internal.Ref.BooleanRef r18, kotlin.jvm.internal.Ref.FloatRef r19, kotlin.jvm.internal.Ref.ObjectRef r20, android.app.Activity r21, kotlin.jvm.functions.Function0 r22, android.view.View r23, android.view.MotionEvent r24) {
+        /*
+            Method dump skipped, instructions count: 397
+            To view this dump add '--comments-level debug' option
+        */
+        throw new UnsupportedOperationException("Method not decompiled: my.spectrum.notify.UiKt.attachPullToRefresh$lambda$59(kotlin.jvm.internal.Ref$FloatRef, kotlin.jvm.internal.Ref$BooleanRef, android.widget.ScrollView, kotlin.jvm.internal.Ref$BooleanRef, kotlin.jvm.internal.Ref$FloatRef, kotlin.jvm.internal.Ref$ObjectRef, android.app.Activity, kotlin.jvm.functions.Function0, android.view.View, android.view.MotionEvent):boolean");
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void attachPullToRefresh$lambda$59$lambda$58$lambda$57(TextView h) {
+        Intrinsics.checkNotNullParameter(h, "$h");
+        ViewParent parent = h.getParent();
+        ViewGroup viewGroup = parent instanceof ViewGroup ? (ViewGroup) parent : null;
+        if (viewGroup != null) {
+            viewGroup.removeView(h);
+        }
+    }
+
+    public static final void attachToolbox(final Activity activity, final FrameLayout root) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(root, "root");
+        Activity activity2 = activity;
+        TextView textView = new TextView(activity2);
+        textView.setText("Aa");
+        textView.setTextSize(Ui.INSTANCE.getFontScale() * 17.0f);
+        textView.setTypeface(textView.getTypeface(), 1);
+        textView.setGravity(17);
+        textView.setTextColor(Ui.INSTANCE.getCYAN());
+        textView.setBackground(rippleBg(Ui.INSTANCE.getBAR(), Ui.INSTANCE.getCYAN(), activity2, 26));
+        textView.setContentDescription("Toolbox: appearance, UM links, academic calendar. Tap to open, hold and drag to move.");
+        textView.setElevation(dp(activity2, 6));
+        final FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(dp(activity2, Ui.INSTANCE.touch(48)), dp(activity2, Ui.INSTANCE.touch(48)), 8388693);
+        layoutParams.rightMargin = dp(activity2, 14);
+        layoutParams.bottomMargin = dp(activity2, 78);
+        root.addView(textView, layoutParams);
+        setupFabDrag(activity, textView, layoutParams, root, new Function0<Unit>() { // from class: my.spectrum.notify.UiKt$attachToolbox$1
+            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+            {
+                super(0);
+            }
+
+            @Override // kotlin.jvm.functions.Function0
+            public /* bridge */ /* synthetic */ Unit invoke() {
+                invoke2();
+                return Unit.INSTANCE;
+            }
+
+            /* renamed from: invoke, reason: avoid collision after fix types in other method */
+            public final void invoke2() {
+                UiKt.showQuickSheet(activity, root, layoutParams);
+            }
+        });
+    }
+
+    public static final LinearLayout bottomNav(final Activity activity, Class<?> active) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(active, "active");
+        int i = 0;
+        int i2 = 2;
+        int i3 = 3;
+        List<NavTab> listOf = CollectionsKt.listOf((Object[]) new NavTab[]{new NavTab(R.drawable.ic_home, "Home", MainActivity.class, false, 8, null), new NavTab(R.drawable.ic_courses, "Courses", CoursesActivity.class, false, 8, null), new NavTab(R.drawable.ic_timetable, "Timetable", TimetableActivity.class, false, 8, null), new NavTab(R.drawable.ic_bell, "Notifications", NotificationsActivity.class, true), new NavTab(R.drawable.ic_settings, "Settings", SettingsActivity.class, false, 8, null)});
+        Activity activity2 = activity;
+        LinearLayout linearLayout = new LinearLayout(activity2);
+        linearLayout.setOrientation(0);
+        linearLayout.setGravity(16);
+        linearLayout.setBackgroundColor(Ui.INSTANCE.getBAR());
+        linearLayout.setMinimumHeight(dp(activity2, 64));
+        linearLayout.setPadding(dp(activity2, 4), dp(activity2, 2), dp(activity2, 4), dp(activity2, 2));
+        View view = null;
+        for (final NavTab navTab : listOf) {
+            final boolean areEqual = Intrinsics.areEqual(navTab.getCls(), active);
+            LinearLayout linearLayout2 = new LinearLayout(activity2);
+            linearLayout2.setOrientation(1);
+            linearLayout2.setGravity(1);
+            linearLayout2.setPadding(i, dp(activity2, 6), i, dp(activity2, 6));
+            linearLayout2.setClickable(true);
+            linearLayout2.setContentDescription(navTab.getLabel() + (areEqual ? ", current screen" : BuildConfig.FLAVOR));
+            linearLayout2.setBackground(rippleBg(Ui.INSTANCE.getBAR(), i, activity2, 12));
+            linearLayout2.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda5
+                @Override // android.view.View.OnClickListener
+                public final void onClick(View view2) {
+                    UiKt.bottomNav$lambda$43$lambda$42(areEqual, activity, navTab, view2);
+                }
+            });
+            if (areEqual) {
+                View view2 = new View(activity2);
+                GradientDrawable gradientDrawable = new GradientDrawable();
+                gradientDrawable.setCornerRadius(dp(activity2, i2));
+                gradientDrawable.setColor(Ui.INSTANCE.getCYAN());
+                view2.setBackground(gradientDrawable);
+                LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(dp(activity2, 28), dp(activity2, i3));
+                layoutParams.bottomMargin = dp(activity2, i3);
+                Unit unit = Unit.INSTANCE;
+                linearLayout2.addView(view2, layoutParams);
+            } else {
+                View view3 = new View(activity2);
+                LinearLayout.LayoutParams layoutParams2 = new LinearLayout.LayoutParams(dp(activity2, 28), dp(activity2, i3));
+                layoutParams2.bottomMargin = dp(activity2, i3);
+                Unit unit2 = Unit.INSTANCE;
+                linearLayout2.addView(view3, layoutParams2);
+            }
+            FrameLayout frameLayout = new FrameLayout(activity2);
+            ImageView imageView = new ImageView(activity2);
+            imageView.setImageResource(navTab.getIcon());
+            Ui ui = Ui.INSTANCE;
+            imageView.setColorFilter(areEqual ? ui.getCYAN() : ui.getDIM());
+            frameLayout.addView(imageView, new FrameLayout.LayoutParams(dp(activity2, 26), dp(activity2, 26), 17));
+            if (navTab.getWithDot()) {
+                View view4 = new View(activity2);
+                GradientDrawable gradientDrawable2 = new GradientDrawable();
+                gradientDrawable2.setShape(1);
+                gradientDrawable2.setColor(Ui.INSTANCE.getRED());
+                view4.setBackground(gradientDrawable2);
+                view4.setVisibility(8);
+                FrameLayout.LayoutParams layoutParams3 = new FrameLayout.LayoutParams(dp(activity2, 10), dp(activity2, 10), 8388661);
+                layoutParams3.rightMargin = dp(activity2, 8);
+                Unit unit3 = Unit.INSTANCE;
+                frameLayout.addView(view4, layoutParams3);
+                view = view4;
+            }
+            LinearLayout.LayoutParams layoutParams4 = new LinearLayout.LayoutParams(dp(activity2, 46), dp(activity2, 28));
+            layoutParams4.gravity = 1;
+            Unit unit4 = Unit.INSTANCE;
+            linearLayout2.addView(frameLayout, layoutParams4);
+            TextView textView = new TextView(activity2);
+            textView.setText(navTab.getLabel());
+            textView.setTextSize(Ui.INSTANCE.getFontScale() * (areEqual ? 11.0f : 10.0f));
+            Ui ui2 = Ui.INSTANCE;
+            textView.setTextColor(areEqual ? ui2.getCYAN() : ui2.getDIM());
+            if (areEqual) {
+                textView.setTypeface(textView.getTypeface(), 1);
+            }
+            textView.setGravity(17);
+            textView.setMaxLines(1);
+            textView.setMinHeight(dp(activity2, 16));
+            textView.setPadding(0, dp(activity2, 2), 0, 0);
+            linearLayout2.addView(textView, new LinearLayout.LayoutParams(-1, -2));
+            linearLayout.addView(linearLayout2, new LinearLayout.LayoutParams(0, -2, 1.0f));
+            i2 = 2;
+            i = 0;
+            i3 = 3;
+        }
+        linearLayout.setTag(view);
+        return linearLayout;
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void bottomNav$lambda$43$lambda$42(boolean z, Activity this_bottomNav, NavTab t, View view) {
+        Intrinsics.checkNotNullParameter(this_bottomNav, "$this_bottomNav");
+        Intrinsics.checkNotNullParameter(t, "$t");
+        if (z) {
+            return;
+        }
+        Intent intent = new Intent(this_bottomNav, t.getCls());
+        if (Intrinsics.areEqual(t.getCls(), MainActivity.class)) {
+            intent.addFlags(603979776);
+        }
+        this_bottomNav.startActivity(intent);
+    }
+
+    public static final Button btn(LinearLayout linearLayout, String text, final Function0<Unit> onClick) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Intrinsics.checkNotNullParameter(text, "text");
+        Intrinsics.checkNotNullParameter(onClick, "onClick");
+        Button button = new Button(linearLayout.getContext());
+        button.setText(text);
+        button.setAllCaps(false);
+        button.setTextSize(Ui.INSTANCE.getFontScale() * 14.0f);
+        button.setTextColor(Ui.INSTANCE.getCYAN());
+        int bar = Ui.INSTANCE.getBAR();
+        int cyan = Ui.INSTANCE.getCYAN();
+        Context context = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context, "getContext(...)");
+        button.setBackground(rippleBg(bar, cyan, context, 24));
+        button.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda6
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.btn$lambda$20(Function0.this, view);
+            }
+        });
+        Context context2 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context2, "getContext(...)");
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(-1, dp(context2, Ui.INSTANCE.touch(48)));
+        Context context3 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context3, "getContext(...)");
+        layoutParams.topMargin = dp(context3, 10);
+        Unit unit = Unit.INSTANCE;
+        linearLayout.addView(button, layoutParams);
+        return button;
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void btn$lambda$20(Function0 onClick, View view) {
+        Intrinsics.checkNotNullParameter(onClick, "$onClick");
+        onClick.invoke();
+    }
+
+    public static final TextView chip(Context context, String label, boolean z, int i, float f, int i2, int i3, final Function0<Unit> onClick) {
+        Intrinsics.checkNotNullParameter(context, "<this>");
+        Intrinsics.checkNotNullParameter(label, "label");
+        Intrinsics.checkNotNullParameter(onClick, "onClick");
+        TextView textView = new TextView(context);
+        if (i3 != 0) {
+            SpannableString spannableString = new SpannableString("●  " + label);
+            spannableString.setSpan(new ForegroundColorSpan(i3), 0, 1, 33);
+            textView.setText(spannableString);
+        } else {
+            textView.setText(label);
+        }
+        textView.setTextSize(f * Ui.INSTANCE.getFontScale());
+        textView.setGravity(17);
+        textView.setMinHeight(dp(context, Ui.INSTANCE.touch(48)));
+        textView.setMinWidth(dp(context, 48));
+        textView.setPadding(dp(context, i2), 0, dp(context, i2), 0);
+        textView.setTextColor(z ? onAccent() : Ui.INSTANCE.getTEXT());
+        if (z) {
+            textView.setTypeface(textView.getTypeface(), 1);
+        }
+        GradientDrawable gradientDrawable = new GradientDrawable();
+        gradientDrawable.setCornerRadius(dp(context, 20));
+        if (z) {
+            gradientDrawable.setColor(i);
+        } else {
+            gradientDrawable.setColor(Ui.INSTANCE.getBAR());
+            gradientDrawable.setStroke(dp(context, 1), Ui.INSTANCE.getBORDER());
+        }
+        textView.setBackground(gradientDrawable);
+        ColorStateList valueOf = ColorStateList.valueOf(Ui.INSTANCE.tint(i, 80));
+        GradientDrawable gradientDrawable2 = new GradientDrawable();
+        gradientDrawable2.setCornerRadius(dp(context, 20));
+        Unit unit = Unit.INSTANCE;
+        textView.setForeground(new RippleDrawable(valueOf, null, gradientDrawable2));
+        textView.setClickable(true);
+        textView.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda14
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.chip$lambda$26$lambda$25(Function0.this, view);
+            }
+        });
+        return textView;
+    }
+
+    public static /* synthetic */ TextView chip$default(Context context, String str, boolean z, int i, float f, int i2, int i3, Function0 function0, int i4, Object obj) {
+        return chip(context, str, z, (i4 & 4) != 0 ? Ui.INSTANCE.getCYAN() : i, (i4 & 8) != 0 ? 14.0f : f, (i4 & 16) != 0 ? 14 : i2, (i4 & 32) != 0 ? 0 : i3, function0);
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void chip$lambda$26$lambda$25(Function0 onClick, View view) {
+        Intrinsics.checkNotNullParameter(onClick, "$onClick");
+        onClick.invoke();
+    }
+
+    public static final LinearLayout chips(LinearLayout linearLayout, List<String> labels, Set<Integer> initial, boolean z, Function1<? super Set<Integer>, Unit> onChange) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Intrinsics.checkNotNullParameter(labels, "labels");
+        Intrinsics.checkNotNullParameter(initial, "initial");
+        Intrinsics.checkNotNullParameter(onChange, "onChange");
+        Context context = linearLayout.getContext();
+        Set mutableSet = CollectionsKt.toMutableSet(initial);
+        LinearLayout linearLayout2 = new LinearLayout(context);
+        linearLayout2.setOrientation(0);
+        chips$draw(linearLayout2, labels, context, mutableSet, z, onChange);
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(-1, -2);
+        Intrinsics.checkNotNull(context);
+        layoutParams.topMargin = dp(context, 8);
+        Unit unit = Unit.INSTANCE;
+        linearLayout.addView(linearLayout2, layoutParams);
+        return linearLayout2;
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void chips$draw(final LinearLayout linearLayout, final List<String> list, final Context context, final Set<Integer> set, final boolean z, final Function1<? super Set<Integer>, Unit> function1) {
+        linearLayout.removeAllViews();
+        int i = 0;
+        for (Object obj : list) {
+            int i2 = i + 1;
+            if (i < 0) {
+                CollectionsKt.throwIndexOverflow();
+            }
+            Intrinsics.checkNotNull(context);
+            final int i3 = i;
+            TextView chip$default = chip$default(context, (String) obj, set.contains(Integer.valueOf(i)), 0, 13.0f, 2, 0, new Function0<Unit>() { // from class: my.spectrum.notify.UiKt$chips$draw$1$c$1
+                /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+                /* JADX WARN: Multi-variable type inference failed */
+                {
+                    super(0);
+                }
+
+                @Override // kotlin.jvm.functions.Function0
+                public /* bridge */ /* synthetic */ Unit invoke() {
+                    invoke2();
+                    return Unit.INSTANCE;
+                }
+
+                /* renamed from: invoke, reason: avoid collision after fix types in other method */
+                public final void invoke2() {
+                    if (!z) {
+                        set.clear();
+                        set.add(Integer.valueOf(i3));
+                    } else if (!set.add(Integer.valueOf(i3))) {
+                        set.remove(Integer.valueOf(i3));
+                    }
+                    UiKt.chips$draw(linearLayout, list, context, set, z, function1);
+                    function1.invoke(CollectionsKt.toSet(set));
+                }
+            }, 36, null);
+            LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(0, -2, 1.0f);
+            if (i > 0) {
+                layoutParams.leftMargin = dp(context, 6);
+            }
+            Unit unit = Unit.INSTANCE;
+            linearLayout.addView(chip$default, layoutParams);
+            i = i2;
+        }
+    }
+
+    public static final void closeQuickSheet(Activity activity, FrameLayout root) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(root, "root");
+        View findViewWithTag = root.findViewWithTag("quicksheet");
+        if (findViewWithTag != null) {
+            root.removeView(findViewWithTag);
+        }
+        View findViewWithTag2 = root.findViewWithTag("quicksheetdim");
+        if (findViewWithTag2 != null) {
+            root.removeView(findViewWithTag2);
+        }
+    }
+
+    public static final int dp(Context context, int i) {
+        Intrinsics.checkNotNullParameter(context, "<this>");
+        return (int) (i * context.getResources().getDisplayMetrics().density);
+    }
+
+    public static final EditText field(LinearLayout linearLayout, String value, String hint, boolean z, int i) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Intrinsics.checkNotNullParameter(value, "value");
+        Intrinsics.checkNotNullParameter(hint, "hint");
+        EditText editText = new EditText(linearLayout.getContext());
+        editText.setText(value);
+        editText.setHint(hint);
+        editText.setTextColor(Ui.INSTANCE.getTEXT());
+        editText.setHintTextColor(Ui.INSTANCE.getDIM());
+        editText.setTextSize(Ui.INSTANCE.getFontScale() * 15.0f);
+        int bar = Ui.INSTANCE.getBAR();
+        int border = Ui.INSTANCE.getBORDER();
+        Context context = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context, "getContext(...)");
+        editText.setBackground(rippleBg$default(bar, border, context, 0, 8, null));
+        Context context2 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context2, "getContext(...)");
+        editText.setMinHeight(dp(context2, Ui.INSTANCE.touch(48)));
+        Context context3 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context3, "getContext(...)");
+        int dp = dp(context3, 12);
+        Context context4 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context4, "getContext(...)");
+        int dp2 = dp(context4, 10);
+        Context context5 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context5, "getContext(...)");
+        int dp3 = dp(context5, 12);
+        Context context6 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context6, "getContext(...)");
+        editText.setPadding(dp, dp2, dp3, dp(context6, 10));
+        if (z) {
+            editText.setInputType(129);
+        } else if (i == 1) {
+            editText.setInputType(2);
+        } else if (i != 2) {
+            editText.setSingleLine();
+        } else {
+            editText.setInputType(36);
+        }
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(-1, -2);
+        Context context7 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context7, "getContext(...)");
+        layoutParams.topMargin = dp(context7, 6);
+        Unit unit = Unit.INSTANCE;
+        linearLayout.addView(editText, layoutParams);
+        return editText;
+    }
+
+    public static /* synthetic */ EditText field$default(LinearLayout linearLayout, String str, String str2, boolean z, int i, int i2, Object obj) {
+        if ((i2 & 2) != 0) {
+            str2 = BuildConfig.FLAVOR;
+        }
+        if ((i2 & 4) != 0) {
+            z = false;
+        }
+        if ((i2 & 8) != 0) {
+            i = 0;
+        }
+        return field(linearLayout, str, str2, z, i);
+    }
+
+    public static final boolean getLookChanged() {
+        return lookChanged;
+    }
+
+    public static final void goToHome(Activity activity) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intent addFlags = new Intent(activity, (Class<?>) MainActivity.class).addFlags(603979776);
+        Intrinsics.checkNotNullExpressionValue(addFlags, "addFlags(...)");
+        activity.startActivity(addFlags);
+    }
+
+    public static final LinearLayout headerRow(final Activity activity, boolean z) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Activity activity2 = activity;
+        LinearLayout linearLayout = new LinearLayout(activity2);
+        linearLayout.setOrientation(0);
+        linearLayout.setGravity(16);
+        linearLayout.setPadding(dp(activity2, 14), dp(activity2, 10), dp(activity2, 10), dp(activity2, 10));
+        linearLayout.setBackground(roundBg(Ui.INSTANCE.getBAR(), Ui.INSTANCE.getBORDER(), activity2, 18));
+        ImageView imageView = new ImageView(activity2);
+        imageView.setImageResource(R.mipmap.ic_launcher_round);
+        imageView.setContentDescription("Spectrum Notify");
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(dp(activity2, 32), dp(activity2, 32));
+        layoutParams.rightMargin = dp(activity2, 10);
+        Unit unit = Unit.INSTANCE;
+        linearLayout.addView(imageView, layoutParams);
+        TextView textView = new TextView(activity2);
+        textView.setText("Spectrum Notify");
+        textView.setTextSize(Ui.INSTANCE.getFontScale() * 20.0f);
+        textView.setTypeface(textView.getTypeface(), 1);
+        textView.setTextColor(Ui.INSTANCE.getTEXT());
+        linearLayout.addView(textView, new LinearLayout.LayoutParams(0, -2, 1.0f));
+        ImageButton imageButton = new ImageButton(activity2);
+        imageButton.setImageResource(Ui.INSTANCE.getDark() ? R.drawable.ic_sun : R.drawable.ic_moon);
+        imageButton.setColorFilter(Ui.INSTANCE.getCYAN());
+        imageButton.setBackground(rippleBg(Ui.INSTANCE.getBG(), Ui.INSTANCE.getBORDER(), activity2, 24));
+        imageButton.setContentDescription("Toggle light or dark colour mode");
+        imageButton.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda7
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.headerRow$lambda$5$lambda$4(activity, view);
+            }
+        });
+        linearLayout.addView(imageButton, new LinearLayout.LayoutParams(dp(activity2, Ui.INSTANCE.touch(44)), dp(activity2, Ui.INSTANCE.touch(44))));
+        if (!z) {
+            linearLayout.setClickable(false);
+            linearLayout.setFocusable(false);
+            View childAt = linearLayout.getChildAt(0);
+            Intrinsics.checkNotNull(childAt, "null cannot be cast to non-null type android.view.View");
+            childAt.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda8
+                @Override // android.view.View.OnClickListener
+                public final void onClick(View view) {
+                    UiKt.headerRow$lambda$6(activity, view);
+                }
+            });
+            View childAt2 = linearLayout.getChildAt(1);
+            Intrinsics.checkNotNull(childAt2, "null cannot be cast to non-null type android.view.View");
+            childAt2.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda9
+                @Override // android.view.View.OnClickListener
+                public final void onClick(View view) {
+                    UiKt.headerRow$lambda$7(activity, view);
+                }
+            });
+        }
+        return linearLayout;
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void headerRow$lambda$5$lambda$4(Activity this_headerRow, View view) {
+        Prefs prefs;
+        Intrinsics.checkNotNullParameter(this_headerRow, "$this_headerRow");
+        try {
+            prefs = new Prefs(this_headerRow);
+        } catch (Exception unused) {
+            prefs = null;
+        }
+        if (prefs != null) {
+            prefs.setThemeMode(Ui.INSTANCE.getDark() ? 1 : 2);
+            this_headerRow.recreate();
+        }
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void headerRow$lambda$6(Activity this_headerRow, View view) {
+        Intrinsics.checkNotNullParameter(this_headerRow, "$this_headerRow");
+        goToHome(this_headerRow);
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void headerRow$lambda$7(Activity this_headerRow, View view) {
+        Intrinsics.checkNotNullParameter(this_headerRow, "$this_headerRow");
+        goToHome(this_headerRow);
+    }
+
+    public static final TextView label(LinearLayout linearLayout, String t, float f, int i, int i2) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Intrinsics.checkNotNullParameter(t, "t");
+        TextView textView = new TextView(linearLayout.getContext());
+        textView.setText(t);
+        textView.setTextSize(f * Ui.INSTANCE.getFontScale());
+        textView.setTextColor(i);
+        Context context = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context, "getContext(...)");
+        textView.setPadding(0, dp(context, i2), 0, 0);
+        linearLayout.addView(textView);
+        return textView;
+    }
+
+    public static /* synthetic */ TextView label$default(LinearLayout linearLayout, String str, float f, int i, int i2, int i3, Object obj) {
+        if ((i3 & 2) != 0) {
+            f = 12.0f;
+        }
+        if ((i3 & 4) != 0) {
+            i = Ui.INSTANCE.getDIM();
+        }
+        if ((i3 & 8) != 0) {
+            i2 = 12;
+        }
+        return label(linearLayout, str, f, i, i2);
+    }
+
+    public static final View navBellDot(LinearLayout linearLayout) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Object tag = linearLayout.getTag();
+        View view = tag instanceof View ? (View) tag : null;
+        return view == null ? new View(linearLayout.getContext()) : view;
+    }
+
+    public static final int onAccent() {
+        if (Ui.INSTANCE.getDark()) {
+            return Ui.INSTANCE.getBG();
+        }
+        return -1;
+    }
+
+    public static final void recreateIfLookChanged(Activity activity) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        if (lookChanged) {
+            lookChanged = false;
+            activity.recreate();
+        }
+    }
+
+    public static final RippleDrawable rippleBg(int i, int i2, Context ctx, int i3) {
+        Intrinsics.checkNotNullParameter(ctx, "ctx");
+        GradientDrawable roundBg = roundBg(i, i2, ctx, i3);
+        return new RippleDrawable(ColorStateList.valueOf(Ui.INSTANCE.tint(Ui.INSTANCE.getCYAN(), 60)), roundBg, roundBg);
+    }
+
+    public static /* synthetic */ RippleDrawable rippleBg$default(int i, int i2, Context context, int i3, int i4, Object obj) {
+        if ((i4 & 8) != 0) {
+            i3 = 10;
+        }
+        return rippleBg(i, i2, context, i3);
+    }
+
+    public static final GradientDrawable roundBg(int i, int i2, Context ctx, int i3) {
+        Intrinsics.checkNotNullParameter(ctx, "ctx");
+        GradientDrawable gradientDrawable = new GradientDrawable();
+        gradientDrawable.setColor(i);
+        gradientDrawable.setStroke(dp(ctx, 1), i2);
+        gradientDrawable.setCornerRadius(dp(ctx, i3));
+        return gradientDrawable;
+    }
+
+    public static /* synthetic */ GradientDrawable roundBg$default(int i, int i2, Context context, int i3, int i4, Object obj) {
+        if ((i4 & 8) != 0) {
+            i3 = 10;
+        }
+        return roundBg(i, i2, context, i3);
+    }
+
+    public static final LinearLayout screen(final Activity activity, String title, int i, String actionDesc, final Function0<Unit> function0, Class<?> cls, Function0<Unit> function02) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(title, "title");
+        Intrinsics.checkNotNullParameter(actionDesc, "actionDesc");
+        applyBars(activity);
+        Activity activity2 = activity;
+        LinearLayout linearLayout = new LinearLayout(activity2);
+        linearLayout.setOrientation(1);
+        linearLayout.setBackgroundColor(Ui.INSTANCE.getBG());
+        LinearLayout headerRow = headerRow(activity, activity instanceof MainActivity);
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(-1, -2);
+        layoutParams.setMargins(dp(activity2, 16), dp(activity2, 12), dp(activity2, 16), dp(activity2, 4));
+        Unit unit = Unit.INSTANCE;
+        linearLayout.addView(headerRow, layoutParams);
+        LinearLayout linearLayout2 = new LinearLayout(activity2);
+        linearLayout2.setOrientation(0);
+        linearLayout2.setGravity(16);
+        linearLayout2.setPadding(dp(activity2, 16), dp(activity2, 8), dp(activity2, 16), dp(activity2, 6));
+        if (cls == null) {
+            ImageButton imageButton = new ImageButton(activity2);
+            imageButton.setImageResource(R.drawable.ic_back);
+            imageButton.setColorFilter(Ui.INSTANCE.getTEXT());
+            imageButton.setBackgroundColor(0);
+            imageButton.setContentDescription("Back");
+            imageButton.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda2
+                @Override // android.view.View.OnClickListener
+                public final void onClick(View view) {
+                    UiKt.screen$lambda$12$lambda$11(activity, view);
+                }
+            });
+            linearLayout2.addView(imageButton, new LinearLayout.LayoutParams(dp(activity2, 48), dp(activity2, 48)));
+        }
+        TextView textView = new TextView(activity2);
+        textView.setText(title);
+        textView.setTextSize(Ui.INSTANCE.getFontScale() * 20.0f);
+        textView.setTypeface(textView.getTypeface(), 1);
+        textView.setTextColor(Ui.INSTANCE.getTEXT());
+        linearLayout2.addView(textView, new LinearLayout.LayoutParams(0, -2, 1.0f));
+        if (i != 0 && function0 != null) {
+            ImageButton imageButton2 = new ImageButton(activity2);
+            imageButton2.setImageResource(i);
+            imageButton2.setColorFilter(Ui.INSTANCE.getCYAN());
+            imageButton2.setBackground(rippleBg(Ui.INSTANCE.getBAR(), Ui.INSTANCE.getBORDER(), activity2, 24));
+            imageButton2.setContentDescription(actionDesc);
+            imageButton2.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda3
+                @Override // android.view.View.OnClickListener
+                public final void onClick(View view) {
+                    Function0.this.invoke();
+                }
+            });
+            linearLayout2.addView(imageButton2, new LinearLayout.LayoutParams(dp(activity2, 48), dp(activity2, 48)));
+        }
+        linearLayout.addView(linearLayout2);
+        LinearLayout linearLayout3 = new LinearLayout(activity2);
+        linearLayout3.setOrientation(1);
+        linearLayout3.setPadding(dp(activity2, 20), dp(activity2, 4), dp(activity2, 20), dp(activity2, cls != null ? 12 : 32));
+        ScrollView scrollView = new ScrollView(activity2);
+        scrollView.addView(linearLayout3);
+        if (function02 != null) {
+            attachPullToRefresh(activity, scrollView, function02);
+        }
+        linearLayout.addView(scrollView, new LinearLayout.LayoutParams(-1, 0, 1.0f));
+        if (cls != null) {
+            addNavBar(activity, linearLayout, cls);
+        }
+        activity.setContentView(linearLayout);
+        return linearLayout3;
+    }
+
+    public static /* synthetic */ LinearLayout screen$default(Activity activity, String str, int i, String str2, Function0 function0, Class cls, Function0 function02, int i2, Object obj) {
+        if ((i2 & 2) != 0) {
+            i = 0;
+        }
+        int i3 = i;
+        if ((i2 & 4) != 0) {
+            str2 = BuildConfig.FLAVOR;
+        }
+        return screen(activity, str, i3, str2, (i2 & 8) != 0 ? null : function0, (i2 & 16) != 0 ? null : cls, (i2 & 32) != 0 ? null : function02);
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void screen$lambda$12$lambda$11(Activity this_screen, View view) {
+        Intrinsics.checkNotNullParameter(this_screen, "$this_screen");
+        this_screen.finish();
+    }
+
+    public static final void section(LinearLayout linearLayout, String title, String intro) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Intrinsics.checkNotNullParameter(title, "title");
+        Intrinsics.checkNotNullParameter(intro, "intro");
+        TextView textView = new TextView(linearLayout.getContext());
+        textView.setText(title);
+        textView.setTextSize(Ui.INSTANCE.getFontScale() * 13.0f);
+        textView.setTextColor(Ui.INSTANCE.getCYAN());
+        textView.setTypeface(textView.getTypeface(), 1);
+        Context context = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context, "getContext(...)");
+        textView.setPadding(0, dp(context, 28), 0, 0);
+        linearLayout.addView(textView);
+        View view = new View(linearLayout.getContext());
+        view.setBackgroundColor(Ui.INSTANCE.getBORDER());
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(-1, 1);
+        Context context2 = linearLayout.getContext();
+        Intrinsics.checkNotNullExpressionValue(context2, "getContext(...)");
+        layoutParams.topMargin = dp(context2, 6);
+        Unit unit = Unit.INSTANCE;
+        linearLayout.addView(view, layoutParams);
+        if (intro.length() > 0) {
+            label(linearLayout, intro, 12.0f, Ui.INSTANCE.getDIM(), 8);
+        }
+    }
+
+    public static /* synthetic */ void section$default(LinearLayout linearLayout, String str, String str2, int i, Object obj) {
+        if ((i & 2) != 0) {
+            str2 = BuildConfig.FLAVOR;
+        }
+        section(linearLayout, str, str2);
+    }
+
+    public static final void setLookChanged(boolean z) {
+        lookChanged = z;
+    }
+
+    public static final EditText setting(LinearLayout linearLayout, String title, String help, String value, String hint, int i) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Intrinsics.checkNotNullParameter(title, "title");
+        Intrinsics.checkNotNullParameter(help, "help");
+        Intrinsics.checkNotNullParameter(value, "value");
+        Intrinsics.checkNotNullParameter(hint, "hint");
+        label(linearLayout, title, 15.0f, Ui.INSTANCE.getTEXT(), 16).setTypeface(null, 1);
+        label(linearLayout, help, 12.0f, Ui.INSTANCE.getDIM(), 2);
+        return field(linearLayout, value, hint, false, i);
+    }
+
+    public static /* synthetic */ EditText setting$default(LinearLayout linearLayout, String str, String str2, String str3, String str4, int i, int i2, Object obj) {
+        if ((i2 & 8) != 0) {
+            str4 = BuildConfig.FLAVOR;
+        }
+        String str5 = str4;
+        if ((i2 & 16) != 0) {
+            i = 0;
+        }
+        return setting(linearLayout, str, str2, str3, str5, i);
+    }
+
+    public static final void setupFabDrag(final Activity activity, TextView fab, final FrameLayout.LayoutParams fabLp, final FrameLayout root, final Function0<Unit> onTap) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(fab, "fab");
+        Intrinsics.checkNotNullParameter(fabLp, "fabLp");
+        Intrinsics.checkNotNullParameter(root, "root");
+        Intrinsics.checkNotNullParameter(onTap, "onTap");
+        final Ref.FloatRef floatRef = new Ref.FloatRef();
+        final Ref.FloatRef floatRef2 = new Ref.FloatRef();
+        final Ref.IntRef intRef = new Ref.IntRef();
+        final Ref.IntRef intRef2 = new Ref.IntRef();
+        final Ref.BooleanRef booleanRef = new Ref.BooleanRef();
+        final Ref.BooleanRef booleanRef2 = new Ref.BooleanRef();
+        final Ref.LongRef longRef = new Ref.LongRef();
+        fab.setOnTouchListener(new View.OnTouchListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda15
+            @Override // android.view.View.OnTouchListener
+            public final boolean onTouch(View view, MotionEvent motionEvent) {
+                boolean z;
+                z = UiKt.setupFabDrag$lambda$86(Ref.FloatRef.this, floatRef2, intRef, fabLp, intRef2, booleanRef, booleanRef2, longRef, activity, root, onTap, view, motionEvent);
+                return z;
+            }
+        });
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final boolean setupFabDrag$lambda$86(Ref.FloatRef downX, Ref.FloatRef downY, Ref.IntRef startX, FrameLayout.LayoutParams fabLp, Ref.IntRef startY, Ref.BooleanRef moved, Ref.BooleanRef dragging, Ref.LongRef pressTime, Activity this_setupFabDrag, FrameLayout root, Function0 onTap, View view, MotionEvent motionEvent) {
+        Intrinsics.checkNotNullParameter(downX, "$downX");
+        Intrinsics.checkNotNullParameter(downY, "$downY");
+        Intrinsics.checkNotNullParameter(startX, "$startX");
+        Intrinsics.checkNotNullParameter(fabLp, "$fabLp");
+        Intrinsics.checkNotNullParameter(startY, "$startY");
+        Intrinsics.checkNotNullParameter(moved, "$moved");
+        Intrinsics.checkNotNullParameter(dragging, "$dragging");
+        Intrinsics.checkNotNullParameter(pressTime, "$pressTime");
+        Intrinsics.checkNotNullParameter(this_setupFabDrag, "$this_setupFabDrag");
+        Intrinsics.checkNotNullParameter(root, "$root");
+        Intrinsics.checkNotNullParameter(onTap, "$onTap");
+        int actionMasked = motionEvent.getActionMasked();
+        if (actionMasked == 0) {
+            downX.element = motionEvent.getRawX();
+            downY.element = motionEvent.getRawY();
+            startX.element = fabLp.rightMargin;
+            startY.element = fabLp.bottomMargin;
+            moved.element = false;
+            dragging.element = false;
+            pressTime.element = System.currentTimeMillis();
+        } else if (actionMasked != 1) {
+            if (actionMasked == 2) {
+                int rawX = (int) (motionEvent.getRawX() - downX.element);
+                int rawY = (int) (motionEvent.getRawY() - downY.element);
+                if (!dragging.element) {
+                    Activity activity = this_setupFabDrag;
+                    if (Math.abs(rawX) > dp(activity, 8) || Math.abs(rawY) > dp(activity, 8)) {
+                        dragging.element = true;
+                    }
+                }
+                if (dragging.element) {
+                    moved.element = true;
+                    ViewParent parent = view.getParent();
+                    if (parent != null) {
+                        parent.requestDisallowInterceptTouchEvent(true);
+                    }
+                    fabLp.rightMargin = RangesKt.coerceIn(startX.element - rawX, 0, root.getWidth() - view.getWidth());
+                    fabLp.bottomMargin = RangesKt.coerceIn(startY.element - rawY, dp(this_setupFabDrag, 64), root.getHeight() - view.getWidth());
+                    root.updateViewLayout(view, fabLp);
+                }
+            } else {
+                if (actionMasked != 3) {
+                    return false;
+                }
+                dragging.element = false;
+            }
+        } else if (dragging.element) {
+            fabLp.rightMargin = fabLp.rightMargin < (root.getWidth() - view.getWidth()) / 2 ? dp(this_setupFabDrag, 14) : (root.getWidth() - view.getWidth()) - dp(this_setupFabDrag, 14);
+            root.updateViewLayout(view, fabLp);
+            moved.element = false;
+        } else if (System.currentTimeMillis() - pressTime.element < 600) {
+            onTap.invoke();
+        }
+        return true;
+    }
+
+    /* JADX WARN: Multi-variable type inference failed */
+    public static final void showQuickSheet(final Activity activity, final FrameLayout root, FrameLayout.LayoutParams fabLp) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(root, "root");
+        Intrinsics.checkNotNullParameter(fabLp, "fabLp");
+        if (root.findViewWithTag("quicksheet") != null) {
+            return;
+        }
+        Activity activity2 = activity;
+        final Prefs prefs = new Prefs(activity2);
+        LinearLayout linearLayout = new LinearLayout(activity2);
+        linearLayout.setTag("quicksheet");
+        linearLayout.setOrientation(1);
+        linearLayout.setPadding(dp(activity2, 16), dp(activity2, 12), dp(activity2, 16), dp(activity2, 14));
+        linearLayout.setBackground(roundBg(Ui.INSTANCE.getBAR(), Ui.INSTANCE.getBORDER(), activity2, 16));
+        linearLayout.setElevation(dp(activity2, 8));
+        showQuickSheet$row(activity, linearLayout, "Colour mode", (String) CollectionsKt.listOf((Object[]) new String[]{"Phone", "Light", "Dark"}).get(prefs.getThemeMode()), new Function0<Unit>() { // from class: my.spectrum.notify.UiKt$showQuickSheet$1
+            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+            {
+                super(0);
+            }
+
+            @Override // kotlin.jvm.functions.Function0
+            public /* bridge */ /* synthetic */ Unit invoke() {
+                invoke2();
+                return Unit.INSTANCE;
+            }
+
+            /* renamed from: invoke, reason: avoid collision after fix types in other method */
+            public final void invoke2() {
+                Prefs prefs2 = Prefs.this;
+                prefs2.setThemeMode((prefs2.getThemeMode() + 1) % 3);
+                activity.recreate();
+            }
+        });
+        showQuickSheet$row(activity, linearLayout, "Text size", (String) CollectionsKt.listOf((Object[]) new String[]{"Normal", "Large", "Extra large"}).get(prefs.getTextScale()), new Function0<Unit>() { // from class: my.spectrum.notify.UiKt$showQuickSheet$2
+            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+            {
+                super(0);
+            }
+
+            @Override // kotlin.jvm.functions.Function0
+            public /* bridge */ /* synthetic */ Unit invoke() {
+                invoke2();
+                return Unit.INSTANCE;
+            }
+
+            /* renamed from: invoke, reason: avoid collision after fix types in other method */
+            public final void invoke2() {
+                Prefs prefs2 = Prefs.this;
+                prefs2.setTextScale((prefs2.getTextScale() + 1) % 3);
+                activity.recreate();
+            }
+        });
+        showQuickSheet$row(activity, linearLayout, "High contrast", (String) CollectionsKt.listOf((Object[]) new String[]{"Off", "On"}).get(prefs.getHighContrast() ? 1 : 0), new Function0<Unit>() { // from class: my.spectrum.notify.UiKt$showQuickSheet$3
+            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+            {
+                super(0);
+            }
+
+            @Override // kotlin.jvm.functions.Function0
+            public /* bridge */ /* synthetic */ Unit invoke() {
+                invoke2();
+                return Unit.INSTANCE;
+            }
+
+            /* renamed from: invoke, reason: avoid collision after fix types in other method */
+            public final void invoke2() {
+                Prefs.this.setHighContrast(!r0.getHighContrast());
+                activity.recreate();
+            }
+        });
+        linearLayout.addView(new View(activity2), new FrameLayout.LayoutParams(-1, dp(activity2, 6)));
+        TextView textView = new TextView(activity2);
+        textView.setText("UM LINKS");
+        textView.setTextSize(Ui.INSTANCE.getFontScale() * 11.0f);
+        textView.setLetterSpacing(0.08f);
+        textView.setTextColor(Ui.INSTANCE.getDIM());
+        textView.setTypeface(textView.getTypeface(), 1);
+        textView.setPadding(0, dp(activity2, 8), 0, dp(activity2, 2));
+        linearLayout.addView(textView);
+        Iterator<Shortcuts.Link> it = Shortcuts.INSTANCE.all(activity2).iterator();
+        while (it.hasNext()) {
+            showQuickSheet$linkRow(activity, linearLayout, root, it.next());
+        }
+        TextView textView2 = new TextView(activity2);
+        textView2.setText("Edit UM links");
+        textView2.setTextSize(Ui.INSTANCE.getFontScale() * 12.0f);
+        textView2.setTextColor(Ui.INSTANCE.getDIM());
+        textView2.setMinHeight(dp(activity2, 40));
+        textView2.setGravity(16);
+        textView2.setClickable(true);
+        textView2.setBackground(rippleBg(Ui.INSTANCE.getBAR(), 0, activity2, 12));
+        textView2.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda0
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.showQuickSheet$lambda$74(activity, root, view);
+            }
+        });
+        linearLayout.addView(textView2);
+        TextView textView3 = new TextView(activity2);
+        textView3.setText("Semester dates");
+        textView3.setTextSize(Ui.INSTANCE.getFontScale() * 12.0f);
+        textView3.setTextColor(Ui.INSTANCE.getDIM());
+        textView3.setMinHeight(dp(activity2, 40));
+        textView3.setGravity(16);
+        textView3.setClickable(true);
+        textView3.setBackground(rippleBg(Ui.INSTANCE.getBAR(), 0, activity2, 12));
+        textView3.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda10
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.showQuickSheet$lambda$76(activity, root, view);
+            }
+        });
+        linearLayout.addView(textView3);
+        TextView textView4 = new TextView(activity2);
+        textView4.setText("Academic calendar ↗");
+        textView4.setTextSize(Ui.INSTANCE.getFontScale() * 13.0f);
+        textView4.setTextColor(Ui.INSTANCE.getCYAN());
+        textView4.setTypeface(textView4.getTypeface(), 1);
+        textView4.setMinHeight(dp(activity2, 44));
+        textView4.setGravity(16);
+        textView4.setClickable(true);
+        textView4.setBackground(rippleBg(Ui.INSTANCE.getBAR(), 0, activity2, 12));
+        textView4.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda11
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.showQuickSheet$lambda$78(activity, root, view);
+            }
+        });
+        linearLayout.addView(textView4);
+        linearLayout.addView(new View(activity2), new FrameLayout.LayoutParams(-1, dp(activity2, 6)));
+        TextView textView5 = new TextView(activity2);
+        textView5.setText("More appearance settings");
+        textView5.setTextSize(Ui.INSTANCE.getFontScale() * 13.0f);
+        textView5.setTextColor(Ui.INSTANCE.getCYAN());
+        textView5.setMinHeight(dp(activity2, 44));
+        textView5.setGravity(16);
+        textView5.setClickable(true);
+        textView5.setBackground(rippleBg(Ui.INSTANCE.getBAR(), 0, activity2, 12));
+        textView5.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda12
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.showQuickSheet$lambda$80(activity, root, view);
+            }
+        });
+        linearLayout.addView(textView5);
+        View view = new View(activity2);
+        view.setTag("quicksheetdim");
+        view.setBackgroundColor(1711276032);
+        view.setElevation(dp(activity2, 7));
+        view.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda13
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view2) {
+                UiKt.showQuickSheet$lambda$82(activity, root, view2);
+            }
+        });
+        root.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        int dp = dp(activity2, 230);
+        int dp2 = dp(activity2, 360);
+        int width = (root.getWidth() - fabLp.rightMargin) - fabLp.width;
+        Object[] objArr = width >= dp || width >= fabLp.rightMargin;
+        int height = (root.getHeight() - fabLp.bottomMargin) - fabLp.height;
+        boolean z = height < dp2;
+        FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(dp, -2);
+        if (objArr == true) {
+            layoutParams.gravity = GravityCompat.END;
+            layoutParams.rightMargin = dp(activity2, 14);
+        } else {
+            layoutParams.gravity = GravityCompat.START;
+            layoutParams.leftMargin = dp(activity2, 14);
+        }
+        if (z) {
+            layoutParams.gravity |= 48;
+            layoutParams.topMargin = height + fabLp.height + dp(activity2, 10);
+        } else {
+            layoutParams.gravity |= 80;
+            layoutParams.bottomMargin = fabLp.bottomMargin + fabLp.height + dp(activity2, 10);
+        }
+        root.addView(linearLayout, layoutParams);
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void showQuickSheet$lambda$74(Activity this_showQuickSheet, FrameLayout root, View view) {
+        Intrinsics.checkNotNullParameter(this_showQuickSheet, "$this_showQuickSheet");
+        Intrinsics.checkNotNullParameter(root, "$root");
+        closeQuickSheet(this_showQuickSheet, root);
+        LinksEditor.INSTANCE.open(this_showQuickSheet, new Function0<Unit>() { // from class: my.spectrum.notify.UiKt$showQuickSheet$5$1
+            @Override // kotlin.jvm.functions.Function0
+            public /* bridge */ /* synthetic */ Unit invoke() {
+                invoke2();
+                return Unit.INSTANCE;
+            }
+
+            /* renamed from: invoke, reason: avoid collision after fix types in other method */
+            public final void invoke2() {
+            }
+        });
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void showQuickSheet$lambda$76(final Activity this_showQuickSheet, FrameLayout root, View view) {
+        Intrinsics.checkNotNullParameter(this_showQuickSheet, "$this_showQuickSheet");
+        Intrinsics.checkNotNullParameter(root, "$root");
+        closeQuickSheet(this_showQuickSheet, root);
+        AcademicCalendarEditor.INSTANCE.open(this_showQuickSheet, new Function0<Unit>() { // from class: my.spectrum.notify.UiKt$showQuickSheet$6$1
+            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+            {
+                super(0);
+            }
+
+            @Override // kotlin.jvm.functions.Function0
+            public /* bridge */ /* synthetic */ Unit invoke() {
+                invoke2();
+                return Unit.INSTANCE;
+            }
+
+            /* renamed from: invoke, reason: avoid collision after fix types in other method */
+            public final void invoke2() {
+                this_showQuickSheet.recreate();
+            }
+        });
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void showQuickSheet$lambda$78(Activity this_showQuickSheet, FrameLayout root, View view) {
+        Intrinsics.checkNotNullParameter(this_showQuickSheet, "$this_showQuickSheet");
+        Intrinsics.checkNotNullParameter(root, "$root");
+        closeQuickSheet(this_showQuickSheet, root);
+        this_showQuickSheet.startActivity(new Intent(this_showQuickSheet, (Class<?>) CalendarWebActivity.class));
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void showQuickSheet$lambda$80(Activity this_showQuickSheet, FrameLayout root, View view) {
+        Intrinsics.checkNotNullParameter(this_showQuickSheet, "$this_showQuickSheet");
+        Intrinsics.checkNotNullParameter(root, "$root");
+        closeQuickSheet(this_showQuickSheet, root);
+        this_showQuickSheet.startActivity(new Intent(this_showQuickSheet, (Class<?>) SettingsActivity.class).putExtra(SettingsActivity.EXTRA_OPEN, "appearance"));
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void showQuickSheet$lambda$82(Activity this_showQuickSheet, FrameLayout root, View view) {
+        Intrinsics.checkNotNullParameter(this_showQuickSheet, "$this_showQuickSheet");
+        Intrinsics.checkNotNullParameter(root, "$root");
+        closeQuickSheet(this_showQuickSheet, root);
+    }
+
+    private static final void showQuickSheet$linkRow(final Activity activity, LinearLayout linearLayout, final FrameLayout frameLayout, final Shortcuts.Link link) {
+        Activity activity2 = activity;
+        LinearLayout linearLayout2 = new LinearLayout(activity2);
+        linearLayout2.setOrientation(0);
+        linearLayout2.setGravity(16);
+        linearLayout2.setMinimumHeight(dp(activity2, 44));
+        linearLayout2.setClickable(true);
+        linearLayout2.setBackground(rippleBg(Ui.INSTANCE.getBAR(), 0, activity2, 12));
+        TextView textView = new TextView(activity2);
+        textView.setText(link.getName());
+        textView.setTextSize(Ui.INSTANCE.getFontScale() * 14.0f);
+        textView.setTextColor(Ui.INSTANCE.getTEXT());
+        linearLayout2.addView(textView, new FrameLayout.LayoutParams(0, -2, 16));
+        TextView textView2 = new TextView(activity2);
+        textView2.setText("↗");
+        textView2.setTextSize(Ui.INSTANCE.getFontScale() * 13.0f);
+        textView2.setTextColor(Ui.INSTANCE.getCYAN());
+        textView2.setTypeface(textView2.getTypeface(), 1);
+        linearLayout2.addView(textView2);
+        linearLayout2.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda16
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.showQuickSheet$linkRow$lambda$72(activity, frameLayout, link, view);
+            }
+        });
+        linearLayout.addView(linearLayout2);
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void showQuickSheet$linkRow$lambda$72(Activity this_showQuickSheet, FrameLayout root, Shortcuts.Link l, View view) {
+        Intrinsics.checkNotNullParameter(this_showQuickSheet, "$this_showQuickSheet");
+        Intrinsics.checkNotNullParameter(root, "$root");
+        Intrinsics.checkNotNullParameter(l, "$l");
+        closeQuickSheet(this_showQuickSheet, root);
+        try {
+            this_showQuickSheet.startActivity(new Intent("android.intent.action.VIEW", Uri.parse(l.getUrl())).addFlags(268435456));
+        } catch (Exception unused) {
+        }
+    }
+
+    private static final void showQuickSheet$row(Activity activity, LinearLayout linearLayout, String str, String str2, final Function0<Unit> function0) {
+        Activity activity2 = activity;
+        LinearLayout linearLayout2 = new LinearLayout(activity2);
+        linearLayout2.setOrientation(0);
+        linearLayout2.setGravity(16);
+        linearLayout2.setMinimumHeight(dp(activity2, 48));
+        linearLayout2.setClickable(true);
+        linearLayout2.setBackground(rippleBg(Ui.INSTANCE.getBAR(), 0, activity2, 12));
+        TextView textView = new TextView(activity2);
+        textView.setText(str);
+        textView.setTextSize(Ui.INSTANCE.getFontScale() * 14.0f);
+        textView.setTextColor(Ui.INSTANCE.getTEXT());
+        linearLayout2.addView(textView, new FrameLayout.LayoutParams(0, -2, 16));
+        TextView textView2 = new TextView(activity2);
+        textView2.setText(str2 + "  ▸");
+        textView2.setTextSize(Ui.INSTANCE.getFontScale() * 13.0f);
+        textView2.setTextColor(Ui.INSTANCE.getCYAN());
+        textView2.setTypeface(textView2.getTypeface(), 1);
+        linearLayout2.addView(textView2);
+        linearLayout2.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda18
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                UiKt.showQuickSheet$row$lambda$67(Function0.this, view);
+            }
+        });
+        linearLayout.addView(linearLayout2);
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void showQuickSheet$row$lambda$67(Function0 onCycle, View view) {
+        Intrinsics.checkNotNullParameter(onCycle, "$onCycle");
+        onCycle.invoke();
+    }
+
+    /* JADX WARN: Type inference failed for: r1v0, types: [my.spectrum.notify.UiKt$spinner$ad$1] */
+    public static final Spinner spinner(final Activity activity, final List<String> items, int i, final Function1<? super Integer, Unit> onSelect) {
+        Intrinsics.checkNotNullParameter(activity, "<this>");
+        Intrinsics.checkNotNullParameter(items, "items");
+        Intrinsics.checkNotNullParameter(onSelect, "onSelect");
+        Activity activity2 = activity;
+        Spinner spinner = new Spinner(activity2);
+        ?? r1 = new ArrayAdapter<String>(activity, items) { // from class: my.spectrum.notify.UiKt$spinner$ad$1
+            final /* synthetic */ Activity $this_spinner;
+
+            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+            {
+                super(activity, android.R.layout.simple_spinner_item, items);
+                this.$this_spinner = activity;
+            }
+
+            private final View style(View v, int bg) {
+                Intrinsics.checkNotNull(v, "null cannot be cast to non-null type android.widget.TextView");
+                TextView textView = (TextView) v;
+                Activity activity3 = this.$this_spinner;
+                textView.setTextColor(Ui.INSTANCE.getTEXT());
+                textView.setTextSize(Ui.INSTANCE.getFontScale() * 14.0f);
+                Activity activity4 = activity3;
+                textView.setPadding(UiKt.dp(activity4, 12), UiKt.dp(activity4, 12), UiKt.dp(activity4, 12), UiKt.dp(activity4, 12));
+                textView.setBackgroundColor(bg);
+                return v;
+            }
+
+            @Override // android.widget.ArrayAdapter, android.widget.BaseAdapter, android.widget.SpinnerAdapter
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                Intrinsics.checkNotNullParameter(parent, "parent");
+                View dropDownView = super.getDropDownView(position, convertView, parent);
+                Intrinsics.checkNotNullExpressionValue(dropDownView, "getDropDownView(...)");
+                return style(dropDownView, Ui.INSTANCE.getBAR());
+            }
+
+            @Override // android.widget.ArrayAdapter, android.widget.Adapter
+            public View getView(int position, View convertView, ViewGroup parent) {
+                Intrinsics.checkNotNullParameter(parent, "parent");
+                View view = super.getView(position, convertView, parent);
+                Intrinsics.checkNotNullExpressionValue(view, "getView(...)");
+                View style = style(view, 0);
+                Intrinsics.checkNotNull(style, "null cannot be cast to non-null type android.widget.TextView");
+                TextView textView = (TextView) style;
+                String item = getItem(position);
+                if (item == null) {
+                    item = BuildConfig.FLAVOR;
+                }
+                textView.setText(item + "  ▾");
+                return style;
+            }
+        };
+        r1.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter((SpinnerAdapter) r1);
+        spinner.setBackground(roundBg$default(Ui.INSTANCE.getBAR(), Ui.INSTANCE.getBORDER(), activity2, 0, 8, null));
+        spinner.setPopupBackgroundDrawable(roundBg$default(Ui.INSTANCE.getBAR(), Ui.INSTANCE.getBORDER(), activity2, 0, 8, null));
+        spinner.setSelection(i, false);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() { // from class: my.spectrum.notify.UiKt$spinner$1
+            @Override // android.widget.AdapterView.OnItemSelectedListener
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                onSelect.invoke(Integer.valueOf(position));
+            }
+
+            @Override // android.widget.AdapterView.OnItemSelectedListener
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
+        return spinner;
+    }
+
+    public static final Function1<Integer, Unit> swatches(LinearLayout linearLayout, int i, final Function1<? super Integer, Unit> onPick) {
+        Intrinsics.checkNotNullParameter(linearLayout, "<this>");
+        Intrinsics.checkNotNullParameter(onPick, "onPick");
+        final Context context = linearLayout.getContext();
+        final int palette_size = Timetable.INSTANCE.getPALETTE_SIZE();
+        final int i2 = (palette_size + 1) / 2;
+        final Ref.IntRef intRef = new Ref.IntRef();
+        intRef.element = i;
+        final LinearLayout linearLayout2 = new LinearLayout(context);
+        linearLayout2.setOrientation(1);
+        swatches$draw$39(linearLayout2, palette_size, i2, context, intRef, onPick);
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(-2, -2);
+        Intrinsics.checkNotNull(context);
+        layoutParams.topMargin = dp(context, 8);
+        Unit unit = Unit.INSTANCE;
+        linearLayout.addView(linearLayout2, layoutParams);
+        return new Function1<Integer, Unit>() { // from class: my.spectrum.notify.UiKt$swatches$2
+            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+            /* JADX WARN: Multi-variable type inference failed */
+            {
+                super(1);
+            }
+
+            @Override // kotlin.jvm.functions.Function1
+            public /* bridge */ /* synthetic */ Unit invoke(Integer num) {
+                invoke(num.intValue());
+                return Unit.INSTANCE;
+            }
+
+            public final void invoke(int i3) {
+                Ref.IntRef.this.element = i3;
+                UiKt.swatches$draw$39(linearLayout2, palette_size, i2, context, Ref.IntRef.this, onPick);
+            }
+        };
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void swatches$draw$39(final LinearLayout linearLayout, final int i, final int i2, final Context context, final Ref.IntRef intRef, final Function1<? super Integer, Unit> function1) {
+        linearLayout.removeAllViews();
+        Drawable drawable = null;
+        int i3 = 0;
+        LinearLayout linearLayout2 = null;
+        final int i4 = 0;
+        while (i4 < i) {
+            int i5 = i4 % i2;
+            if (i5 == 0) {
+                linearLayout2 = new LinearLayout(context);
+                linearLayout2.setOrientation(i3);
+                LinearLayout linearLayout3 = linearLayout2;
+                LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(-2, -2);
+                if (i4 > 0) {
+                    Intrinsics.checkNotNull(context);
+                    layoutParams.topMargin = dp(context, 8);
+                }
+                Unit unit = Unit.INSTANCE;
+                linearLayout.addView(linearLayout3, layoutParams);
+            }
+            LinearLayout linearLayout4 = linearLayout2;
+            int i6 = i4 == intRef.element ? 1 : i3;
+            TextView textView = new TextView(context);
+            String str = BuildConfig.FLAVOR;
+            textView.setText(i6 != 0 ? "✓" : BuildConfig.FLAVOR);
+            textView.setTextSize(Ui.INSTANCE.getFontScale() * 18.0f);
+            textView.setGravity(17);
+            textView.setTextColor(onAccent());
+            textView.setTypeface(textView.getTypeface(), 1);
+            GradientDrawable gradientDrawable = new GradientDrawable();
+            gradientDrawable.setShape(1);
+            gradientDrawable.setColor(Timetable.INSTANCE.colorOf(i4));
+            if (i6 != 0) {
+                Intrinsics.checkNotNull(context);
+                gradientDrawable.setStroke(dp(context, 3), Ui.INSTANCE.getTEXT());
+            }
+            textView.setBackground(gradientDrawable);
+            ColorStateList valueOf = ColorStateList.valueOf(Ui.INSTANCE.tint(onAccent(), 80));
+            GradientDrawable gradientDrawable2 = new GradientDrawable();
+            gradientDrawable2.setShape(1);
+            Unit unit2 = Unit.INSTANCE;
+            textView.setForeground(new RippleDrawable(valueOf, drawable, gradientDrawable2));
+            int i7 = i4 + 1;
+            if (i6 != 0) {
+                str = ", selected";
+            }
+            textView.setContentDescription("Colour " + i7 + str);
+            textView.setClickable(true);
+            textView.setOnClickListener(new View.OnClickListener() { // from class: my.spectrum.notify.UiKt$$ExternalSyntheticLambda17
+                @Override // android.view.View.OnClickListener
+                public final void onClick(View view) {
+                    UiKt.swatches$draw$39$lambda$37$lambda$36(Ref.IntRef.this, i4, function1, linearLayout, i, i2, context, view);
+                }
+            });
+            Intrinsics.checkNotNull(linearLayout4);
+            TextView textView2 = textView;
+            Intrinsics.checkNotNull(context);
+            LinearLayout.LayoutParams layoutParams2 = new LinearLayout.LayoutParams(dp(context, 44), dp(context, 44));
+            if (i5 > 0) {
+                layoutParams2.leftMargin = dp(context, 8);
+            }
+            Unit unit3 = Unit.INSTANCE;
+            linearLayout4.addView(textView2, layoutParams2);
+            i4 = i7;
+            linearLayout2 = linearLayout4;
+            drawable = null;
+            i3 = 0;
+        }
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public static final void swatches$draw$39$lambda$37$lambda$36(Ref.IntRef cur, int i, Function1 onPick, LinearLayout box, int i2, int i3, Context context, View view) {
+        Intrinsics.checkNotNullParameter(cur, "$cur");
+        Intrinsics.checkNotNullParameter(onPick, "$onPick");
+        Intrinsics.checkNotNullParameter(box, "$box");
+        cur.element = i;
+        swatches$draw$39(box, i2, i3, context, cur, onPick);
+        onPick.invoke(Integer.valueOf(i));
+    }
+
+    public static final TimeField timeField(Context context, int i, Function1<? super Integer, Unit> onPick) {
+        Intrinsics.checkNotNullParameter(context, "<this>");
+        Intrinsics.checkNotNullParameter(onPick, "onPick");
+        return new TimeField(context, i, onPick);
+    }
+}

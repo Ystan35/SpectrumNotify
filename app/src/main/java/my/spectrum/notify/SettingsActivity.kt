@@ -207,6 +207,31 @@ class SettingsActivity : Activity() {
             p.myGroups, "WIX1003:occ2, WIX1003:t3",
         )
 
+        target = accordion(col, "CLOUD PUSH", icon = R.drawable.ic_refresh,
+            contents = listOf("Server URL", "Server key"))
+        target.label(
+            "Push alerts come from a server that checks Spectrum for you, so they arrive even when Android stops background checks. " +
+                "The server (a Cloudflare Worker) is run by the app's maintainer and holds your Spectrum token — enable only if you accept that.",
+            12f, Ui.DIM, 8,
+        )
+        add(
+            "workerUrl", "Server URL",
+            "Address of the cloud poller's register endpoint, for example https://your-worker.your-subdomain.workers.dev/register",
+            p.workerUrl, "https://...workers.dev/register",
+        )
+        add(
+            "workerKey", "Server key",
+            "The shared key the server checks. Ask the person who set up the server for it.",
+            p.workerKey, "",
+        )
+        target.chips(listOf("Cloud push on"), buildSet { if (p.cloudPush) add(0) }, true) { sel ->
+            val on = 0 in sel
+            if (on != p.cloudPush) {
+                p.cloudPush = on
+                if (on) PushService.registerWithWorker(this)
+            }
+        }
+
         target = accordion(col, "DEADLINES", icon = R.drawable.ic_cat_deadline,
             contents = listOf("Remind me before a deadline"))
         add(
@@ -253,15 +278,21 @@ class SettingsActivity : Activity() {
             }
         }
         target.label("High contrast uses stronger text colours. Big touch targets make every button and box 56 dp tall.", 12f, Ui.DIM, 8)
-        target = accordion(col, "TOOLS", icon = R.drawable.ic_add,
-            contents = listOf("Save", "Check now", "Test notification", "Alarms", "Battery"))
-        target.action("Save settings", "Saves everything above now.") {
-            save(); Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
-        }
+        target = accordion(col, "APP & MAINTENANCE", icon = R.drawable.ic_settings,
+            contents = listOf("Check now", "Update", "Test notification", "Alarms", "Battery", "Hidden deadlines"))
         target.action("Check now", "Looks at Spectrum right away. A new notification appears in the list if something is new.") {
             save()
             Scheduler.pollNow(this)
             Toast.makeText(this, "Checking Spectrum...", Toast.LENGTH_SHORT).show()
+        }
+        val hiddenCount = getSharedPreferences("health", MODE_PRIVATE)
+            .getStringSet("hiddenEvents", emptySet())!!.size
+        if (hiddenCount > 0) {
+            target.action("Restore hidden deadlines ($hiddenCount)", "Undoes \"Hide this\" — the deadlines are fetched and reminded again on the next check.") {
+                getSharedPreferences("health", MODE_PRIVATE).edit().remove("hiddenEvents").apply()
+                Toast.makeText(this, "Restored — hidden deadlines return on the next check.", Toast.LENGTH_LONG).show()
+                recreate()
+            }
         }
         target.action("Check for app update", "Compares this build with the latest release on GitHub. Shows the result here; a notification appears if a newer version exists.") {
             Thread {
@@ -436,7 +467,12 @@ class SettingsActivity : Activity() {
 
         p.manualCourses = f("manualCourses")
         p.skipClasses = f("skipClasses")
-        p.myGroups = f("myGroups")
+        p.workerUrl = f("workerUrl")
+        p.workerKey = f("workerKey")
+        if (p.cloudPush && p.workerUrl.isNotEmpty() && p.workerKey.isNotEmpty() && p.token.isNotEmpty()) {
+            Thread { PushService.registerWithWorker(applicationContext) }.start()
+        }
+        // p.myGroups is owned by the Courses page now — never written here
         p.deadlineHours = f("deadlineHours")
         Scheduler.ensurePolling(this)
         Scheduler.scheduleAll(this)

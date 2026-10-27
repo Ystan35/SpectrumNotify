@@ -38,6 +38,23 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         Scheduler.ensurePolling(app)
+        Scheduler.scheduleEventReminders(app)
         Scheduler.pollNow(app)
+    }
+}
+
+/** Fires [reminderMin] before a user-created event: pushes the reminder, re-arms the rest. */
+class EventAlarmReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val title = intent.getStringExtra("title") ?: return
+        val dateLabel = intent.getStringExtra("dateLabel") ?: ""
+        Notifier.push(
+            context,
+            "Upcoming: $title",
+            if (dateLabel.isNotEmpty()) "Your event is coming up — $dateLabel." else "Your event is coming up.",
+            true,
+        )
+        // weekly events need their next occurrence armed; cheapest correct move is rescheduling all
+        Scheduler.scheduleEventReminders(context)
     }
 }

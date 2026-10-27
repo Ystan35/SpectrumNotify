@@ -111,8 +111,10 @@ object Scheduler {
         val st = State(ctx)
         val now = System.currentTimeMillis() / 1000
         val cal = Checker.myCalendar(st, p)
+        // holiday mode: skip class reminder alarms outside teaching weeks
+        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now())
         for (e in cal) {
-            if (!Checker.isAttEvent(e)) continue
+            if (!classesActive || !Checker.isAttEvent(e)) continue
             val start = e.optLong("timestart")
             val at = start - 590  // fires just inside the 10-minute window
             if (at <= now || at > now + 3 * 86400) continue
@@ -120,5 +122,37 @@ object Scheduler {
         }
         parseHm(p.summaryTime)?.let { setAlarm(ctx, nextDaily(it), 1) }
         parseHm(p.afternoonTime)?.let { setAlarm(ctx, nextDaily(it), 2) }
+        scheduleEventReminders(ctx)
+    }
+
+    // ------------------------------------------------------------ custom event reminders
+
+    /** Arms exact alarms for every event occurrence with a reminder in the next 7 days. */
+    fun scheduleEventReminders(ctx: Context) {
+        val am = ctx.getSystemService(AlarmManager::class.java)
+        val zoneId = zone()
+        val now = java.time.ZonedDateTime.now(zoneId)
+        var code = 9000
+        for (e in Events.all(ctx)) {
+            for ((d, t) in e.upcoming(now.toLocalDate(), 7)) {
+                val start = d.atTime(t).atZone(zoneId).toInstant().toEpochMilli()
+                val at = start - e.reminderMin * 60_000L
+                if (at <= System.currentTimeMillis()) continue
+                val pi = PendingIntent.getBroadcast(
+                    ctx, code++,
+                    Intent(ctx, EventAlarmReceiver::class.java)
+                        .putExtra("eventId", e.id)
+                        .putExtra("title", e.title)
+                        .putExtra("dateLabel", EventsUi.fmtDate(d)),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+                try {
+                    if (canExact(ctx)) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+                    else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+                } catch (e2: SecurityException) {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+                }
+            }
+        }
     }
 }

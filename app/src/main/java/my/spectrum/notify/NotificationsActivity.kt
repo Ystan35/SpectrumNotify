@@ -194,6 +194,7 @@ class NotificationsActivity : Activity() {
         if (st != logStamp) {
             logStamp = st
             entries = NotifyLog.entries(this).filter {
+                !NotifyLog.isHidden(this, it.ts) &&
                 !(it.kind == "sys" && it.title == "Check OK") &&
                 (p.debugLog || it.kind != "sys" || it.title.startsWith("Check failed") || it.title.startsWith("Last crash") ||
                  it.title.startsWith("Logged in") || it.title.startsWith("Logged out") || it.title.startsWith("Token"))
@@ -205,6 +206,15 @@ class NotificationsActivity : Activity() {
 
     // ------------------------------------------------------------ chips and records
     private val filters = listOf("" to "All", Cat.CLASS to "Classes", Cat.DEADLINE to "Deadlines", Cat.MATERIAL to "Materials", Cat.NEWS to "News")
+
+    /** Course page URL from a real /course/view.php link in the entry (never module ids). */
+    private fun courseSiteId(anyUrl: String, e: NotifyLog.Entry): String? {
+        val site = Regex("""https?://[^/]+""").find(anyUrl)?.value ?: return null
+        val re = Regex("""https?://[^\s"'<>)]*/course/view\.php\?id=(\d+)""")
+        val id = re.findAll(e.body).map { it.groupValues[1] }.firstOrNull()
+            ?: e.buttons.firstOrNull()?.let { re.find(it.second)?.groupValues?.get(1) }
+        return id?.let { "$site/course/view.php?id=$it" }
+    }
 
     private fun catOf(e: NotifyLog.Entry) = Cat.of(e.title, e.body)
 
@@ -292,6 +302,7 @@ class NotificationsActivity : Activity() {
 
     // ------------------------------------------------------------ one notification record
     private fun card(e: NotifyLog.Entry): View {
+        val done = NotifyLog.isDone(this, e.ts)
         val cat = catOf(e)
         val col = Cat.color(cat)
         var open = e.ts == openTs
@@ -330,6 +341,7 @@ class NotificationsActivity : Activity() {
             ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(3), 0, 0)
         }
+        if (done) title.paintFlags = title.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
         col2.addView(title)
         var body: TextView? = null
         if (e.body.isNotEmpty()) {
@@ -353,7 +365,59 @@ class NotificationsActivity : Activity() {
 
         // link buttons: the first is always visible, the rest appear when the card is opened
         val chips = ArrayList<TextView>()
-        if (btns.isNotEmpty()) {
+        val extraChips = ArrayList<Pair<String, () -> Unit>>()
+        if (cat == Cat.NEWS) {
+            // announcement: open the course's forum instead of the one post
+            val courseUrl = courseSiteId(e.body, e) ?: btns.firstOrNull()?.second?.let { courseSiteId(it, e) }
+            val forumUrl = courseUrl?.replaceFirst("/course/view.php?id=", "/mod/forum/index.php?id=")
+            if (!forumUrl.isNullOrEmpty()) extraChips.add(Pair("Check forum") { openUrl(forumUrl) })
+        }
+        if (cat == Cat.MATERIAL) {
+            val courseUrl = courseSiteId(e.body, e) ?: btns.firstOrNull()?.second?.let { courseSiteId(it, e) }
+            if (!courseUrl.isNullOrEmpty()) extraChips.add(Pair("View course materials") { openUrl(courseUrl) })
+        }
+        if (cat == Cat.DEADLINE) {
+            extraChips.add(Pair(if (done) "Mark as not done" else "Mark as done") {
+                if (done) {
+                    NotifyLog.unmarkDone(this, e.ts)
+                    logStamp = -1L; recSig = ""; render()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Mark as done?")
+                        .setMessage("The title stays on the list with a line through it, so you can still find it. Nothing is deleted, and you can undo with \"Mark as not done\".")
+                        .setPositiveButton("Mark as done") { _, _ ->
+                            NotifyLog.markDone(this, e.ts)
+                            logStamp = -1L; recSig = ""; render()
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            })
+            extraChips.add(Pair("Hide this (wrong?)") {
+                AlertDialog.Builder(this)
+                    .setTitle("Hide this deadline?")
+                    .setMessage("It disappears from Home and Notifications, and Spectrum's reminder for it is silenced. Undo any time: Settings → APP & MAINTENANCE → \"Restore hidden deadlines\".")
+                    .setPositiveButton("Hide it") { _, _ ->
+                        val sp = getSharedPreferences("health", MODE_PRIVATE)
+                        for (m in sp.getStringSet("dlTitleMap", emptySet()) ?: emptySet()) {
+                            val parts = m.split(":", limit = 2)
+                            if (parts.size == 2 && parts[0] == e.title.hashCode().toString()) {
+                                val ev = parts[1].split(":")
+                                if (ev.size >= 2) NotifyLog.hideEvent(this, ev[0] + ":" + ev[1])
+                                if (ev.size >= 3) NotifyLog.hideEvent(this, ev[0] + ":" + ev[1] + ":" + ev[2])
+                            }
+                        }
+                        NotifyLog.remove(this, e.ts)
+                        logStamp = -1L
+                        recSig = ""
+                        render()
+                        Toast.makeText(this, "Hidden. Restore: Settings → APP & MAINTENANCE → \"Restore hidden deadlines\".", Toast.LENGTH_LONG).show()
+                    }
+                    .setNegativeButton("Keep it", null)
+                    .show()
+            })
+        }
+        if (btns.isNotEmpty() || extraChips.isNotEmpty()) {
             val chipLine = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(0, dp(12), 0, 0)
@@ -368,6 +432,20 @@ class NotificationsActivity : Activity() {
                         if (i == 0) setColor(col) else { setColor(0x00000000); setStroke(dp(1), col) }
                     }
                     setOnClickListener { openUrl(b.second) }
+                }
+                chips.add(chip)
+                chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
+            }
+            for (x in extraChips) {
+                val chip = tv(x.first, 13f, col, true).apply {
+                    gravity = Gravity.CENTER
+                    minHeight = dp(40)
+                    setPadding(dp(16), 0, dp(16), 0)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
+                        setColor(0x00000000); setStroke(dp(1), col)
+                    }
+                    setOnClickListener { x.second() }
                 }
                 chips.add(chip)
                 chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })

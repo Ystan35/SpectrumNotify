@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Typeface
+import android.net.Uri
+import kotlin.math.abs
 import android.os.Build
 import android.view.MotionEvent
 import android.view.View
@@ -18,6 +20,7 @@ import android.widget.Button
 import android.widget.ImageButton
 import android.widget.ArrayAdapter
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -680,4 +683,238 @@ fun LinearLayout.navBellDot(): View = tag as? View ?: View(this.context)
 fun Activity.addNavBar(page: LinearLayout, active: Class<*>) {
     page.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
     page.addView(bottomNav(active), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+}
+
+
+// ---------------------------------------------------------------- floating toolbox (all tabs)
+
+/** The draggable "Aa" toolbox button + its quick sheet. Lives on every tab. */
+fun Activity.attachToolbox(root: FrameLayout) {
+    val fab = TextView(this).apply {
+        text = "Aa"
+        textSize = 17f * Ui.fontScale
+        setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER
+        setTextColor(Ui.CYAN)
+        background = rippleBg(Ui.BAR, Ui.CYAN, this@attachToolbox, 26)
+        contentDescription = "Toolbox: appearance, UM links, academic calendar. Tap to open, hold and drag to move."
+        elevation = dp(6).toFloat()
+    }
+    val fabLp = FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48)), Gravity.BOTTOM or Gravity.END).apply {
+        rightMargin = dp(14); bottomMargin = dp(78)
+    }
+    root.addView(fab, fabLp)
+    setupFabDrag(fab, fabLp, root) { showQuickSheet(root, fabLp) }
+}
+
+fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) {
+    if (root.findViewWithTag<View>("quicksheet") != null) return
+    val p = Prefs(this)
+
+    val sheet = LinearLayout(this).apply {
+        tag = "quicksheet"
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(16), dp(12), dp(16), dp(14))
+        background = roundBg(Ui.BAR, Ui.BORDER, this@showQuickSheet, 16)
+        elevation = dp(8).toFloat()
+    }
+    fun row(name: String, value: String, onCycle: () -> Unit) {
+        val r = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(48)
+            isClickable = true
+            background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+        }
+        r.addView(TextView(this).apply { text = name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        r.addView(TextView(this).apply { text = "$value  ▸"; textSize = 13f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD) })
+        r.setOnClickListener { onCycle() }
+        sheet.addView(r)
+    }
+    val themeNames = listOf("Phone", "Light", "Dark")
+    row("Colour mode", themeNames[p.themeMode]) {
+        p.themeMode = (p.themeMode + 1) % 3
+        recreate()
+    }
+    val sizeNames = listOf("Normal", "Large", "Extra large")
+    row("Text size", sizeNames[p.textScale]) {
+        p.textScale = (p.textScale + 1) % 3
+        recreate()
+    }
+    val conNames = listOf("Off", "On")
+    row("High contrast", conNames[if (p.highContrast) 1 else 0]) {
+        p.highContrast = !p.highContrast
+        recreate()
+    }
+    sheet.addView(View(this), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)))
+
+    // UM shortcuts: one row per link, edit at the bottom
+    sheet.addView(TextView(this).apply {
+        text = "UM LINKS"
+        textSize = 11f * Ui.fontScale; letterSpacing = 0.08f
+        setTextColor(Ui.DIM); setTypeface(typeface, Typeface.BOLD)
+        setPadding(0, dp(8), 0, dp(2))
+    })
+    fun linkRow(l: Shortcuts.Link) {
+        val r = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(44)
+            isClickable = true
+            background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+        }
+        r.addView(TextView(this).apply { text = l.name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        r.addView(TextView(this).apply { text = "↗"; textSize = 13f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD) })
+        r.setOnClickListener {
+            closeQuickSheet(root)
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(l.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) { }
+        }
+        sheet.addView(r)
+    }
+    for (l in Shortcuts.all(this)) linkRow(l)
+    val editLinks = TextView(this).apply {
+        text = "Edit UM links"
+        textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM)
+        minHeight = dp(40); gravity = Gravity.CENTER_VERTICAL
+        isClickable = true
+        background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+    }
+    editLinks.setOnClickListener {
+        closeQuickSheet(root)
+        LinksEditor.open(this) { }
+    }
+    sheet.addView(editLinks)
+
+    val cal = TextView(this).apply {
+        text = "Academic calendar ↗"
+        textSize = 13f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD)
+        minHeight = dp(44); gravity = Gravity.CENTER_VERTICAL
+        isClickable = true
+        background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+    }
+    cal.setOnClickListener {
+        closeQuickSheet(root)
+        startActivity(Intent(this, CalendarWebActivity::class.java))
+    }
+    sheet.addView(cal)
+
+    val semDates = TextView(this).apply {
+        text = "Semester dates"
+        textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM)
+        minHeight = dp(40); gravity = Gravity.CENTER_VERTICAL
+        isClickable = true
+        background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+    }
+    semDates.setOnClickListener {
+        closeQuickSheet(root)
+        AcademicCalendarEditor.open(this) { recreate() }
+    }
+    sheet.addView(semDates)
+
+    sheet.addView(View(this), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)))
+    val more = TextView(this).apply {
+        text = "More appearance settings"
+        textSize = 13f * Ui.fontScale
+        setTextColor(Ui.CYAN)
+        minHeight = dp(44)
+        gravity = Gravity.CENTER_VERTICAL
+        isClickable = true
+        background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+    }
+    more.setOnClickListener {
+        closeQuickSheet(root)
+        startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_OPEN, "appearance"))
+    }
+    sheet.addView(more)
+
+    val dim = View(this).apply {
+        tag = "quicksheetdim"
+        setBackgroundColor(0x66000000)
+        elevation = dp(7).toFloat()
+    }
+    dim.setOnClickListener { closeQuickSheet(root) }
+    root.addView(dim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    // Anchor the sheet to the toolbox wherever it was dragged: horizontal edge with more
+    // room wins (sheet is 230dp wide), and it opens above the button unless the button is
+    // near the top, in which case it opens below.
+    val sheetW = dp(230)
+    val sheetHGuess = dp(380)
+    val spaceRight = root.width - fabLp.rightMargin - fabLp.width
+    val spaceLeft = fabLp.rightMargin
+    val onRight = spaceRight >= sheetW || spaceRight >= spaceLeft
+    val fabTopY = root.height - fabLp.bottomMargin - fabLp.height
+    val openBelow = fabTopY < sheetHGuess
+    val lp = FrameLayout.LayoutParams(sheetW, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+        if (onRight) {
+            gravity = Gravity.END
+            rightMargin = dp(14)
+        } else {
+            gravity = Gravity.START
+            leftMargin = dp(14)
+        }
+        if (openBelow) {
+            gravity = gravity or Gravity.TOP
+            topMargin = fabTopY + fabLp.height + dp(10)
+        } else {
+            gravity = gravity or Gravity.BOTTOM
+            bottomMargin = fabLp.bottomMargin + fabLp.height + dp(10)
+        }
+    }
+    root.addView(sheet, lp)
+}
+
+fun Activity.closeQuickSheet(root: FrameLayout) {
+    root.findViewWithTag<View>("quicksheet")?.let { root.removeView(it) }
+    root.findViewWithTag<View>("quicksheetdim")?.let { root.removeView(it) }
+}
+
+/** Tap opens the quick sheet; holding still and dragging moves the button and snaps it to the nearest edge. */
+fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onTap: () -> Unit) {
+    var downX = 0f
+    var downY = 0f
+    var startX = 0
+    var startY = 0
+    var moved = false
+    var dragging = false
+    var pressTime = 0L
+    fab.setOnTouchListener { v, ev ->
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = ev.rawX; downY = ev.rawY
+                startX = fabLp.rightMargin; startY = fabLp.bottomMargin
+                moved = false; dragging = false; pressTime = System.currentTimeMillis()
+                true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = (ev.rawX - downX).toInt()
+                val dy = (ev.rawY - downY).toInt()
+                if (!dragging && (abs(dx) > dp(8) || abs(dy) > dp(8))) dragging = true
+                if (dragging) {
+                    moved = true
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                    // margins are measured from BOTTOM/END, so the button tracks the finger
+                    fabLp.rightMargin = (startX - dx).coerceIn(0, root.width - v.width)
+                    fabLp.bottomMargin = (startY - dy).coerceIn(dp(64), root.height - v.width)
+                    root.updateViewLayout(v, fabLp)
+                }
+                true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (dragging) {
+                    // snap to the nearer horizontal edge
+                    val toEnd = fabLp.rightMargin < (root.width - v.width) / 2
+                    fabLp.rightMargin = if (toEnd) dp(14) else root.width - v.width - dp(14)
+                    root.updateViewLayout(v, fabLp)
+                    moved = false  // a finished drag never counts as a tap
+                } else if (System.currentTimeMillis() - pressTime < 600) {
+                    onTap()
+                }
+                true
+            }
+            MotionEvent.ACTION_CANCEL -> { dragging = false; true }
+            else -> false
+        }
+    }
 }

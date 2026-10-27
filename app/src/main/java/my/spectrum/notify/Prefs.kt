@@ -74,6 +74,24 @@ class Prefs(ctx: Context) {
     var pollMinutes: Int
         get() = maxOf(10, sp.getInt("pollMin", 10))
         set(v) { sp.edit().putInt("pollMin", maxOf(10, v)).apply() }
+
+    // ---------------- cloud push (FCM via Cloudflare Worker) ----------------
+    /** Master switch: receive pushes through the cloud poller. */
+    var cloudPush: Boolean
+        get() = sp.getBoolean("cloudPush", false)
+        set(v) { sp.edit().putBoolean("cloudPush", v).apply() }
+    /** URL of the poller's /register endpoint, e.g. https://...workers.dev/register */
+    var workerUrl: String
+        get() = (sp.getString("workerUrl", "") ?: "").trim()
+        set(v) { sp.edit().putString("workerUrl", v.trim()).apply() }
+    /** Shared key the Worker checks on /register (same value as its adminKey). */
+    var workerKey: String
+        get() = try { secure?.getString("workerKey", "") ?: "" } catch (e: Exception) { "" }
+        set(v) { try { secure?.edit()?.putString("workerKey", v)?.commit() } catch (e: Exception) { } }
+    /** FCM device token, filled by PushService.onNewToken. */
+    var fcmToken: String
+        get() = sp.getString("fcmToken", "") ?: ""
+        set(v) { sp.edit().putString("fcmToken", v).apply() }
     var loginStartedAt: Long
         get() = sp.getLong("loginStartedAt", 0L)
         set(v) { sp.edit().putLong("loginStartedAt", v).apply() }

@@ -8,3 +8,6 @@ local.properties
 timetable_data.json
 tools/course_events_with_details.json
 tools/lecturer_data.json
+
+# Firebase config holds an API key; keep it local, CI injects it from a secret
+app/google-services.json

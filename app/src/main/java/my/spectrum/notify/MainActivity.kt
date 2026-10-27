@@ -61,6 +61,8 @@ class MainActivity : Activity() {
     private lateinit var heroBox: LinearLayout
     private lateinit var dueSection: LinearLayout
     private lateinit var dueRow: LinearLayout
+    private lateinit var eventsSection: LinearLayout
+    private lateinit var eventsList: LinearLayout
     private lateinit var navBar: LinearLayout
     private lateinit var bellDot: View
     private lateinit var themeBtn: ImageButton
@@ -79,6 +81,7 @@ class MainActivity : Activity() {
     private var heroClasses: List<Checker.ClassItem> = emptyList()
     private var heroPos = 0
     private var heroAnim = false
+    private var onSlide: ((Int) -> Unit)? = null
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -117,12 +120,15 @@ class MainActivity : Activity() {
         confirmOccDialog()
     }
 
+    private var occDialogShown = false
+
     /**
      * After the auto-detection finds courses with visible Occ pages, ask the user to confirm
      * each one (the detection is a good guess, but only the user knows their real Occ).
      * One dialog per course; "Skip" leaves it unconfirmed and it is asked again next launch.
      */
     private fun confirmOccDialog() {
+        if (occDialogShown) return
         val st = State(this)
         val seen = st.j.optJSONObject("occ_seen") ?: return
         val names = st.j.optJSONObject("occ_courses") ?: JSONObject()
@@ -145,6 +151,7 @@ class MainActivity : Activity() {
             asks.add(Ask(code, names.optString(cidS, code), occs, predictedNum))
         }
         if (asks.isEmpty()) return
+        occDialogShown = true
 
         // one dialog with the My-classes layout: scrollable content (last courses reachable),
         // sized below the app header
@@ -200,6 +207,35 @@ class MainActivity : Activity() {
                         Toast.LENGTH_LONG).show()
                 }
                 ovAt = 0L
+                askShortNames { askReviewTimetable() }
+            }
+            .setNegativeButton("Later", null)
+            .show()
+    }
+
+    /** After the first Occ save: offer to give courses short names. Once per install. */
+    private fun askShortNames(next: () -> Unit) {
+        val sp = getSharedPreferences("health", MODE_PRIVATE)
+        if (sp.getBoolean("askedShortNames", false)) { next(); return }
+        sp.edit().putBoolean("askedShortNames", true).apply()
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Name your courses?")
+            .setMessage("Course codes like WIA2010 are hard to remember. You can give each course a short name you recognise (for example \"HCI\" or \"cm\") — it shows next to the code everywhere.")
+            .setPositiveButton("Yes, set names") { _, _ ->
+                startActivity(Intent(this, CoursesActivity::class.java))
+            }
+            .setNegativeButton("Later") { _, _ -> next() }
+            .setOnCancelListener { next() }
+            .show()
+    }
+
+    /** After saving Occs: remind the user to eyeball the timetable once. */
+    private fun askReviewTimetable() {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Check your class times")
+            .setMessage("Your timetable was built from the attendance data and the UM list, and the times can be out of date. Take a minute: open the Timetable, switch between the days, and tap any class whose time looks wrong to fix it.")
+            .setPositiveButton("Review now") { _, _ ->
+                startActivity(Intent(this, TimetableActivity::class.java))
             }
             .setNegativeButton("Later", null)
             .show()
@@ -311,6 +347,19 @@ class MainActivity : Activity() {
         })
         content.addView(dueSection, lp(MATCH, WRAP))
 
+        // user-created events, next 7 days: a simple list, tap to edit
+        eventsSection = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        eventsSection.addView(tv("YOUR EVENTS", 13f, Ui.DIM, true).apply {
+            letterSpacing = 0.08f
+            setPadding(dp(2), dp(26), 0, dp(10))
+        })
+        eventsList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        eventsSection.addView(eventsList)
+        content.addView(eventsSection, lp(MATCH, WRAP))
+
         // shared bottom nav; keep a reference to the bell dot for the unread marker
         navBar = bottomNav(MainActivity::class.java)
         bellDot = navBar.navBellDot()
@@ -334,6 +383,7 @@ class MainActivity : Activity() {
         }
         root.addView(fab, fabLp)
         setupFabDrag(fab, fabLp, root) { showQuickSheet(root, fabLp) }
+        attachToolbox(root)
         setContentView(root)
     }
 
@@ -552,6 +602,7 @@ class MainActivity : Activity() {
         renderHeader(loggedIn)
         renderHero(loggedIn)
         renderDue()
+        renderEvents()
         renderBell()
     }
 
@@ -598,11 +649,19 @@ class MainActivity : Activity() {
         if (sig == heroSig && !heroAnim) return
         heroSig = sig
 
-        // today's classes become swipeable slides; other days' next class is a single slide
+        // today's classes become swipeable slides, then tomorrow's — capped at TWO days
         val slides: List<Checker.ClassItem> = when {
             !loggedIn || next == null -> if (next != null) listOf(next) else emptyList()
-            isToday(next.start) -> ov.classes.filter { isToday(it.start) }
-            else -> listOf(next)
+            else -> {
+                val firstDay = localDt(next.start).toLocalDate()
+                val first = ov.classes.filter { localDt(it.start).toLocalDate() == firstDay }
+                val secondDay = ov.classes
+                    .filter { localDt(it.start).toLocalDate() != firstDay }
+                    .groupBy { localDt(it.start).toLocalDate() }
+                    .toSortedMap()
+                    .entries.firstOrNull()?.value ?: emptyList()
+                first + secondDay
+            }
         }
         heroClasses = slides
         if (heroPos >= slides.size) heroPos = 0
@@ -657,7 +716,7 @@ class MainActivity : Activity() {
                 paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
                 // small course-colour dot before the label so slides are distinguishable at a glance
             })
-            card.addView(tv(c.course, 28f, white, true).apply { setPadding(0, dp(6), 0, 0) })
+            card.addView(tv(Shorts.display(this, c.course), 28f, white, true).apply { setPadding(0, dp(6), 0, 0) })
             val sub = if (c.name.isNotEmpty() && !c.name.equals(c.course, true)) c.name else c.full
             if (sub.isNotEmpty()) {
                 card.addView(tv(sub, 14f, soft).apply {
@@ -691,11 +750,16 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            val hasLink = c.link.isNotEmpty() && !c.manual
+            // a real meeting link exists → Join class is the primary action,
+            // whatever kind of slot the class came from
+            val hasLink = c.link.isNotEmpty()
             if (hasLink) actionsRow.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Attendance", !hasLink) {
-                val au = Checker.attendanceUrl(this@MainActivity, c.courseId)
-                if (au.isNotEmpty()) openUrl(au) else openUrl(c.courseUrl)
+                // same resolver as the timetable: pasted link, else the auto-detected page,
+                // else the course page so the button never dead-ends
+                val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.course, c.courseId)
+                val target = att.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
+                if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
             actions.addView(actionsRow, lp(WRAP, WRAP))
@@ -714,37 +778,284 @@ class MainActivity : Activity() {
             card.addView(track)
             pager.addView(card, lp(MATCH, WRAP))
 
-            // swipe left/right to move between today's classes
+            // swipe left/right to change slide; a plain tap opens the course sheet.
+            // the touch listener must claim the gesture (DOWN → true) or children with
+            // click listeners eat the events and swiping stops working
             var dX = 0f
+            var dY = 0f
+            var tracking = false
+            card.isClickable = true
             card.setOnTouchListener { _, ev ->
                 when (ev.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> { dX = ev.x; false }
-                    MotionEvent.ACTION_UP -> {
+                    MotionEvent.ACTION_DOWN -> { dX = ev.x; dY = ev.y; tracking = true; true }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (tracking && abs(ev.x - dX) > dp(30) && abs(ev.x - dX) > abs(ev.y - dY)) true else false
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (!tracking) return@setOnTouchListener false
+                        tracking = false
                         val dx = ev.x - dX
-                        if (dx < -dp(60) && heroPos < slides.size - 1) { heroAnim = true; show(heroPos + 1); heroAnim = false; true }
-                        else if (dx > dp(60) && heroPos > 0) { heroAnim = true; show(heroPos - 1); heroAnim = false; true }
-                        else false
+                        val dy = ev.y - dY
+                        when {
+                            ev.actionMasked == MotionEvent.ACTION_CANCEL -> false
+                            dx < -dp(60) && abs(dx) > abs(dy) && heroPos < slides.size - 1 -> { heroAnim = true; onSlide?.invoke(heroPos + 1); heroAnim = false; true }
+                            dx > dp(60) && abs(dx) > abs(dy) && heroPos > 0 -> { heroAnim = true; onSlide?.invoke(heroPos - 1); heroAnim = false; true }
+                            abs(dx) < dp(24) && abs(dy) < dp(24) -> { courseSheet(c); true }
+                            else -> false
+                        }
                     }
                     else -> false
                 }
             }
         }
-        show(heroPos)
+
+
+        // nav: explicit arrows + counter + dots, theme-colored, refreshed on slide change
+        val navHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        lateinit var renderNav: () -> Unit
+        renderNav = {
+            navHolder.removeAllViews()
+            if (slides.size > 1) {
+                val nav = LinearLayout(this).apply {
+                    gravity = Gravity.CENTER_VERTICAL or Gravity.CENTER_HORIZONTAL
+                    setPadding(0, dp(10), 0, 0)
+                }
+                val navStrong = Ui.TEXT
+                val navDim = Ui.DIM
+                fun arrowBtn(arrow: String, desc: String, enabled: Boolean, onClick: () -> Unit): TextView =
+                    tv(arrow, 22f, if (enabled) navStrong else navDim, true).apply {
+                        minHeight = dp(Ui.touch(48)); minWidth = dp(Ui.touch(48))
+                        gravity = Gravity.CENTER
+                        contentDescription = desc
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(if (enabled) Ui.tint(if (Ui.dark) 0xFFFFFFFF.toInt() else 0xFF26251F.toInt(), 0x14) else 0x00000000)
+                            setStroke(dp(1), if (enabled) Ui.CYAN else Ui.tint(Ui.DIM, 0x66))
+                        }
+                        if (enabled) setOnClickListener { onClick() }
+                    }
+                nav.addView(arrowBtn("‹", "Previous class", heroPos > 0) { onSlide?.invoke(heroPos - 1) })
+                nav.addView(tv("Class ${heroPos + 1} of ${slides.size}", 13f, Ui.TEXT, true).apply { setPadding(dp(12), 0, dp(12), 0) }, lp(WRAP, WRAP))
+                nav.addView(arrowBtn("›", "Next class", heroPos < slides.size - 1) { onSlide?.invoke(heroPos + 1) })
+                navHolder.addView(nav, lp(MATCH, WRAP))
+                val dots = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, dp(4)); clipChildren = false }
+                slides.forEachIndexed { i, sl ->
+                    val wrap = FrameLayout(this).apply {
+                        isClickable = true
+                        contentDescription = "Go to class ${i + 1} of ${slides.size}: ${sl.course}, ${dayLabel(sl.start)}"
+                        setOnClickListener { onSlide?.invoke(i) }
+                    }
+                    val d = View(this)
+                    d.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(if (i == heroPos) Ui.TEXT else Ui.tint(Ui.TEXT, 0x55)) }
+                    wrap.addView(d, FrameLayout.LayoutParams(dp(if (i == heroPos) 22 else 10), dp(4), Gravity.CENTER))
+                    dots.addView(wrap, lp(dp(44), dp(28)))
+                }
+                navHolder.addView(dots, lp(MATCH, WRAP))
+            }
+        }
+        onSlide = { pos -> show(pos); renderNav() }
+        renderNav()
 
         heroBox.removeAllViews()
         heroBox.addView(pager, lp(MATCH, WRAP))
-        // one dash per class; tap a dash to jump straight to that slide
-        if (slides.size > 1) {
-            val dots = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
-            slides.forEachIndexed { i, _ ->
-                val d = View(this)
-                d.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(if (i == heroPos) 0xFFFFFFFF.toInt() else 0x55FFFFFF.toInt()) }
-                d.contentDescription = "Class ${i + 1} of ${slides.size}"
-                d.isClickable = true
-                d.setOnClickListener { show(i) }
-                dots.addView(d, lp(dp(if (i == heroPos) 22 else 10), dp(4)).apply { rightMargin = dp(5) })
+        heroBox.addView(navHolder, lp(MATCH, WRAP))
+    }
+
+    private var sheetTag: android.app.AlertDialog? = null
+    private fun sheetDismiss() { sheetTag?.dismiss(); sheetTag = null }
+
+    /** Everything for one course in a bottom sheet: links + edit row. Tapping the hero card opens it. */
+    private fun courseSheet(c: Checker.ClassItem) {
+        sheetDismiss()
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(20))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(22).toFloat()
+                setColor(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt())
+                setStroke(dp(1), if (Ui.dark) 0xFF3A4150.toInt() else 0xFFD8D4CA.toInt())
             }
-            heroBox.addView(dots, lp(MATCH, WRAP))
+        }
+        val tint = Timetable.colours(this, setOf(c.course))[c.course] ?: Ui.CYAN
+        sheet.addView(tv(Shorts.display(this, c.course), 22f, tint, true))
+        val sub = if (c.name.isNotEmpty() && !c.name.equals(c.course, true)) c.name else c.full
+        if (sub.isNotEmpty()) sheet.addView(tv(sub, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, dp(8)) })
+
+        val (meeting, att, coursePage) = Checker.linksForCourse(this, c.course, c.courseId)
+        fun row(title: String, subText: String, url: String?) {
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
+            }
+            r.addView(tv(title, 15f, Ui.TEXT, true))
+            r.addView(tv(subText, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            r.isClickable = true
+            r.contentDescription = title
+            r.setOnClickListener {
+                sheetDismiss()
+                if (url != null) openUrl(url)
+            }
+            sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
+        }
+        if (coursePage.isNotEmpty()) row("Open course page", coursePage, coursePage)
+        if (att.isNotEmpty()) row("Attendance", att, att)
+        if (meeting.isNotEmpty()) row("Join class — meeting link", meeting, meeting)
+        // edit this class entry: find the real slot (the editor finish()es silently otherwise)
+        val day = localDt(c.start).dayOfWeek.value
+        val startMin = localDt(c.start).let { it.hour * 60 + it.minute }
+        val editIntent = Intent(this, TimetableEditActivity::class.java)
+        val manualSlot = Timetable.manual(this).firstOrNull {
+            it.course.equals(c.course, true) && it.start == startMin && it.day == day
+        }
+        if (manualSlot != null) {
+            editIntent.putExtra(TimetableEditActivity.EXTRA_GRP, manualSlot.grp)
+        } else {
+            val learnedSlot = Timetable.all(this).firstOrNull {
+                it.course.equals(c.course, true) && it.day == day && it.start == startMin
+            }
+            if (learnedSlot != null) editIntent.putExtra(TimetableEditActivity.EXTRA_KEY, learnedSlot.key)
+        }
+        fun editRow() {
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
+            }
+            r.addView(tv("Edit this class", 15f, Ui.TEXT, true))
+            r.addView(tv("Times, name, attendance mode, colour", 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            r.isClickable = true
+            r.setOnClickListener { sheetDismiss(); startActivity(editIntent) }
+            sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
+        }
+        editRow()
+        if (c.courseId != 0L) {
+            fun toolRow(title: String, subText: String, go: () -> Unit) {
+                val r = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
+                }
+                r.addView(tv(title, 15f, Ui.TEXT, true))
+                r.addView(tv(subText, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+                r.isClickable = true
+                r.setOnClickListener { sheetDismiss(); go() }
+                sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
+            }
+            toolRow("Notification pages", "Choose which parts of this course alert you") {
+                startActivity(Intent(this, SectionsActivity::class.java)
+                    .putExtra(SectionsActivity.EXTRA_ID, c.courseId)
+                    .putExtra(SectionsActivity.EXTRA_NAME, sub))
+            }
+        }
+
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_DayNight)
+            .setView(sheet)
+            .create()
+        sheetTag = dialog
+        dialog.show()
+        dialog.window?.setLayout(
+            android.view.WindowManager.LayoutParams.MATCH_PARENT,
+            android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        dialog.window?.setGravity(android.view.Gravity.BOTTOM)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.setDimAmount(0.55f)
+    }
+
+    /** One task (deadline) in a bottom sheet, matching the course sheet's look. */
+    private fun dueSheet(d: Checker.DueItem, doneKey: String) {
+        sheetDismiss()
+        val sp = getSharedPreferences("health", MODE_PRIVATE)
+        val isDone = sp.getBoolean(doneKey, false)
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(20))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(22).toFloat()
+                setColor(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt())
+                setStroke(dp(1), if (Ui.dark) 0xFF3A4150.toInt() else 0xFFD8D4CA.toInt())
+            }
+        }
+        val left = d.ts - System.currentTimeMillis() / 1000
+        val col = if (left < 86400) Ui.RED else if (left < 3 * 86400) Ui.ORANGE else Ui.GREEN
+        sheet.addView(tv("Due in " + relShort(left), 13f, col, true))
+        sheet.addView(tv(d.name, 20f, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END })
+        if (d.course.isNotEmpty()) sheet.addView(tv(Shorts.display(this, d.course), 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        if (isDone) sheet.addView(tv("✓ marked as done", 12f, Ui.GREEN, true).apply { setPadding(0, dp(8), 0, 0) })
+
+        fun row(title: String, subText: String, go: () -> Unit) {
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
+            }
+            r.addView(tv(title, 15f, Ui.TEXT, true))
+            r.addView(tv(subText, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            r.isClickable = true
+            r.setOnClickListener { sheetDismiss(); go() }
+            sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
+        }
+        if (d.url.isNotEmpty()) row("View task", d.url) { openUrl(d.url) }
+        row(
+            if (isDone) "Mark as not done" else "Mark as done",
+            if (isDone) "Puts it back on your active list" else "Keeps it on the list, struck through — you've handled it",
+        ) {
+            sp.edit().putBoolean(doneKey, !isDone).apply()
+            dueSig = ""
+            render()
+        }
+        row("Hide this (wrong?)", "Removes it everywhere; restore from Settings → APP & MAINTENANCE") {
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Hide this deadline?")
+                .setMessage("“" + d.name + "” will be removed from Home and Notifications, and Spectrum's reminder for it is silenced. You can bring it back: Settings → APP & MAINTENANCE → “Restore hidden deadlines”.")
+                .setPositiveButton("Hide it") { _, _ ->
+                    if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId)
+                    dueSig = ""
+                    render()
+                    Toast.makeText(this, "Hidden. Restore: Settings → APP & MAINTENANCE → “Restore hidden deadlines”.", Toast.LENGTH_LONG).show()
+                }
+                .setNegativeButton("Keep it", null)
+                .show()
+        }
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_DayNight)
+            .setView(sheet)
+            .create()
+        sheetTag = dialog
+        dialog.show()
+        dialog.window?.setLayout(
+            android.view.WindowManager.LayoutParams.MATCH_PARENT,
+            android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        dialog.window?.setGravity(android.view.Gravity.BOTTOM)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.setDimAmount(0.55f)
+    }
+
+    /** Home "YOUR EVENTS": occurrences in the next 7 days, tap to edit. */
+    private fun renderEvents() {
+        val today = java.time.LocalDate.now()
+        val rows = ArrayList<Triple<Events.Event, java.time.LocalDate, Int>>()
+        for (e in Events.all(this)) {
+            for ((d, t) in e.upcoming(today, 7)) rows.add(Triple(e, d, t.hour * 60 + t.minute))
+        }
+        rows.sortWith(compareBy({ it.second }, { it.third }))
+        eventsSection.visibility = if (rows.isEmpty()) View.GONE else View.VISIBLE
+        if (rows.isEmpty()) return
+        eventsList.removeAllViews()
+        for ((e, d, min) in rows.take(5)) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(14))
+                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
+                isClickable = true
+                setOnClickListener { EventsUi.editor(this@MainActivity, e, { dueSig = ""; render() }) }
+            }
+            row.addView(tv(EventsUi.fmtDate(d) + " · " + EventsUi.fmtMin(min), 12f, Ui.CYAN, true))
+            row.addView(tv(e.title, 14f, Ui.TEXT, true).apply {
+                setPadding(0, dp(4), 0, 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            })
+            eventsList.addView(row, lp(MATCH, WRAP).apply { bottomMargin = dp(8) })
         }
     }
 
@@ -759,11 +1070,14 @@ class MainActivity : Activity() {
         for (d in items) {
             val left = d.ts - now
             val col = if (left < 86400) Ui.RED else if (left < 3 * 86400) Ui.ORANGE else Ui.GREEN
+            val doneKey = "dueDone:" + d.eventId + ":" + d.ts
+            val isDone = getSharedPreferences("health", MODE_PRIVATE).getBoolean(doneKey, false)
             val c = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
-                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
-                setOnClickListener { openUrl(d.url) }
+                background = roundBg(Ui.BAR, if (isDone) Ui.CYAN else Ui.BORDER, this@MainActivity, 16)
+                isClickable = true
+                setOnClickListener { dueSheet(d, doneKey) }
             }
             // urgency stripe across the top edge: readable at a glance without the badge
             c.addView(View(this).apply {
@@ -777,7 +1091,9 @@ class MainActivity : Activity() {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(10), 0, 0)
+                if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
             })
+            if (d.course.isNotEmpty()) c.addView(tv(Shorts.display(this, d.course), 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
             if (d.course.isNotEmpty()) c.addView(tv(d.course, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
             dueRow.addView(c, lp(dp(172), WRAP).apply { rightMargin = dp(10) })
         }

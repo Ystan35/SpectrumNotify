@@ -230,11 +230,13 @@ object Timetable {
     // ---------------------------------------------------------- attendance links per course
     // User-pasted attendance links win over the auto-detected Spectrum attendance module page.
 
+    /** The raw user-pasted attendance link(s) for a course; empty = none pasted. */
+    fun userAttLinkRaw(ctx: Context, course: String): String =
+        sp(ctx).getString("att:$course", "") ?: ""
+
     /** The attendance link shown for a course: user-pasted one first, else the auto one. */
-    fun attendanceLink(ctx: Context, course: String, autoUrl: String): String {
-        val mine = sp(ctx).getString("att:$course", "") ?: ""
-        return mine.ifEmpty { autoUrl }
-    }
+    fun attendanceLink(ctx: Context, course: String, autoUrl: String): String =
+        userAttLinkRaw(ctx, course).ifEmpty { autoUrl }
 
     /**
      * Auto-setup: write the LEC/TUT/LAB slots of one catalog Occ into the timetable.
