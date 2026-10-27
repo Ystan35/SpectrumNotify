@@ -22,6 +22,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.9
+      - name: Write Firebase config
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE_CONFIG }}
+        run: |
+          if [ -z "$FIREBASE_CONFIG" ]; then
+            echo "FIREBASE_CONFIG secret is not set — add the contents of app/google-services.json as a repo secret"
+            exit 1
+          fi
+          echo "$FIREBASE_CONFIG" > app/google-services.json
       - name: Build debug + release APKs
         run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
       - name: Stage release APK into repo (apk/SpectrumNotify.apk)
