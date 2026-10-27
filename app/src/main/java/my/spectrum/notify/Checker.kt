@@ -175,7 +175,11 @@ object Checker {
      * and the hero card, so every screen shows the same thing for the same class.
      * Returns (meeting, attendance, coursePage); any may be "".
      */
-    fun linksForCourse(ctx: Context, code: String, courseId: Long, extraTokens: Set<String> = emptySet(), preferLec: Boolean? = null): Triple<String, String, String> {
+    fun linksForCourse(
+        ctx: Context, code: String, courseId: Long,
+        extraTokens: Set<String> = emptySet(), preferLec: Boolean? = null,
+        day: Int = 0, startMin: Int = -1, endMin: Int = -1,
+    ): Triple<String, String, String> {
         val p = Prefs(ctx)
         val id = if (courseId != 0L) courseId else courseIdForCode(ctx, code)
         val att = Timetable.userAttLinkRaw(ctx, code).ifEmpty { attendanceUrl(ctx, id, preferLec) }
@@ -183,17 +187,44 @@ object Checker {
             if (id == 0L) "" else {
                 val ls = linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
                     .get(id.toString()) ?: emptyList()
-                // score links against BOTH token sets: the user's own group tokens (occ2 vs
-                // occ4) AND the tokens of the class/event this card belongs to (its name says
-                // "Lecture Occ 3" etc.). Section links often carry no occ token themselves, so
-                // matching the event's tokens is what picks the right occ's link.
+                // Score links against EVERYTHING the requesting class knows (user request:
+                // "filter every detail like time, date, lecture name, occ, course"):
+                //   occ tokens (event name + user's occ)  — strongest
+                //   lecture/tutorial kind                  — if preferLec set
+                //   DAY name + TIME RANGE in the label    — e.g. "Monday 12:00 - 02:00"
+                // Captured labels carry text like
+                //   "Attendance k ( L ) @ Bilik Kuliah Monday 12:00 - 02:00 (Rasha Atallah)"
+                // so day-name and start-hour matching against the label is reliable.
                 val mine = Groups.mine(State(ctx), Prefs(ctx), code.uppercase())
-                val scored = ls.filter { linkIsMeeting(it.url) }.sortedByDescending { l ->
-                    val evHits = l.tokens.intersect(extraTokens).size * 10
-                    val myHits = l.tokens.intersect(mine).size * 10
-                    (if (l.ts > 0) 1 else 0) + evHits + myHits
-                }
-                scored.firstOrNull()?.url ?: ls.firstOrNull { linkIsMeeting(it.url) }?.url ?: ""
+                val dayName = if (day in 1..7) Timetable.DAYS[day - 1] else ""
+                val dayFull = if (day in 1..7) Timetable.DAY_FULL[day - 1] else ""
+                val startHour = startMin / 60
+                val endHour = (endMin + 59) / 60
+                val scored = ls.filter { linkIsMeeting(it.url) }.map { l ->
+                    var score = (if (l.ts > 0) 1 else 0)
+                    score += l.tokens.intersect(extraTokens).size * 10
+                    score += l.tokens.intersect(mine).size * 10
+                    if (preferLec == true && (l.label.contains("lecture", true) || l.label.contains("kuliah", true))) score += 5
+                    if (preferLec == false && (l.label.contains("tutorial", true) || l.label.contains("tutor", true))) score += 5
+                    val labelLow = l.label.lowercase()
+                    if (dayName.isNotEmpty() && labelLow.contains(dayName.lowercase())) score += 8
+                    if (dayFull.isNotEmpty() && labelLow.contains(dayFull.lowercase())) score += 8
+                    // hour match: label contains the start hour as a standalone number
+                    if (startHour in 0..23) {
+                        val hourRe = Regex("(^|[^0-9])$startHour([^0-9]|$)")
+                        if (hourRe.containsMatchIn(labelLow)) score += 8
+                        // 12h formats: "2pm" style
+                        val pmHour = if (startHour > 12) startHour - 12 else -1
+                        if (pmHour > 0) {
+                            val pmRe = Regex("(^|[^0-9])$pmHour[ ]*(pm)([^0-9]|$)")
+                            if (pmRe.containsMatchIn(labelLow)) score += 8
+                        }
+                    }
+                    score
+                }.mapIndexed { idx, sc -> Triple(idx, sc, ls[idx]) }
+                    .filter { it.second > 0 }
+                    .sortedByDescending { it.second }
+                (scored.firstOrNull()?.third ?: ls.firstOrNull { linkIsMeeting(it.url) })?.url ?: ""
             }
         }
         val coursePage = if (id != 0L) "${p.site}/course/view.php?id=$id" else ""
