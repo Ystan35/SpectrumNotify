@@ -151,8 +151,18 @@ object Checker {
         val id = if (courseId != 0L) courseId else courseIdForCode(ctx, code)
         val att = Timetable.userAttLinkRaw(ctx, code).ifEmpty { attendanceUrl(ctx, id) }
         val meeting = Timetable.meetingLinkOf(ctx, code).ifEmpty {
-            if (id == 0L) "" else linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
-                .get(id.toString())?.firstOrNull { linkIsMeeting(it.url) }?.url ?: ""
+            if (id == 0L) "" else {
+                val ls = linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
+                    .get(id.toString()) ?: emptyList()
+                // score links against the user's OWN group tokens (occ2 vs occ4 etc.) so a
+                // course running several occs resolves to THIS user's occ meeting link,
+                // not just the first meeting link captured for the course
+                val mine = Groups.mine(State(ctx), Prefs(ctx), code.uppercase())
+                val scored = ls.filter { linkIsMeeting(it.url) }.sortedByDescending { l ->
+                    (if (l.ts > 0) 1 else 0) + l.tokens.intersect(mine).size * 10
+                }
+                scored.firstOrNull()?.url ?: ls.firstOrNull { linkIsMeeting(it.url) }?.url ?: ""
+            }
         }
         val coursePage = if (id != 0L) "${p.site}/course/view.php?id=$id" else ""
         return Triple(meeting, att, coursePage)
@@ -194,7 +204,30 @@ object Checker {
                 e.optLong("id"),
             )
         }.sortedBy { it.ts }
-        return Overview(classes, due)
+        // manual timetable entries (user-added or catalog auto-setup) belong on the hero too;
+        // links resolved the same way every other screen resolves them
+        val zoneId = zone()
+        val manualClasses = if (!classesActive) emptyList() else Timetable.manual(ctx).flatMap { slot ->
+            (0..13L).map { off -> java.time.LocalDate.now(zoneId).plusDays(off) }
+                .filter { dd -> dd.dayOfWeek.value == slot.day }
+                .map { dd ->
+                    val dayStart = dd.atStartOfDay(zoneId).toEpochSecond()
+                    Triple(slot, dayStart + slot.start * 60L, dayStart + slot.end * 60L)
+                }
+        }.filter { (_, _, end) -> end > now }.map { (slot, start, end) ->
+            val cid = courseIdForCode(ctx, slot.course)
+            val (meeting, att, coursePage) = linksForCourse(ctx, slot.course, cid)
+            ClassItem(
+                slot.title.ifEmpty { "Class" }, slot.course,
+                slot.course, start, end,
+                meeting.ifEmpty { att },
+                coursePage, true, cid,
+            )
+        }
+        val merged = (classes + manualClasses)
+            .distinctBy { "${it.course}:${it.start / 900}" }
+            .sortedBy { it.start }
+        return Overview(merged, due)
     }
 
     private fun courseId(e: JSONObject): Long = e.optJSONObject("course")?.optLong("id", 0L) ?: 0L

@@ -175,7 +175,7 @@ class TimetableActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(6), 0, 0)
         }
-        mid.addView(tv(s.course, 15f, c, true))
+        mid.addView(tv(Shorts.display(this, s.course), 15f, c, true))
         if (s.kind != SlotKind.CLASS) {
             mid.addView(tv(s.kind.label, 12f, Ui.TEXT).apply {
                 setPadding(dp(8), dp(2), dp(8), dp(2))
@@ -473,7 +473,7 @@ class TimetableActivity : Activity() {
             isClickable = true
             setOnClickListener { slotDetail(s) }   // tap anywhere: full detail popup
         }
-        b.addView(tv(s.course, 12f, Ui.TEXT, true).apply { maxLines = 1 })
+        b.addView(tv(Shorts.display(this, s.course), 12f, Ui.TEXT, true).apply { maxLines = 1 })
         val sub = if (narrow) s.kind.tag else listOf(s.kind.tag, Timetable.fmtMin(s.start)).filter { it.isNotEmpty() }.joinToString(" · ")
         if (sub.isNotEmpty()) b.addView(tv(sub, 10f, Ui.DIM).apply { maxLines = 1 })
         // location line when there is room for it (not the narrow multi-lane blocks)
@@ -493,7 +493,7 @@ class TimetableActivity : Activity() {
     private fun slotDetail(s: Slot) {
         val c = colours[s.course] ?: Ui.CYAN
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(12), dp(24), 0) }
-        box.addView(tv(s.course, 20f, c, true))
+        box.addView(tv(Shorts.display(this, s.course), 20f, c, true))
         box.addView(tv("${Timetable.DAY_FULL[s.day - 1]} · ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}", 14f, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
         if (s.kind != SlotKind.CLASS) box.addView(tv(s.kind.label, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
         val loc = Timetable.locationOf(this, s.course)

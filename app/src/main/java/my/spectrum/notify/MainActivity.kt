@@ -668,8 +668,49 @@ class MainActivity : Activity() {
 
         val white = 0xFFFFFFFF.toInt()
         val soft = 0xD9FFFFFF.toInt()
-        fun heroBg() = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.HERO_A, Ui.HERO_B)).apply {
-            cornerRadius = dp(22).toFloat()
+        // per-course gradient: keep the course hue, clamp into a dark band so white text
+        // always reads — deeper in light theme, brighter in dark theme (fail-safe: default gradient)
+        fun shiftColour(c: Int, amount: Float): Int {
+            val rf = ((c shr 16) and 0xFF) / 255f
+            val gf = ((c shr 8) and 0xFF) / 255f
+            val bf = (c and 0xFF) / 255f
+            val max = maxOf(rf, gf, bf); val min = minOf(rf, gf, bf)
+            val l = (max + min) / 2f
+            val sat = if (max == min) 0f else (max - min) / (1f - abs(2f * l - 1f)).coerceAtLeast(0.001f)
+            val h = when (max) {
+                min -> 0f
+                rf -> (((gf - bf) / (max - min)).let { if (it < 0) it + 6f else it }) / 6f
+                gf -> ((bf - rf) / (max - min) + 2f) / 6f
+                else -> ((rf - gf) / (max - min) + 4f) / 6f
+            }
+            val lBase = if (Ui.dark) 0.34f else 0.24f
+            val l2 = (lBase + amount * 0.08f).coerceIn(if (Ui.dark) 0.24f else 0.16f, if (Ui.dark) 0.42f else 0.30f)
+            val s2 = (sat * if (Ui.dark) 0.85f else 1.0f).coerceIn(0.35f, 0.80f)
+            fun hue2(p: Float, q: Float, tIn: Float): Float {
+                var t = tIn
+                if (t < 0) t += 1f
+                if (t > 1) t -= 1f
+                return when {
+                    t < 1f / 6f -> p + (q - p) * 6f * t
+                    t < 1f / 2f -> q
+                    t < 2f / 3f -> p + (q - p) * (2f / 3f - t) * 6f
+                    else -> p
+                }.coerceIn(0f, 1f)
+            }
+            val q = if (l2 < 0.5f) l2 * (1f + s2) else l2 + s2 - l2 * s2
+            val pr = 2f * l2 - q
+            val r2 = (hue2(pr, q, h + 1f / 3f) * 255).toInt().coerceIn(0, 255)
+            val g2 = (hue2(pr, q, h) * 255).toInt().coerceIn(0, 255)
+            val b2 = (hue2(pr, q, h - 1f / 3f) * 255).toInt().coerceIn(0, 255)
+            return 0xFF000000.toInt() or (r2 shl 16) or (g2 shl 8) or b2
+        }
+        fun heroBg(course: String): GradientDrawable {
+            val tint = Timetable.colours(this, setOf(course))[course]
+            return if (tint == null) {
+                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.HERO_A, Ui.HERO_B))
+            } else {
+                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(shiftColour(tint, 0f), shiftColour(tint, -0.1f)))
+            }.apply { cornerRadius = dp(22).toFloat() }
         }
         fun label(t: String) = tv(t, 12f, soft, true).apply { letterSpacing = 0.08f }
 
@@ -678,7 +719,7 @@ class MainActivity : Activity() {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(20), dp(18), dp(20), dp(20))
-                background = heroBg()
+                background = heroBg("")
             }
             if (!loggedIn) {
                 card.addView(label("WELCOME"))
@@ -687,8 +728,12 @@ class MainActivity : Activity() {
                 card.addView(pill("Log in", true) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(WRAP, WRAP))
             } else {
                 val due = ov.due.firstOrNull()
-                card.addView(label("ALL CLEAR"))
-                card.addView(tv("No classes coming up", 24f, white, true).apply { setPadding(0, dp(6), 0, 0) })
+                val inBreak = !AcademicCalendar.inTeaching(this, java.time.LocalDate.now())
+                card.addView(label(if (inBreak) "HOLIDAY MODE" else "ALL CLEAR"))
+                card.addView(tv(
+                    if (inBreak) "Semester break — classes are hidden until teaching resumes" else "No classes coming up",
+                    24f, white, true,
+                ).apply { setPadding(0, dp(6), 0, 0) })
                 card.addView(tv(
                     if (due != null) "Next deadline: ${due.name} ${relIn(due.ts - now)}." else "Enjoy the free time. New updates will appear below.",
                     14f, soft,
@@ -708,7 +753,7 @@ class MainActivity : Activity() {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(20), dp(18), dp(20), dp(20))
-                background = heroBg()
+                background = heroBg(c.course)
             }
             val live = now >= c.start
             val col = Timetable.colours(this, setOf(c.course))[c.course] ?: white
@@ -854,11 +899,14 @@ class MainActivity : Activity() {
             }
         }
         onSlide = { pos -> show(pos); renderNav() }
-        renderNav()
 
         heroBox.removeAllViews()
         heroBox.addView(pager, lp(MATCH, WRAP))
         heroBox.addView(navHolder, lp(MATCH, WRAP))
+        // FIRST paint: show() must run after the pager is attached, or the card is
+        // invisible until an arrow is pressed (the reported v0.21.2 bug)
+        show(heroPos)
+        renderNav()
     }
 
     private var sheetTag: android.app.AlertDialog? = null
