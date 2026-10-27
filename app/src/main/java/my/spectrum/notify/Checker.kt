@@ -247,9 +247,20 @@ object Checker {
             val short = c?.str("shortname") ?: ""
             val full = c?.str("fullname") ?: ""
             val cid = courseId(e)
+            // holiday hero: honour the user's Time Override from the class editor — the
+            // editor saves under "course|day|start|end" (Timetable.fromCalendar's key),
+            // so derive the same key here and shift the shown start/end
+            val z = localDt(start)
+            val day = z.dayOfWeek.value
+            val startMin = z.hour * 60 + z.minute
+            val endMin = minOf(24 * 60, startMin + (if (dur > 0L) (dur / 60).toInt() else 60))
+            val code = Timetable.courseCode(c)
+            val override = Timetable.timeOverride(ctx, "$code|$day|$startMin|$endMin")
+            val startShown = override?.first?.let { h -> start - startMin * 60L + h * 60L } ?: start
+            val endShown = override?.second?.let { h -> start - startMin * 60L + h * 60L } ?: (startShown + (if (dur > 0) dur else 3600L))
             ClassItem(
                 unesc(e.str("name")), short.ifEmpty { full.ifEmpty { "Class" } }, full,
-                start, start + (if (dur > 0) dur else 3600L),
+                startShown, endShown,
                 linksForEvent(e, cal, links).firstOrNull()?.first ?: "",
                 if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site,
                 isManual(e, p), cid,
