@@ -117,7 +117,7 @@ object Checker {
         val start: Long, val end: Long, val link: String, val courseUrl: String, val manual: Boolean,
         val courseId: Long = 0L,
     )
-    data class DueItem(val name: String, val course: String, val ts: Long, val url: String)
+    data class DueItem(val name: String, val course: String, val ts: Long, val url: String, val eventId: Long = 0L)
     class Overview(val classes: List<ClassItem>, val due: List<DueItem>)
 
     /** The latest meeting link recorded for a course (Teams/Meet etc.), or "" if none. */
@@ -137,6 +137,27 @@ object Checker {
         return if (id != 0L && site.isNotEmpty()) "$site/mod/attendance/view.php?id=$id" else ""
     }
 
+    /** Course id for a course code (for slots that came from the timetable, which has no id). */
+    fun courseIdForCode(ctx: Context, code: String): Long =
+        Courses.all(ctx).firstOrNull { it.code.equals(code, true) }?.id ?: 0L
+
+    /**
+     * ONE resolver for the meeting + attendance links, shared by the timetable, the edit page
+     * and the hero card, so every screen shows the same thing for the same class.
+     * Returns (meeting, attendance, coursePage); any may be "".
+     */
+    fun linksForCourse(ctx: Context, code: String, courseId: Long): Triple<String, String, String> {
+        val p = Prefs(ctx)
+        val id = if (courseId != 0L) courseId else courseIdForCode(ctx, code)
+        val att = Timetable.userAttLinkRaw(ctx, code).ifEmpty { attendanceUrl(ctx, id) }
+        val meeting = Timetable.meetingLinkOf(ctx, code).ifEmpty {
+            if (id == 0L) "" else linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
+                .get(id.toString())?.firstOrNull { linkIsMeeting(it.url) }?.url ?: ""
+        }
+        val coursePage = if (id != 0L) "${p.site}/course/view.php?id=$id" else ""
+        return Triple(meeting, att, coursePage)
+    }
+
     /** Classes (not yet finished) and deadlines from the cached data, for the main screen. */
     fun overview(ctx: Context): Overview {
         val p = Prefs(ctx)
@@ -144,7 +165,9 @@ object Checker {
         val now = System.currentTimeMillis() / 1000
         val cal = myCalendar(st, p)
         val links = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
-        val classes = cal.filter { isAttEvent(it) }.map { e ->
+        // holiday mode: outside teaching weeks the hero/widget suppress class entries
+        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now())
+        val classes = if (!classesActive) emptyList() else cal.filter { isAttEvent(it) }.map { e ->
             val start = e.optLong("timestart")
             val dur = e.optLong("timeduration")
             val c = e.optJSONObject("course")
@@ -168,6 +191,7 @@ object Checker {
                 e.optJSONObject("course")?.str("shortname") ?: "",
                 ts,
                 e.str("url").ifEmpty { act?.str("url") ?: "" },
+                e.optLong("id"),
             )
         }.sortedBy { it.ts }
         return Overview(classes, due)

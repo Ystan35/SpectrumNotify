@@ -93,6 +93,45 @@ object NotifyLog {
     @Synchronized
     fun clear(ctx: Context) { file(ctx).delete() }
 
+    /** "Mark as done" flags: kept in prefs (not the log file) so Clear-all can't lose them. */
+    private const val donePref = "notifDone"
+    private fun doneSetFor(ctx: Context): MutableSet<String> =
+        ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
+            .getStringSet(donePref, emptySet())!!.toMutableSet()
+
+    fun isDone(ctx: Context, ts: Long): Boolean = doneSetFor(ctx).contains(ts.toString())
+
+    fun markDone(ctx: Context, ts: Long) {
+        val s = doneSetFor(ctx); s.add(ts.toString())
+        ctx.getSharedPreferences("health", Context.MODE_PRIVATE).edit().putStringSet(donePref, s).apply()
+    }
+
+    fun unmarkDone(ctx: Context, ts: Long) {
+        val s = doneSetFor(ctx); s.remove(ts.toString())
+        ctx.getSharedPreferences("health", Context.MODE_PRIVATE).edit().putStringSet(donePref, s).apply()
+    }
+
+    /** Hidden notifications ("Hide this (wrong?)"): excluded from the list. */
+    private const val hiddenPref = "notifHidden"
+    private fun hiddenSetFor(ctx: Context): MutableSet<String> =
+        ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
+            .getStringSet(hiddenPref, emptySet())!!.toMutableSet()
+
+    fun hide(ctx: Context, ts: Long) {
+        val s = hiddenSetFor(ctx); s.add(ts.toString())
+        ctx.getSharedPreferences("health", Context.MODE_PRIVATE).edit().putStringSet(hiddenPref, s).apply()
+    }
+
+    fun isHidden(ctx: Context, ts: Long): Boolean = hiddenSetFor(ctx).contains(ts.toString())
+
+    /** Silence a deadline's SOURCE event so re-polls don't resurrect it ("dl:<eventId>" keys). */
+    fun hideEvent(ctx: Context, key: String) {
+        val sp = ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
+        val s = sp.getStringSet("hiddenEvents", emptySet())!!.toMutableSet()
+        s.add(key)
+        sp.edit().putStringSet("hiddenEvents", s).apply()
+    }
+
     /** Remove debug-class sys lines (keeps Check failed / crash / login events). */
     @Synchronized
     fun purgeDebug(ctx: Context) {

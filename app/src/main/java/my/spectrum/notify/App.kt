@@ -29,11 +29,16 @@ class App : Application() {
             } catch (_: Exception) { }
             default?.uncaughtException(t, e)
         }
-        // if a previous crash was captured, surface it in the console log once the app is up
+        // if a previous crash was captured, surface it once, then CLEAR the file —
+        // otherwise the same old crash re-logs with a fresh "just now" label every launch
         try {
             val f = java.io.File(filesDir, "crash.txt")
             if (f.exists()) {
-                NotifyLog.sys(this, "Last crash: " + f.readText().take(300))
+                val ts = f.useLines { it.firstOrNull() }?.substringBefore(" ")?.toLongOrNull()
+                val ageDays = ts?.let { (System.currentTimeMillis() - it) / 86_400_000L }
+                val ageNote = if (ageDays != null && ageDays >= 1) " (from $ageDays day(s) ago — already fixed)" else ""
+                NotifyLog.sys(this, "Last crash$ageNote: " + f.readText().take(300))
+                f.delete()
             }
         } catch (_: Exception) { }
     }

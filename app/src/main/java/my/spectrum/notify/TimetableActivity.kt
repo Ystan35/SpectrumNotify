@@ -38,7 +38,7 @@ class TimetableActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        box = screen("Timetable", navTo = TimetableActivity::class.java, onRefresh = { Scheduler.pollNow(this) }, actionIcon = R.drawable.ic_add, actionDesc = "Add a class", onAction = { openEdit(null) })
+        box = screen("Timetable", navTo = TimetableActivity::class.java, onRefresh = { Scheduler.pollNow(this) }, actionIcon = R.drawable.ic_add, actionDesc = "Add a class or an event", onAction = { showAddChoice() })
     }
 
     override fun onResume() {
@@ -71,14 +71,18 @@ class TimetableActivity : Activity() {
         colours = Timetable.colours(this, slots.map { it.course }.toSet())
         box.removeAllViews()
 
-        if (slots.isEmpty()) {
+        if (slots.isEmpty() && Events.all(this).isEmpty()) {
             renderEmpty()
             return
         }
 
-        box.chips(listOf("Day", "Week"), setOf(mode), false) { mode = it.first(); render() }
-        if (mode == 0) renderDay() else renderWeek()
-        renderLegend()
+        box.chips(listOf("Day", "Week", "Events"), setOf(mode), false) { mode = it.first(); render() }
+        when (mode) {
+            0 -> renderDay()
+            1 -> renderWeek()
+            else -> MonthGridView.render(this, box) { render() }
+        }
+        if (mode != 2) renderLegend()
     }
 
     private fun renderEmpty() {
@@ -576,5 +580,18 @@ class TimetableActivity : Activity() {
                 render()
             }
         }
+    }
+
+
+    /** "+" opens a choice: a class (existing editor) or a calendar event. */
+    private fun showAddChoice() {
+        val names = arrayOf("Add a class", "Add an event")
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_DayNight)
+            .setTitle("What do you want to add?")
+            .setItems(names) { _, which ->
+                if (which == 0) openEdit(null) else EventsUi.editor(this, null, { render() })
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }

@@ -51,16 +51,50 @@
         android:maxLines="1"
         android:ellipsize="end" />
 
-    <TextView
-        android:id="@+id/widget_attendance"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:id="@+id/widget_actions"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="12sp"
-        android:textStyle="bold"
-        android:textColor="#8FA8FF"
-        android:layout_marginTop="4dp"
-        android:background="@drawable/widget_btn_bg"
-        android:paddingHorizontal="10dp"
-        android:paddingVertical="4dp"
-        android:visibility="gone" />
+        android:orientation="horizontal"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widget_meeting"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/widget_btn_bg"
+            android:paddingHorizontal="9dp"
+            android:paddingVertical="4dp"
+            android:layout_marginEnd="6dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_attendance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#8FA8FF"
+            android:background="@drawable/widget_btn_bg"
+            android:paddingHorizontal="9dp"
+            android:paddingVertical="4dp"
+            android:layout_marginEnd="6dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_coursepage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#8FA8FF"
+            android:background="@drawable/widget_btn_bg"
+            android:paddingHorizontal="9dp"
+            android:paddingVertical="4dp"
+            android:visibility="gone" />
+    </LinearLayout>
 </LinearLayout>
