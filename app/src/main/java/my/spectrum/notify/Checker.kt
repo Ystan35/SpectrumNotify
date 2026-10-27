@@ -132,8 +132,29 @@ object Checker {
     /** The Spectrum attendance page for a course, e.g. …/mod/attendance/view.php?id=1127746, or "" if unknown. */
     fun attendanceUrl(ctx: Context, courseId: Long): String {
         if (courseId == 0L) return ""
-        val id = try { State(ctx).j.optJSONObject("attcmid")?.optLong(courseId.toString(), 0L) ?: 0L } catch (_: Exception) { 0L }
         val site = Prefs(ctx).site
+        val st = State(ctx)
+        // prefer the multi-attendance store: score each module by how well its group tokens
+        // (e.g. "occ2") match the user's OWN occ for this course — Spectrum lists one
+        // attendance module per occ, and first-wins gave the WRONG occ's page
+        val multi = st.j.optJSONObject("attcmids")
+        if (multi != null && multi.length() > 0) {
+            val mine = Groups.mine(st, Prefs(ctx), Courses.all(ctx).firstOrNull { it.id == courseId }?.code ?: "")
+            var best: Pair<Long, Int>? = null
+            for (k in multi.keys()) {
+                if (!k.startsWith("$courseId:")) continue
+                val cmid = k.substringAfter(':').toLongOrNull() ?: continue
+                val toks = multi.optJSONArray(k)?.let { arr -> (0 until arr.length()).map { arr.optString(it) } } ?: emptyList()
+                val score = toks.intersect(mine).size
+                if (best == null || score > best.second) best = cmid to score
+            }
+            val picked = best?.first
+                ?: multi.keys().asSequence().filter { it.startsWith("$courseId:") }
+                    .map { it.substringAfter(':').toLongOrNull() ?: 0L }.firstOrNull()
+            return if (picked != null && picked != 0L && site.isNotEmpty()) "$site/mod/attendance/view.php?id=$picked" else ""
+        }
+        // legacy single-value fallback
+        val id = try { st.j.optJSONObject("attcmid")?.optLong(courseId.toString(), 0L) ?: 0L } catch (_: Exception) { 0L }
         return if (id != 0L && site.isNotEmpty()) "$site/mod/attendance/view.php?id=$id" else ""
     }
 
@@ -273,7 +294,7 @@ object Checker {
 
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
                                secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
-                               attCmids: MutableMap<Long, Long>, occSeen: MutableMap<Long, MutableSet<String>>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
+                               attCmids: MutableMap<Long, HashMap<Long, MutableSet<String>>>, occSeen: MutableMap<Long, MutableSet<String>>): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
         val raw = ArrayList<Triple<String, String, Long>>()
         val cid = c.optLong("id")
@@ -298,8 +319,14 @@ object Checker {
                 secOf[key] = skey
                 val desc = clean(m.str("description"), 300)
                 if (desc.isNotEmpty()) extra[key] = desc
-                if (m.str("modname") == "attendance" && m.optLong("id") != 0L && !attCmids.containsKey(cid)) {
-                    attCmids[cid] = m.optLong("id")   // for <site>/mod/attendance/view.php?id=<cmid>
+                if (m.str("modname") == "attendance" && m.optLong("id") != 0L) {
+                    // Spectrum can list one attendance module PER OCC (e.g. "Attendance Occ 2",
+                    // "Attendance Occ 4"). Remember every one with its group tokens so the
+                    // resolver can pick the user's OWN occ page instead of the first captured.
+                    val attKey = m.optLong("id")
+                    val toks = groupTokens(m.str("name") + " " + m.str("intro"))
+                    if (attCmids[cid] == null) attCmids[cid] = HashMap()
+                    (attCmids[cid] as HashMap<Long, MutableSet<String>>)[attKey] = toks.toMutableSet()
                 }
                 // Occ detection via availability: a module the user CAN see that names an Occ
                 // means the user belongs to it (Spectrum restricts other Occs' pages).
@@ -368,7 +395,7 @@ object Checker {
     private fun checkCourses(ctx: Context, api: Moodle, p: Prefs, userid: Long, st: State) {
         val prevLinks = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
         val linksByCourse = LinkedHashMap<String, List<Link>>()
-        val attCmids = HashMap<Long, Long>()
+        val attCmids = HashMap<Long, HashMap<Long, MutableSet<String>>>()
         val occSeen = HashMap<Long, MutableSet<String>>()
         val enrolled = api.arr("core_enrol_get_users_courses", mapOf("userid" to userid)).objs()
         Courses.remember(st, enrolled)
@@ -387,10 +414,20 @@ object Checker {
             }
             val snap = result.first
             Sections.remember(st, cid, secNames)
-            if (attCmids.containsKey(cid)) {
-                val am = st.j.optJSONObject("attcmid") ?: JSONObject()
-                am.put(cid.toString(), attCmids[cid]!!)
-                st.j.put("attcmid", am)
+            attCmids[cid]?.let { perCid ->
+                // store ALL attendance cmids for this course keyed by "cid:cmid" -> tokens JSON
+                val am = st.j.optJSONObject("attcmids") ?: JSONObject()
+                for ((cmid, toks) in perCid) {
+                    am.put("$cid:$cmid", JSONArray(toks.map { it }))
+                }
+                st.j.put("attcmids", am)
+                // keep the legacy single-value for the first seen module (back-compat)
+                val first = perCid.entries.firstOrNull()
+                if (first != null) {
+                    val amOld = st.j.optJSONObject("attcmid") ?: JSONObject()
+                    amOld.put(cid.toString(), first.key)
+                    st.j.put("attcmid", amOld)
+                }
             }
             if (occSeen.containsKey(cid)) {
                 val om = st.j.optJSONObject("occ_seen") ?: JSONObject()
