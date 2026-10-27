@@ -185,6 +185,7 @@ class TimetableEditActivity : Activity() {
                         this, if (editing) grp else Timetable.newGroup(), code, titleField.text.toString().trim(),
                         days, start, end, kinds[kindIdx], attNote,
                     )
+
                     if (colourTouched || Timetable.colourIndexOrNull(this, code) == null) {
                         Timetable.setColourIndex(this, code, colourIdx)
                     }
@@ -244,6 +245,11 @@ class TimetableEditActivity : Activity() {
         times.addView(endBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(12) })
         col.addView(times, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
 
+        // attendance link override (the Attendance pill reads this first)
+        col.label("Attendance link", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Paste your occ's attendance page to override the automatically picked one.", 12f, Ui.DIM, 2)
+        val attLinkField = col.field(Timetable.userAttLinkRaw(this, s.course), "https://spectrum.um.edu.my/mod/attendance/view.php?id=…")
+
         // meeting link override
         col.label("Meeting link", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label("Detected automatically from Spectrum. Paste your own to override, or clear to go back.", 12f, Ui.DIM, 2)
@@ -269,6 +275,11 @@ class TimetableEditActivity : Activity() {
             if (hasChanged) Timetable.setTimeOverride(this, s.key, newStart, newEnd)
             else Timetable.clearTimeOverride(this, s.key)
             Timetable.setMeetingLink(this, s.course, mlinkField.text.toString().trim())
+            // persist the pasted ATTENDANCE link too: the Attendance pill reads
+            // userAttLinkRaw first, so this overrides the occ-scored page (fixes wrong-occ)
+            if (attLinkField.text.toString().trim() != Timetable.userAttLinkRaw(this, s.course)) {
+                Timetable.setAttendanceLink(this, s.course, attLinkField.text.toString().trim())
+            }
             finish()
         }
         if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course).isNotEmpty()) {
