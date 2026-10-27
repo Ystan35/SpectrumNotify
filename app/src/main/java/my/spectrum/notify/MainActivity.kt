@@ -800,13 +800,16 @@ class MainActivity : Activity() {
             val hasLink = c.link.isNotEmpty()
             if (hasLink) actionsRow.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Attendance", !hasLink) {
-                // the card's own link first: it came from THIS event, already scored against
-                // its name/day/occ — reverse-engineer it, don't re-resolve from the course pool
+                // Attendance needs the ATTENDANCE PAGE specifically — c.link often holds the
+                // MEETING link (the event description contains it, so it scores 100 in
+                // linksForEvent). Resolution order: pasted attendance link, occ-scored
+                // attendance page, the event link only if it IS an attendance URL, course page.
                 val d1 = localDt(c.start).dayOfWeek.value
                 val s1 = localDt(c.start).let { it.hour * 60 + it.minute }
                 val e1 = localDt(c.end).let { it.hour * 60 + it.minute }
                 val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = c.name.contains("lecture", true) || c.name.contains("kuliah", true), day = d1, startMin = s1, endMin = e1)
-                val target = c.link.ifEmpty { att }.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
+                val eventIsAtt = c.link.contains("/mod/attendance/", true)
+                val target = att.ifEmpty { if (eventIsAtt) c.link else "" }.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
                 if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
@@ -936,9 +939,10 @@ class MainActivity : Activity() {
         val s2 = localDt(c.start).let { it.hour * 60 + it.minute }
         val e2 = localDt(c.end).let { it.hour * 60 + it.minute }
         val (meetingResolved, attResolved, coursePage) = Checker.linksForCourse(this, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = c.name.contains("lecture", true) || c.name.contains("kuliah", true), day = d2, startMin = s2, endMin = e2)
-        // the card's own link is the authoritative, per-event match — use it first
+        // c.link may hold the MEETING link (event description scores 100 in linksForEvent) —
+        // the Attendance row must open the attendance PAGE, the Join row the meeting. Keep separate.
         val meeting = c.link.ifEmpty { meetingResolved }
-        val att = if (c.link.isNotEmpty()) c.link else attResolved
+        val att = if (c.link.contains("/mod/attendance/", true)) c.link else attResolved
         fun row(title: String, subText: String, url: String?) {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
