@@ -802,7 +802,7 @@ class MainActivity : Activity() {
             actionsRow.addView(pill("Attendance", !hasLink) {
                 // same resolver as the timetable: pasted link, else the auto-detected page,
                 // else the course page so the button never dead-ends
-                val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.course, c.courseId)
+                val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.course, c.courseId, Checker.groupTokens(c.name))
                 val target = att.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
                 if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
@@ -929,7 +929,7 @@ class MainActivity : Activity() {
         val sub = if (c.name.isNotEmpty() && !c.name.equals(c.course, true)) c.name else c.full
         if (sub.isNotEmpty()) sheet.addView(tv(sub, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, dp(8)) })
 
-        val (meeting, att, coursePage) = Checker.linksForCourse(this, c.course, c.courseId)
+        val (meeting, att, coursePage) = Checker.linksForCourse(this, c.course, c.courseId, Checker.groupTokens(c.name))
         fun row(title: String, subText: String, url: String?) {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
