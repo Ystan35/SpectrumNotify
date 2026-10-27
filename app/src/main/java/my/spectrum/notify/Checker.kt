@@ -167,7 +167,7 @@ object Checker {
      * and the hero card, so every screen shows the same thing for the same class.
      * Returns (meeting, attendance, coursePage); any may be "".
      */
-    fun linksForCourse(ctx: Context, code: String, courseId: Long): Triple<String, String, String> {
+    fun linksForCourse(ctx: Context, code: String, courseId: Long, extraTokens: Set<String> = emptySet()): Triple<String, String, String> {
         val p = Prefs(ctx)
         val id = if (courseId != 0L) courseId else courseIdForCode(ctx, code)
         val att = Timetable.userAttLinkRaw(ctx, code).ifEmpty { attendanceUrl(ctx, id) }
@@ -175,12 +175,15 @@ object Checker {
             if (id == 0L) "" else {
                 val ls = linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
                     .get(id.toString()) ?: emptyList()
-                // score links against the user's OWN group tokens (occ2 vs occ4 etc.) so a
-                // course running several occs resolves to THIS user's occ meeting link,
-                // not just the first meeting link captured for the course
+                // score links against BOTH token sets: the user's own group tokens (occ2 vs
+                // occ4) AND the tokens of the class/event this card belongs to (its name says
+                // "Lecture Occ 3" etc.). Section links often carry no occ token themselves, so
+                // matching the event's tokens is what picks the right occ's link.
                 val mine = Groups.mine(State(ctx), Prefs(ctx), code.uppercase())
                 val scored = ls.filter { linkIsMeeting(it.url) }.sortedByDescending { l ->
-                    (if (l.ts > 0) 1 else 0) + l.tokens.intersect(mine).size * 10
+                    val evHits = l.tokens.intersect(extraTokens).size * 10
+                    val myHits = l.tokens.intersect(mine).size * 10
+                    (if (l.ts > 0) 1 else 0) + evHits + myHits
                 }
                 scored.firstOrNull()?.url ?: ls.firstOrNull { linkIsMeeting(it.url) }?.url ?: ""
             }
