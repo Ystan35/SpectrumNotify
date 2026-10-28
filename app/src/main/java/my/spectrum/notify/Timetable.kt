@@ -3,6 +3,8 @@ package my.spectrum.notify
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.util.Locale
 
 /** What kind of class a slot is. CLASS = could not tell. */
@@ -17,7 +19,10 @@ enum class SlotKind(val label: String, val tag: String) {
     }
 }
 
-/** One weekly class. day: 1 = Monday ... 7 = Sunday. start/end: minutes after midnight. */
+/**
+ * One class. day: 1 = Monday ... 7 = Sunday. start/end: minutes after midnight.
+ * date: null = every week; set = a one-off on that date only (seen in a single week so far).
+ */
 data class Slot(
     val key: String,
     val course: String,
@@ -29,7 +34,10 @@ data class Slot(
     val manual: Boolean,
     val note: String = "",
     val grp: String = "",
-)
+    val date: LocalDate? = null,
+) {
+    fun occursOn(d: LocalDate): Boolean = day == d.dayOfWeek.value && (date == null || date == d)
+}
 
 /**
  * Weekly timetable. Two sources:
@@ -96,13 +104,16 @@ object Timetable {
     // ------------------------------------------------------------ learning from the Spectrum calendar
     private class Acc(val course: String, val day: Int, val start: Int, val end: Int) {
         val kinds = HashMap<SlotKind, Int>()
+        val dates = HashSet<LocalDate>()
         var title = ""
         fun best(): SlotKind =
             kinds.filter { it.key != SlotKind.CLASS }.maxByOrNull { it.value }?.key ?: SlotKind.CLASS
     }
 
-    /** Groups the attendance events of the calendar into weekly slots. */
-    fun fromCalendar(cal: List<JSONObject>): List<Slot> {
+    private class Learned(val slot: Slot, val dates: Set<LocalDate>)
+
+    /** Groups the attendance events of the calendar into slots, with the dates each was seen on. */
+    private fun fromCalendar(cal: List<JSONObject>): List<Learned> {
         val acc = LinkedHashMap<String, Acc>()
         for (e in cal) {
             if (!Checker.isAttEvent(e)) continue
@@ -117,6 +128,7 @@ object Timetable {
             val day = z.dayOfWeek.value
             val key = "$course|$day|$start|$end"
             val a = acc.getOrPut(key) { Acc(course, day, start, end) }
+            a.dates.add(z.toLocalDate())
             val name = e.str("name")
             val desc = unesc(e.str("description").replace(TAGS, " ")).replace(Regex("\\s+"), " ").trim().take(200)
             val kind = detectKind(name, desc)
@@ -126,10 +138,17 @@ object Timetable {
                 a.title = if (ATT_ONLY.matches(t)) "" else t
             }
         }
-        return acc.map { (key, a) -> Slot(key, a.course, a.title, a.day, a.start, a.end, a.best(), false) }
+        return acc.map { (key, a) -> Learned(Slot(key, a.course, a.title, a.day, a.start, a.end, a.best(), false), a.dates) }
     }
 
-    private class Stored(val slot: Slot, val seen: Long)
+    /** dates: when this slot was seen; null = stored before dates were kept, treated as weekly. */
+    private class Stored(val slot: Slot, val seen: Long, val dates: Set<LocalDate>?)
+
+    /** Weekly once seen in two different weeks; a single sighting may be a make-up or moved class. */
+    private fun weekly(dates: Set<LocalDate>?): Boolean =
+        dates == null || dates.map { it.with(DayOfWeek.MONDAY) }.toSet().size >= 2
+
+    private fun overlaps(a: Slot, b: Slot) = a.course == b.course && a.day == b.day && a.start < b.end && b.start < a.end
 
     private fun readStored(st: State): List<Stored> =
         (st.j.optJSONArray("tt_auto") ?: JSONArray()).objs().mapNotNull { o ->
@@ -137,23 +156,35 @@ object Timetable {
             val s = o.optInt("start")
             val e = o.optInt("end")
             if (day !in 1..7 || e <= s) return@mapNotNull null
-            Stored(Slot(o.str("key"), o.str("course"), o.str("title"), day, s, e, SlotKind.parse(o.str("kind")), false), o.optLong("seen"))
+            val dates = o.optJSONArray("dates")?.strs()?.mapNotNull { d ->
+                try { LocalDate.parse(d) } catch (_: Exception) { null }
+            }?.toSet()
+            Stored(Slot(o.str("key"), o.str("course"), o.str("title"), day, s, e, SlotKind.parse(o.str("kind")), false), o.optLong("seen"), dates)
         }
 
-    /** Current slots win; remembered ones are kept for a few weeks unless the schedule has moved them. */
-    private fun merge(stored: List<Stored>, cur: List<Slot>, now: Long): List<Stored> {
+    /**
+     * Current slots win; remembered ones are kept for a few weeks unless the schedule has moved them
+     * (the same start now ends differently, or a confirmed weekly slot now overlaps where they were).
+     */
+    private fun merge(stored: List<Stored>, cur: List<Learned>, now: Long): List<Stored> {
         val old = stored.associateBy { it.slot.key }
-        val curKeys = cur.map { it.key }.toSet()
-        val curStarts = cur.map { "${it.course}|${it.day}|${it.start}" }.toSet()
+        val curKeys = cur.map { it.slot.key }.toSet()
+        val curStarts = cur.map { "${it.slot.course}|${it.slot.day}|${it.slot.start}" }.toSet()
         val out = ArrayList<Stored>()
-        for (s in cur) {
-            val prev = old[s.key]?.slot
-            val kind = if (s.kind == SlotKind.CLASS && prev != null) prev.kind else s.kind
-            out.add(Stored(s.copy(kind = kind), now))
+        for (l in cur) {
+            val s = l.slot
+            val prev = old[s.key]
+            val kind = if (s.kind == SlotKind.CLASS && prev != null) prev.slot.kind else s.kind
+            // a slot kept from before dates were recorded stays weekly (prev.dates == null)
+            val dates = if (prev != null && prev.dates == null) null
+                else ((prev?.dates ?: emptySet()) + l.dates).sorted().takeLast(8).toSet()
+            out.add(Stored(s.copy(kind = kind), now, dates))
         }
+        val weeklyCur = out.filter { weekly(it.dates) }.map { it.slot }
         for (s in stored) {
             if (s.slot.key in curKeys) continue
             if ("${s.slot.course}|${s.slot.day}|${s.slot.start}" in curStarts) continue
+            if (weeklyCur.any { overlaps(it, s.slot) }) continue
             if (now - s.seen > KEEP_SECS) continue
             out.add(s)
         }
@@ -168,10 +199,10 @@ object Timetable {
         val arr = JSONArray()
         for (m in merged) {
             val s = m.slot
-            arr.put(
-                JSONObject().put("key", s.key).put("course", s.course).put("title", s.title).put("day", s.day)
-                    .put("start", s.start).put("end", s.end).put("kind", s.kind.name).put("seen", m.seen)
-            )
+            val o = JSONObject().put("key", s.key).put("course", s.course).put("title", s.title).put("day", s.day)
+                .put("start", s.start).put("end", s.end).put("kind", s.kind.name).put("seen", m.seen)
+            m.dates?.let { d -> o.put("dates", jarr(d.map { it.toString() })) }
+            arr.put(o)
         }
         st.j.put("tt_auto", arr)
     }
@@ -367,14 +398,61 @@ object Timetable {
         return out
     }
 
+    // ------------------------------------------------------------ settings follow a moved class
+
+    /**
+     * When Spectrum moves a learned class (its old time is gone), your type, time and hide settings for the
+     * old time move to the class now nearest it: same course and day, start within 2 hours.
+     */
+    private fun migrateOrphans(ctx: Context, live: List<Slot>) {
+        val liveKeys = live.map { it.key }.toSet()
+        val hidden = hiddenKeys(ctx)
+        val kinds = readObj(ctx, "kinds")
+        val times = sp(ctx).all.keys.filter { it.startsWith("ttime:") }.map { it.removePrefix("ttime:") }.toMutableSet()
+        fun hasSettings(k: String) = k in hidden || kinds.has(k) || k in times
+        val orphans = (hidden + kinds.keys().asSequence().toList() + times).filter { it !in liveKeys }.toMutableSet()
+        if (orphans.isEmpty()) return
+        val ed = sp(ctx).edit()
+        var changed = false
+        for (s in live) {
+            if (hasSettings(s.key)) continue
+            val best = orphans.mapNotNull { k ->
+                val f = k.split("|")
+                val day = f.getOrNull(1)?.toIntOrNull()
+                val start = f.getOrNull(2)?.toIntOrNull()
+                if (f.size == 4 && f[0] == s.course && day == s.day && start != null && Math.abs(start - s.start) <= 120)
+                    Pair(k, Math.abs(start - s.start)) else null
+            }.minByOrNull { it.second }?.first ?: continue
+            orphans.remove(best)
+            if (hidden.remove(best)) hidden.add(s.key)
+            if (kinds.has(best)) { kinds.put(s.key, kinds.optString(best)); kinds.remove(best) }
+            if (times.remove(best)) {
+                sp(ctx).getString("ttime:$best", null)?.let { ed.putString("ttime:${s.key}", it) }
+                ed.remove("ttime:$best")
+                times.add(s.key)
+            }
+            changed = true
+        }
+        if (changed) ed.putString("hidden", jarr(hidden).toString()).putString("kinds", kinds.toString()).apply()
+    }
+
     // ------------------------------------------------------------ everything for the screen
-    /** Learned slots (minus hidden / ignored ones, with your type overrides) plus your own entries, by day and time. Duplicates are merged. */
+    /**
+     * Learned slots (minus hidden / ignored ones, with your type overrides) plus your own entries, by day and time.
+     * One-offs (date set) are kept from this week on; use [on] for what happens on a given date.
+     */
     fun all(ctx: Context): List<Slot> {
         val p = Prefs(ctx)
         val st = State(ctx)
         val now = System.currentTimeMillis() / 1000
         val cur = fromCalendar(Checker.myCalendar(st, p))
-        val merged = merge(readStored(st), cur, now).map { it.slot }
+        val weekStart = LocalDate.now(zone()).with(DayOfWeek.MONDAY)
+        val stored = merge(readStored(st), cur, now)
+        migrateOrphans(ctx, stored.map { it.slot })
+        val merged = stored.mapNotNull { m ->
+            if (weekly(m.dates)) m.slot
+            else m.dates?.maxOrNull()?.takeIf { !it.isBefore(weekStart) }?.let { m.slot.copy(date = it) }
+        }
         val hidden = hiddenKeys(ctx)
         val overrides = readObj(ctx, "kinds")
         val auto = merged.filter { it.key !in hidden && !isSkipped(it, p) }.map { s ->
@@ -384,13 +462,24 @@ object Timetable {
         }
         // The same class must not show twice. Same course + day + overlapping time = one class; the one kept is
         // the Spectrum one, then one picked from the UM timetable list (Occ), then a hand-made entry.
-        fun overlaps(a: Slot, b: Slot) = a.course == b.course && a.day == b.day && a.start < b.end && b.start < a.end
+        // Only weekly Spectrum slots hide your entries for good; a one-off replaces them on its date (see [on]).
+        val weeklyAuto = auto.filter { it.date == null }
         val own = ArrayList<Slot>()
         for (m in manual(ctx).sortedBy { if (it.grp.startsWith("cat-")) 0 else 1 }) {
-            if (auto.any { overlaps(it, m) }) continue
+            if (weeklyAuto.any { overlaps(it, m) }) continue
             if (own.any { it.grp != m.grp && overlaps(it, m) }) continue
             own.add(m)
         }
         return (auto + own).sortedWith(compareBy<Slot>({ it.day }, { it.start }, { it.course }))
     }
+
+    /** The classes on [date]: weekly slots plus that date's one-offs; a one-off replaces the weekly classes it overlaps. */
+    fun on(slots: List<Slot>, date: LocalDate): List<Slot> {
+        val day = slots.filter { it.occursOn(date) }
+        val oneOffs = day.filter { it.date != null }
+        return day.filter { s -> s.date != null || oneOffs.none { overlaps(it, s) } }.sortedBy { it.start }
+    }
+
+    /** The date of weekday [day] (1 = Monday) in the current week. */
+    fun dateThisWeek(day: Int): LocalDate = LocalDate.now(zone()).with(DayOfWeek.MONDAY).plusDays(day - 1L)
 }

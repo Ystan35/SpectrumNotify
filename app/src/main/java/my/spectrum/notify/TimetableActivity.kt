@@ -110,7 +110,7 @@ class TimetableActivity : Activity() {
         val today = LocalDate.now(zone()).dayOfWeek.value
         box.chips(Timetable.DAYS, setOf(day - 1), false) { day = it.first() + 1; render() }
 
-        val list = slots.filter { it.day == day }
+        val list = Timetable.on(slots, Timetable.dateThisWeek(day))
         val heading = (if (day == today) "Today" else Timetable.DAY_FULL[day - 1]) +
             if (list.isEmpty()) "" else "  ·  ${list.size} class" + (if (list.size == 1) "" else "es")
         box.label(heading, 16f, Ui.TEXT, 20).setTypeface(null, Typeface.BOLD)
@@ -129,10 +129,8 @@ class TimetableActivity : Activity() {
                 nowMin >= 0 && s.start == nextStart -> "NEXT"
                 else -> ""
             }
-            val card = slotCard(s, badge)
-            card.scaleX = zoom
-            card.scaleY = zoom
-            box.addView(card, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = (dp(10) * zoom).toInt() })
+            // zoom is for the week grid only; scaling cards here made them overlap or leave gaps
+            box.addView(slotCard(s, badge), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
         }
     }
 
@@ -193,7 +191,8 @@ class TimetableActivity : Activity() {
         val room = choice?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ") ?: ""
         val lecturer = choice?.detail() ?: ""
         val detail = listOf(s.title, s.note).filter { it.isNotEmpty() }.joinToString("  ·  ")
-        val meta = listOf(detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  ")
+        val oneOff = if (s.date != null) "This week only" else ""
+        val meta = listOf(oneOff, detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  ")
         col.addView(tv(meta, 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
         // location: user override first; else the auto meeting link (Online) or the catalog room
         val userLoc = Timetable.locationOf(this, s.course)
@@ -421,7 +420,7 @@ class TimetableActivity : Activity() {
         }
 
         for (d in 1..7) {
-            val list = slots.filter { it.day == d }.sortedBy { it.start }
+            val list = Timetable.on(slots, Timetable.dateThisWeek(d))
             var i = 0
             while (i < list.size) {
                 // a cluster = slots that overlap in time; they share the column side by side

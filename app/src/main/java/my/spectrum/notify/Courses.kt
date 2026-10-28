@@ -40,12 +40,12 @@ object Courses {
         for ((id, c) in byId) {
             val code = Timetable.courseCode(c)
             val name = clean(c.str("fullname").ifEmpty { c.str("shortname") }, 80)
-            out.add(Course(id, code, name, "${p.site}/course/view.php?id=$id", slots.filter { it.course == code }))
+            out.add(Course(id, code, name, "${p.site}/course/view.php?id=$id", slots.filter { it.course == code && it.date == null }))
         }
         // courses that only exist as your own timetable entries (no Spectrum course page)
         val known = out.map { it.code }.toSet()
         for (code in slots.map { it.course }.toSet() - known) {
-            out.add(Course(0L, code, "", "", slots.filter { it.course == code }))
+            out.add(Course(0L, code, "", "", slots.filter { it.course == code && it.date == null }))
         }
         // courses with classes first, then by code
         return out.sortedWith(compareBy<Course>({ it.slots.isEmpty() }, { it.code }))
