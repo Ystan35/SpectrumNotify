@@ -115,7 +115,7 @@ class CoursesActivity : Activity() {
         val catOccs = Catalog.find(this, c.code)?.occs() ?: emptyList()
         val learned = Groups.learnedPerCourse(this)[c.code.uppercase()] ?: emptyList()
         val occs = if (catOccs.isNotEmpty()) catOccs else learned
-        val current = Regex(Regex.escape(c.code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE)
+        val current = Regex(Regex.escape(c.code) + ":occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE)
             .find(pp.myGroups)?.groupValues?.get(1) ?: ""
         col.label("Occ (your group)", 12f, Ui.DIM, 4)
         if (occs.isEmpty()) {
@@ -213,7 +213,7 @@ class CoursesActivity : Activity() {
         val p = Prefs(this)
         val rebuilt = ArrayList<String>()
         val failed = ArrayList<String>()
-        val occRe = Regex("(\\w+):occ([0-9]+)", RegexOption.IGNORE_CASE)
+        val occRe = Regex("(\\w+):occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE)
         for (m in occRe.findAll(p.myGroups)) {
             val code = m.groupValues[1].uppercase()
             val occ = m.groupValues[2]

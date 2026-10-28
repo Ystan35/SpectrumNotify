@@ -165,7 +165,7 @@ class SettingsActivity : Activity() {
         for (code in courses) {
             val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
             val occs = if (catOccs.isNotEmpty()) catOccs else (learned[code.uppercase()] ?: learned[code] ?: emptyList())
-            val current = Regex(Regex.escape(code) + ":occ([0-9]+)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
+            val current = Regex(Regex.escape(code) + ":occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
             // show the course name too — users rarely recognise codes alone
             val cname = Courses.all(this).firstOrNull { it.code.equals(code, true) }?.name
                 ?: Catalog.find(this, code)?.name ?: ""

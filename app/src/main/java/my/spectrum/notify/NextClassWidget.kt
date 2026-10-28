@@ -83,7 +83,7 @@ class NextClassWidget : AppWidgetProvider() {
                             v.setViewVisibility(R.id.widget_actions, android.view.View.GONE)
                         } else {
                             v.setViewVisibility(R.id.widget_actions, android.view.View.VISIBLE)
-                            val (meeting, att, coursePage) = Checker.linksForCourse(ctx, next.course, next.courseId, Checker.groupTokens(next.name), day = localDt(next.start).dayOfWeek.value, startMin = localDt(next.start).let { it.hour * 60 + it.minute }, endMin = localDt(next.end).let { it.hour * 60 + it.minute })
+                            val (meeting, att, coursePage) = Checker.linksForCourse(ctx, next.course, next.courseId, Checker.groupTokens(next.name), preferLec = Checker.preferLecOf(next.name), day = localDt(next.start).dayOfWeek.value, startMin = localDt(next.start).let { it.hour * 60 + it.minute }, endMin = localDt(next.end).let { it.hour * 60 + it.minute })
                             if (meeting.isNotEmpty()) {
                                 v.setTextViewText(R.id.widget_meeting, "Join")
                                 v.setOnClickPendingIntent(
