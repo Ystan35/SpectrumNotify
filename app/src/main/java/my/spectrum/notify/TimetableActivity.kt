@@ -196,7 +196,7 @@ class TimetableActivity : Activity() {
         col.addView(tv(meta, 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
         // location: user override first; else the auto meeting link (Online) or the catalog room
         val userLoc = Timetable.locationOf(this, s.course)
-        val autoMeeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
+        val autoMeeting = meetingOf(s)
         val locLine = when {
             userLoc.startsWith("online:") -> "💻 Online" + (if (userLoc.removePrefix("online:").isNotEmpty()) " · link set" else "")
             userLoc.startsWith("room:") -> "📍 " + userLoc.removePrefix("room:")
@@ -213,7 +213,7 @@ class TimetableActivity : Activity() {
         col.addView(loc)
         // attendance field: auto-filled from the course's Spectrum attendance page,
         // placeholder when nothing is known, tap to paste one or more links
-        val auto = Checker.attendanceUrl(this, courseIdOf(s.course))
+        val auto = Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s))
         val user = userAttLink(s.course)
         val link = user.ifEmpty { auto }
         val att = LinearLayout(this).apply {
@@ -222,7 +222,7 @@ class TimetableActivity : Activity() {
             setPadding(0, dp(8), 0, 0)
         }
 
-        val meeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
+        val meeting = autoMeeting
         fun openBtn(label: String, url: String, filled: Boolean): TextView = TextView(this).apply {
             text = label
             textSize = 12f
@@ -488,6 +488,18 @@ class TimetableActivity : Activity() {
         return b
     }
 
+    private fun preferLecOf(s: Slot): Boolean? = when (s.kind) {
+        SlotKind.LECTURE -> true
+        SlotKind.TUTORIAL -> false
+        else -> Checker.preferLecOf(s.title)
+    }
+
+    /** The meeting link for this exact class, resolved the same way as on the Home screen. */
+    private fun meetingOf(s: Slot): String = Checker.linksForCourse(
+        this, s.course, courseIdOf(s.course), Checker.groupTokens(s.title + " " + s.note),
+        preferLecOf(s), s.day, s.start, s.end,
+    ).first
+
     /** Popup with the full class detail: name, time, location, lecturer, attendance link(s). */
     private fun slotDetail(s: Slot) {
         val c = colours[s.course] ?: Ui.CYAN
@@ -496,8 +508,8 @@ class TimetableActivity : Activity() {
         box.addView(tv("${Timetable.DAY_FULL[s.day - 1]} · ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}", 14f, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
         if (s.kind != SlotKind.CLASS) box.addView(tv(s.kind.label, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
         val loc = Timetable.locationOf(this, s.course)
-        val autoMeeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
-        val attUrl = userAttLink(s.course).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course)) }
+        val autoMeeting = meetingOf(s)
+        val attUrl = userAttLink(s.course).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
         val locLine = when {
             loc.startsWith("online:") -> "💻 Online" + (if (loc.removePrefix("online:").isNotEmpty()) " · link set" else "")
             loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
@@ -532,7 +544,7 @@ class TimetableActivity : Activity() {
         }
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(14), 0, 0) }
         if (attUrl.isNotEmpty()) btnRow.addView(pillBtn("Attendance", attUrl, true), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
-        val meeting = Checker.courseMeetingLink(this, courseIdOf(s.course))
+        val meeting = autoMeeting
         if (meeting.isNotEmpty()) btnRow.addView(pillBtn("Join class", meeting, attUrl.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
         val courseUrl = Prefs(this).site.let { if (it.isNotEmpty()) "$it/course/view.php?id=${courseIdOf(s.course)}" else "" }
         if (courseUrl.isNotEmpty()) btnRow.addView(pillBtn("Course page", courseUrl, attUrl.isEmpty() && meeting.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f))

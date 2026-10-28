@@ -14,18 +14,16 @@ object Groups {
     private val LETTERS = Regex("^[a-z]+")
     private val CODE_RE = Regex("""\b[A-Z]{2,4}\d{3,4}[A-Z]?\b""")
 
-    private val DIGITS = Regex("\\d+$")
-
     /** One spelling per kind of group: tutorial3 -> t3, grp3 / grup3 -> group3. */
     private fun canon(tok: String): String {
         val letters = LETTERS.find(tok)?.value ?: return tok
-        val digits = DIGITS.find(tok)?.value ?: ""
+        val rest = tok.removePrefix(letters)
         val l = when (letters) {
             "tutorial" -> "t"
             "grp", "grup" -> "group"
             else -> letters
         }
-        return l + digits
+        return l + rest
     }
 
     /** occ2 -> "occ", t3 -> "t", group1 -> "group" */
@@ -79,7 +77,7 @@ object Groups {
     fun predictedOcc(ctx: android.content.Context): Map<String, String> {
         val st = State(ctx)
         val out = LinkedHashMap<String, String>()
-        val occRe = Regex("occ([0-9]+)", RegexOption.IGNORE_CASE)
+        val occRe = Regex("occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE)
         // attendance events (strongest signal)
         val acc = LinkedHashMap<String, MutableSet<String>>()
         for (e in Checker.myCalendar(st, Prefs(ctx))) {
@@ -113,7 +111,7 @@ object Groups {
         val o = st.j.optJSONObject("my_groups") ?: return out
         for (k in o.keys()) {
             val occs = (o.optJSONArray(k) ?: JSONArray()).strs()
-                .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+                .mapNotNull { Regex("occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
             if (occs.isNotEmpty()) out[k] = occs.toMutableList()
         }
@@ -124,7 +122,7 @@ object Groups {
         for (cidS in seen.keys()) {
             val code = courseById[cidS.toLongOrNull() ?: continue] ?: continue
             val occs = (seen.optJSONArray(cidS) ?: JSONArray()).strs()
-                .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+                .mapNotNull { Regex("occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
             if (occs.isEmpty()) continue
             val merged = (out[code] ?: mutableListOf()).toMutableSet()

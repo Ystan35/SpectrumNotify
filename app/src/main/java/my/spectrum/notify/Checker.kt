@@ -12,7 +12,15 @@ import kotlin.concurrent.withLock
 object Checker {
     private const val TAG = "SpectrumNotify"
 
-    private val GROUP_RE = Regex("""\b(?:occ\.?\s*\d+|[kt]\d+|grou?p\s*\d+|tutorial\s*\d+)\b""", RegexOption.IGNORE_CASE)
+    // "Occ 2", "T3", "Group 1", "Tutorial 4", and lists after a word prefix: "OCC 1, 1M, 3, 6" -> occ1 occ1m occ3 occ6
+    private val GROUP_RE = Regex(
+        """\b(?:(occ\.?|grou?p|tutorial)\s*|([kt]))(\d+[a-z]?)\b((?:\s*(?:,|&|/|\band\b)\s*\d+[a-z]?\b)*)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val LIST_ITEM_RE = Regex("""\d+[a-z]?""", RegexOption.IGNORE_CASE)
+    // attendance titles: "K1 (L) Attendance", "( L ) @ Bilik Kuliah", "T2 (T&L)", "Attendance (Tutorials, OCC 2)"
+    private val LEC_RE = Regex("""lecture|kuliah|\bl\b|\bk\d""", RegexOption.IGNORE_CASE)
+    private val TUT_RE = Regex("""tutor|kelas|class|\bt\b|\bt\d""", RegexOption.IGNORE_CASE)
     private val MEETING_RE = Regex(
         """https?://(?:[\w.-]*teams\.microsoft\.com|teams\.live\.com|[\w.-]*zoom\.us|[\w.-]*zoomgov\.com""" +
             """|meet\.google\.com|[\w.-]*webex\.com|[\w.-]*bigbluebutton[\w.-]*|whereby\.com|[\w.-]*jit\.si)""" +
@@ -28,8 +36,26 @@ object Checker {
     private class Cand(val score: Int, val isMeeting: Boolean, val ts: Long, val url: String, val label: String)
 
     // ------------------------------------------------------------ link helpers
-    fun groupTokens(text: String?): Set<String> =
-        GROUP_RE.findAll(unesc(text)).map { it.value.replace(Regex("[\\s.]+"), "").lowercase() }.toSet()
+    fun groupTokens(text: String?): Set<String> {
+        val out = LinkedHashSet<String>()
+        for (m in GROUP_RE.findAll(unesc(text))) {
+            val word = m.groups[1]?.value
+            val prefix = (word ?: m.groupValues[2]).replace(".", "").lowercase()
+            out.add(prefix + m.groupValues[3].lowercase())
+            if (word != null) for (n in LIST_ITEM_RE.findAll(m.groupValues[4])) out.add(prefix + n.value.lowercase())
+        }
+        return out
+    }
+
+    /** "lec", "tut", "both" (e.g. "T&L") or "other", from an attendance title. */
+    fun attKind(name: String): String {
+        val lec = LEC_RE.containsMatchIn(name)
+        val tut = TUT_RE.containsMatchIn(name)
+        return when { lec && tut -> "both"; lec -> "lec"; tut -> "tut"; else -> "other" }
+    }
+
+    /** preferLec for the link resolver: true = lecture, false = tutorial, null = unknown or both. */
+    fun preferLecOf(name: String): Boolean? = when (attKind(name)) { "lec" -> true; "tut" -> false; else -> null }
 
     private fun linkType(url: String): String {
         val u = url.lowercase()
@@ -138,7 +164,7 @@ object Checker {
         val multi = st.j.optJSONObject("attcmids")
         if (multi != null && multi.length() > 0) {
             val mine = Groups.mine(st, Prefs(ctx), Courses.all(ctx).firstOrNull { it.id == courseId }?.code ?: "")
-            data class Cand(val cmid: Long, val score: Int, val kind: String, val name: String)
+            data class Cand(val cmid: Long, val score: Int, val kind: String, val name: String, val visible: Boolean)
             val cands = ArrayList<Cand>()
             for (k in multi.keys()) {
                 if (!k.startsWith("$courseId:")) continue
@@ -146,18 +172,20 @@ object Checker {
                 val toks = multi.optJSONArray(k)?.let { arr -> (0 until arr.length()).map { arr.optString(it) } } ?: emptyList()
                 val name = labels?.optJSONObject("$courseId:$cmid")?.optString("name", "") ?: ""
                 val kind = labels?.optJSONObject("$courseId:$cmid")?.optString("kind", "other") ?: "other"
-                cands.add(Cand(cmid, toks.intersect(mine).size, kind, name))
+                val visible = labels?.optJSONObject("$courseId:$cmid")?.optBoolean("vis", true) ?: true
+                cands.add(Cand(cmid, toks.intersect(mine).size, kind, name, visible))
             }
             if (cands.isNotEmpty()) {
                 // USER RULE: filter attendance titles by lecture / L / tutorial / class.
                 // preferLec explicitly picks the kind; null = token score decides, ties prefer lec.
                 val kindWanted = when (preferLec) { true -> "lec"; false -> "tut"; null -> null }
-                val filtered = if (kindWanted != null) cands.filter { it.kind == kindWanted } else cands
-                val pool = filtered.ifEmpty { cands }
-                val best = pool.maxByOrNull { it.score }
-                val picked = (if (best != null && best.score > 0) best
-                    else pool.firstOrNull { it.kind == "lec" } ?: pool.firstOrNull())?.cmid
-                    ?: 0L
+                // pages restricted to another group (not visible to you) only as a last resort
+                val open = cands.filter { it.visible }.ifEmpty { cands }
+                val filtered = if (kindWanted != null) open.filter { it.kind == kindWanted || it.kind == "both" } else open
+                val pool = filtered.ifEmpty { open }
+                val top = pool.maxOf { it.score }
+                val best = pool.filter { it.score == top }
+                val picked = (best.firstOrNull { it.kind == "lec" } ?: best.firstOrNull())?.cmid ?: 0L
                 return if (picked != 0L && site.isNotEmpty()) "$site/mod/attendance/view.php?id=$picked" else ""
             }
         }
@@ -197,34 +225,26 @@ object Checker {
                 // so day-name and start-hour matching against the label is reliable.
                 val mine = Groups.mine(State(ctx), Prefs(ctx), code.uppercase())
                 val dayName = if (day in 1..7) Timetable.DAYS[day - 1] else ""
-                val dayFull = if (day in 1..7) Timetable.DAY_FULL[day - 1] else ""
                 val startHour = startMin / 60
-                val endHour = (endMin + 59) / 60
+                // "9" must also match "09:00", and a 2 pm class "02:00" / "2pm"
+                val hourRes = if (startHour in 0..23) listOf(startHour, (startHour + 11) % 12 + 1).distinct()
+                    .map { h -> Regex("(^|[^0-9])0?$h([^0-9]|$)") } else emptyList()
+                val dayRe = if (dayName.isNotEmpty()) Regex("\\b" + dayName.lowercase()) else null
                 val scored = ls.filter { linkIsMeeting(it.url) }.map { l ->
                     var score = (if (l.ts > 0) 1 else 0)
                     score += l.tokens.intersect(extraTokens).size * 10
                     score += l.tokens.intersect(mine).size * 10
-                    if (preferLec == true && (l.label.contains("lecture", true) || l.label.contains("kuliah", true))) score += 5
-                    if (preferLec == false && (l.label.contains("tutorial", true) || l.label.contains("tutor", true))) score += 5
+                    val kind = attKind(l.label)
+                    if (preferLec == true && (kind == "lec" || kind == "both")) score += 5
+                    if (preferLec == false && (kind == "tut" || kind == "both")) score += 5
                     val labelLow = l.label.lowercase()
-                    if (dayName.isNotEmpty() && labelLow.contains(dayName.lowercase())) score += 8
-                    if (dayFull.isNotEmpty() && labelLow.contains(dayFull.lowercase())) score += 8
-                    // hour match: label contains the start hour as a standalone number
-                    if (startHour in 0..23) {
-                        val hourRe = Regex("(^|[^0-9])$startHour([^0-9]|$)")
-                        if (hourRe.containsMatchIn(labelLow)) score += 8
-                        // 12h formats: "2pm" style
-                        val pmHour = if (startHour > 12) startHour - 12 else -1
-                        if (pmHour > 0) {
-                            val pmRe = Regex("(^|[^0-9])$pmHour[ ]*(pm)([^0-9]|$)")
-                            if (pmRe.containsMatchIn(labelLow)) score += 8
-                        }
-                    }
-                    score
-                }.mapIndexed { idx, sc -> Triple(idx, sc, ls[idx]) }
-                    .filter { it.second > 0 }
+                    // "mon" also covers "monday"
+                    if (dayRe != null && dayRe.containsMatchIn(labelLow)) score += 8
+                    if (hourRes.any { it.containsMatchIn(labelLow) }) score += 8
+                    Pair(l, score)
+                }.filter { it.second > 0 }
                     .sortedByDescending { it.second }
-                (scored.firstOrNull()?.third ?: ls.firstOrNull { linkIsMeeting(it.url) })?.url ?: ""
+                (scored.firstOrNull()?.first ?: ls.firstOrNull { linkIsMeeting(it.url) })?.url ?: ""
             }
         }
         val coursePage = if (id != 0L) "${p.site}/course/view.php?id=$id" else ""
@@ -352,12 +372,13 @@ object Checker {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
         val raw = ArrayList<Triple<String, String, Long>>()
         val cid = c.optLong("id")
+        val occSets = ArrayList<Set<String>>()
         for (sec in api.arr("core_course_get_contents", mapOf("courseid" to cid)).objs()) {
             val sname = sec.str("name")
             val skey = sec.optLong("id").toString()
             // section descriptions often hold the weekly meeting links (e.g. "Online Lecture Link …: <href>")
-            val secSummary = sec.optJSONObject("summary")
-            val secDesc = if (secSummary != null) clean(secSummary.optString("text"), 2000) else ""
+            // (Moodle sends "summary" as a plain HTML string; scan all of it, links can sit past 2000 chars)
+            val secDesc = sec.optJSONObject("summary")?.optString("text") ?: sec.optString("summary", "")
             for (u in findLinks(secDesc)) raw.add(Triple(u, "section: " + clean(sname, 50), mt0Of(sec)))
             val mods = (sec.optJSONArray("modules") ?: JSONArray()).objs()
             if (mods.isNotEmpty()) {
@@ -385,24 +406,18 @@ object Checker {
                     // remember the module name AND its kind so the resolver can filter
                     // directly by lecture/tutorial (user request: filter titles containing
                     // lecture / L / tutorial / class)
-                    val kind = when {
-                        nm.contains("lecture", true) || nm.contains("kuliah", true) || nm.contains("\bL\b", true) -> "lec"
-                        nm.contains("tutorial", true) || nm.contains("tutor", true) || nm.contains("\bT\b", true) || nm.contains("kelas", true) || nm.contains("class", true) -> "tut"
-                        else -> "other"
-                    }
+                    val kind = attKind(nm)
                     val lbl = st.j.optJSONObject("attlabels") ?: JSONObject()
-                    lbl.put("$cid:$attKey", JSONObject().put("name", nm).put("kind", kind))
+                    lbl.put("$cid:$attKey", JSONObject().put("name", nm).put("kind", kind).put("vis", m.optBoolean("uservisible", true)))
                     st.j.put("attlabels", lbl)
                 }
                 // Occ detection via availability: a module the user CAN see that names an Occ
                 // means the user belongs to it (Spectrum restricts other Occs' pages).
+                // A page can list several Occs ("OCC 2, 12, 16"); you are in one Occ that every
+                // visible page names, so keep the Occs common to all of them when there are any.
                 if (m.optBoolean("uservisible", true)) {
-                    val toks = groupTokens(m.str("name") + " " + m.str("intro"))
-                    for (t in toks) {
-                        if (t.contains("occ")) {
-                            occSeen[cid] = (occSeen[cid] ?: LinkedHashSet()).apply { add(t) }
-                        }
-                    }
+                    val occs = groupTokens(m.str("name") + " " + m.str("intro")).filter { it.startsWith("occ") }.toSet()
+                    if (occs.isNotEmpty()) occSets.add(occs)
                 }
                 if (m.str("modname") in MEETING_MODS && m.optBoolean("uservisible", true) && url.isNotEmpty()) {
                     raw.add(Triple(url, clean(name), mt))
@@ -414,6 +429,10 @@ object Checker {
                     }
                 }
             }
+        }
+        if (occSets.isNotEmpty()) {
+            val common = occSets.reduce { a, b -> a intersect b }
+            occSeen[cid] = LinkedHashSet(common.ifEmpty { occSets.flatten().toSet() })
         }
         try {
             for (f in api.arr("mod_forum_get_forums_by_courses", mapOf("courseids" to listOf(cid))).objs()) {

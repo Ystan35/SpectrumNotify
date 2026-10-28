@@ -145,7 +145,7 @@ class MainActivity : Activity() {
             val occs = (Catalog.find(this, code)?.occs() ?: emptyList())
                 .ifEmpty {
                     (seen.optJSONArray(cidS) ?: JSONArray()).strs()
-                        .mapNotNull { Regex("occ([0-9]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+                        .mapNotNull { Regex("occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
                 }
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
             asks.add(Ask(code, names.optString(cidS, code), occs, predictedNum))
@@ -807,7 +807,7 @@ class MainActivity : Activity() {
                 val d1 = localDt(c.start).dayOfWeek.value
                 val s1 = localDt(c.start).let { it.hour * 60 + it.minute }
                 val e1 = localDt(c.end).let { it.hour * 60 + it.minute }
-                val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = c.name.contains("lecture", true) || c.name.contains("kuliah", true), day = d1, startMin = s1, endMin = e1)
+                val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = Checker.preferLecOf(c.name), day = d1, startMin = s1, endMin = e1)
                 val eventIsAtt = c.link.contains("/mod/attendance/", true)
                 val target = att.ifEmpty { if (eventIsAtt) c.link else "" }.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
                 if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
@@ -938,7 +938,7 @@ class MainActivity : Activity() {
         val d2 = localDt(c.start).dayOfWeek.value
         val s2 = localDt(c.start).let { it.hour * 60 + it.minute }
         val e2 = localDt(c.end).let { it.hour * 60 + it.minute }
-        val (meetingResolved, attResolved, coursePage) = Checker.linksForCourse(this, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = c.name.contains("lecture", true) || c.name.contains("kuliah", true), day = d2, startMin = s2, endMin = e2)
+        val (meetingResolved, attResolved, coursePage) = Checker.linksForCourse(this, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = Checker.preferLecOf(c.name), day = d2, startMin = s2, endMin = e2)
         // c.link may hold the MEETING link (event description scores 100 in linksForEvent) —
         // the Attendance row must open the attendance PAGE, the Join row the meeting. Keep separate.
         val meeting = c.link.ifEmpty { meetingResolved }
