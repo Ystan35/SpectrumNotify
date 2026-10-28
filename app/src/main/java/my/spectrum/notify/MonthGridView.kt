@@ -68,7 +68,7 @@ object MonthGridView {
 
         val inTeaching = AcademicCalendar.inTeaching(activity, date)
         val dow = date.dayOfWeek.value
-        val classList = if (inTeaching) Timetable.all(activity).filter { it.day == dow }.sortedBy { it.start } else emptyList()
+        val classList = if (inTeaching) Timetable.on(Timetable.all(activity), date) else emptyList()
 
         fun sectionLabel(t: String) {
             sheet.addView(TextView(activity).apply {
@@ -154,7 +154,9 @@ object MonthGridView {
         // what each day holds: class days (Mon-Sun during teaching weeks), event days,
         // academic markers. Days with NOTHING stay completely plain — no color at all.
         val slots = Timetable.all(activity)
-        val classDays = slots.map { it.day }.toSet()
+        // weekdays with a weekly class; one-offs mark only their own date
+        val classDays = slots.filter { it.date == null }.map { it.day }.toSet()
+        val oneOffDates = slots.mapNotNull { it.date }.toSet()
         val eventsByDate = HashMap<LocalDate, MutableList<Events.Event>>()
         for (e in Events.all(activity)) {
             for ((d, _) in e.upcoming(month.atDay(1).minusMonths(1), 3 * 31 + 10L)) {
@@ -242,7 +244,7 @@ object MonthGridView {
                 val isToday = date == LocalDate.now()
                 val hasEvents = eventsOn[date]?.isNotEmpty() == true
                 // class days only count when the day is inside teaching weeks (holiday mode)
-                val hasClasses = date.dayOfWeek.value in classDays && AcademicCalendar.inTeaching(activity, date)
+                val hasClasses = (date.dayOfWeek.value in classDays || date in oneOffDates) && AcademicCalendar.inTeaching(activity, date)
                 val hasAnything = hasEvents || hasClasses
 
                 val cellBox = LinearLayout(activity).apply {
@@ -325,7 +327,7 @@ object MonthGridView {
         val inTeaching = AcademicCalendar.inTeaching(activity, date)
         if (inTeaching) {
             val dow = date.dayOfWeek.value
-            val slots = Timetable.all(activity).filter { it.day == dow }
+            val slots = Timetable.on(Timetable.all(activity), date)
             if (slots.isNotEmpty()) {
                 box.label("Classes", 13f, Ui.TEXT, 10).setTypeface(null, Typeface.BOLD)
                 for (s in slots.sortedBy { it.start }) {
