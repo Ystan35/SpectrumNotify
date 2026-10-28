@@ -78,6 +78,7 @@ object Events {
         }
         if (!replaced) out.put(toJson(e))
         sp(ctx).edit().putString("list", out.toString()).apply()
+        Scheduler.scheduleEventReminders(ctx)
     }
 
     @Synchronized
@@ -89,6 +90,7 @@ object Events {
             if (o.optLong("id") != id) out.put(o)
         }
         sp(ctx).edit().putString("list", out.toString()).apply()
+        Scheduler.scheduleEventReminders(ctx)
     }
 
     fun newId(): Long = System.nanoTime()

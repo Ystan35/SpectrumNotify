@@ -84,6 +84,15 @@ object Scheduler {
         return Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
     }
 
+    /** Cancels an armed alarm for [cls] with request code [code], if one exists. */
+    private fun cancelAlarm(ctx: Context, cls: Class<*>, code: Int) {
+        val pi = PendingIntent.getBroadcast(
+            ctx, code, Intent(ctx, cls), PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        ) ?: return
+        ctx.getSystemService(AlarmManager::class.java).cancel(pi)
+        pi.cancel()
+    }
+
     private fun setAlarm(ctx: Context, atMs: Long, code: Int) {
         val am = ctx.getSystemService(AlarmManager::class.java)
         val pi = PendingIntent.getBroadcast(
@@ -113,15 +122,23 @@ object Scheduler {
         val cal = Checker.myCalendar(st, p)
         // holiday mode: skip class reminder alarms outside teaching weeks
         val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now())
+        val codes = LinkedHashSet<Int>()
         for (e in cal) {
             if (!classesActive || !Checker.isAttEvent(e)) continue
             val start = e.optLong("timestart")
             val at = start - 590  // fires just inside the 10-minute window
             if (at <= now || at > now + 3 * 86400) continue
-            setAlarm(ctx, at * 1000, (e.optLong("id") * 31 + start).hashCode())
+            val code = (e.optLong("id") * 31 + start).hashCode()
+            setAlarm(ctx, at * 1000, code)
+            codes.add(code)
         }
-        parseHm(p.summaryTime)?.let { setAlarm(ctx, nextDaily(it), 1) }
-        parseHm(p.afternoonTime)?.let { setAlarm(ctx, nextDaily(it), 2) }
+        parseHm(p.summaryTime)?.let { setAlarm(ctx, nextDaily(it), 1); codes.add(1) }
+        parseHm(p.afternoonTime)?.let { setAlarm(ctx, nextDaily(it), 2); codes.add(2) }
+        // classes that were removed, skipped or moved since last time must not still fire
+        for (old in p.classAlarmCodes.split(",").mapNotNull { it.toIntOrNull() }) {
+            if (old !in codes) cancelAlarm(ctx, AlarmReceiver::class.java, old)
+        }
+        p.classAlarmCodes = codes.joinToString(",")
         scheduleEventReminders(ctx)
     }
 
@@ -132,6 +149,9 @@ object Scheduler {
         val am = ctx.getSystemService(AlarmManager::class.java)
         val zoneId = zone()
         val now = java.time.ZonedDateTime.now(zoneId)
+        val p = Prefs(ctx)
+        // deleted or edited events must not keep their old reminders: clear last round's codes first
+        for (old in 9000 until p.eventAlarmEnd) cancelAlarm(ctx, EventAlarmReceiver::class.java, old)
         var code = 9000
         for (e in Events.all(ctx)) {
             for ((d, t) in e.upcoming(now.toLocalDate(), 7)) {
@@ -154,5 +174,6 @@ object Scheduler {
                 }
             }
         }
+        p.eventAlarmEnd = code
     }
 }

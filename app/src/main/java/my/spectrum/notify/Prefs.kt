@@ -56,11 +56,11 @@ class Prefs(ctx: Context) {
         get() = sp.getString("afternoonTime", "14:00") ?: ""
         set(v) { sp.edit().putString("afternoonTime", v.trim()).apply() }
     var manualCourses: String
-        get() = sp.getString("manualCourses", "WIA2010") ?: ""
+        get() = sp.getString("manualCourses", "") ?: ""
         set(v) { sp.edit().putString("manualCourses", v.trim()).apply() }
     /** Classes to ignore, e.g. "WIX1003@Mon" = the Monday WIX1003 class is another group. No @day = all days. */
     var skipClasses: String
-        get() = sp.getString("skipClasses", "WIX1003@Mon") ?: ""
+        get() = sp.getString("skipClasses", "") ?: ""
         set(v) { sp.edit().putString("skipClasses", v.trim()).apply() }
     /** Which group's posts to keep. Empty = work it out from my classes; "off" = show everything; or e.g. "WIX1003:occ2, WIX1003:t3". */
     var myGroups: String
@@ -95,6 +95,10 @@ class Prefs(ctx: Context) {
     var loginStartedAt: Long
         get() = sp.getLong("loginStartedAt", 0L)
         set(v) { sp.edit().putLong("loginStartedAt", v).apply() }
+    /** Passport of the pending login attempt; the redirect's signature must match it. */
+    var loginPassport: String
+        get() = sp.getString("loginPassport", "") ?: ""
+        set(v) { sp.edit().putString("loginPassport", v).apply() }
 
     val manualList: List<String>
         get() = manualCourses.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
@@ -121,6 +125,16 @@ class Prefs(ctx: Context) {
     var alerted: Boolean
         get() = health.getBoolean("alerted", false)
         set(v) { health.edit().putBoolean("alerted", v).apply() }
+
+    /** Request codes of the class/daily alarms armed last time, comma-separated (so stale ones can be cancelled). */
+    var classAlarmCodes: String
+        get() = health.getString("classAlarmCodes", "") ?: ""
+        set(v) { health.edit().putString("classAlarmCodes", v).apply() }
+    /** One past the last event-reminder request code armed last time (codes start at 9000).
+     *  Unset (builds before this was tracked): sweep a generous range once. */
+    var eventAlarmEnd: Int
+        get() = health.getInt("eventAlarmEnd", 9500)
+        set(v) { health.edit().putInt("eventAlarmEnd", v).apply() }
 
     // ---------------- appearance / accessibility
     /** Theme override: 0 = follow phone, 1 = light, 2 = dark. */
