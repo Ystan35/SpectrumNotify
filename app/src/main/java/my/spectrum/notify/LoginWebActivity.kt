@@ -12,7 +12,6 @@ import android.webkit.WebViewClient
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import java.util.UUID
 
 /**
  * In-app Spectrum sign-in. Spectrum forgets the pending token request while you sign in through
@@ -30,9 +29,7 @@ class LoginWebActivity : Activity() {
         super.onCreate(savedInstanceState)
         Ui.setup(this)
         p = Prefs(this)
-        p.loginStartedAt = System.currentTimeMillis()
-        val passport = UUID.randomUUID().toString().take(12)
-        launchUrl = "${p.site}/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=$passport&urlscheme=spectrumnotify"
+        launchUrl = Login.launchUrl(p)
 
         window.statusBarColor = Ui.BG
         window.navigationBarColor = Ui.BAR

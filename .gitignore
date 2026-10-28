@@ -11,3 +11,9 @@ tools/lecturer_data.json
 
 # Firebase config holds an API key; keep it local, CI injects it from a secret
 app/google-services.json
+
+# Cloudflare Worker local state and keys — never commit these
+worker/.wrangler/
+.wrangler/
+worker/adminkey.txt
+.dev.vars

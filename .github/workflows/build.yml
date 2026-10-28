@@ -47,7 +47,7 @@ jobs:
             git config user.name "github-actions"
             git config user.email "actions@github.com"
             git add latest.json apk/SpectrumNotify.apk
-            git commit -m "Publish $NAME ($CODE): latest.json + APK"
+            git commit -m "Publish $NAME ($CODE): latest.json + APK [skip ci]"
           fi
       - name: Push latest.json + APK (token auth)
         if: env.HAS_TOKEN == 'true'
@@ -55,7 +55,7 @@ jobs:
           if [ -z "${{ secrets.GH_PAT }}" ]; then echo "GH_PAT secret is NOT set"; exit 1; fi
           # checkout persists its own read-only credential; remove it so our PAT is used
           git config --local --unset-all http.https://github.com/.extraheader || true
-          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:main
+          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/Ystan35/SpectrumNotify.git HEAD:${{ github.ref_name }}
       - uses: actions/upload-artifact@v4
         with:
           name: SpectrumNotify-apks
