@@ -140,22 +140,34 @@ class TimetableEditActivity : Activity() {
         times.addView(endBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(12) })
         col.addView(times, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
 
+        // older versions kept the attendance choice inside the note ("[att]links" / "[manual-att]"),
+        // which wiped the room; read those once, then keep note and attendance apart
+        val oldNote = first?.note ?: ""
+        val legacyMode = when {
+            oldNote.startsWith("[manual-att]") -> 1
+            oldNote.startsWith("[att]") -> 0
+            else -> -1
+        }
+        val legacyLinks = if (legacyMode == 0) oldNote.removePrefix("[att]").trim() else ""
+        val cleanNote = if (legacyMode >= 0) "" else oldNote
+
         col.label("Name (optional)", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         val titleField = col.field(first?.title ?: "", "Lecture, Group A")
         col.label("Room or note (optional)", 13f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
-        val noteField = col.field(first?.note ?: "", "Hall 3, bring laptop")
+        val noteField = col.field(cleanNote, "Hall 3, bring laptop")
 
         col.label("Attendance", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label("How is attendance taken for this class?", 12f, Ui.DIM, 2)
         // mode: Spectrum link (auto/paste) or manual by lecturer (no link needed)
         val attModes = listOf("Spectrum link", "Manual by lecturer", "None")
+        val modeKeys = listOf("link", "manual", "none")
         var attMode = when {
-            (first?.note ?: "").startsWith("[manual-att]") -> 1
-            (first?.note ?: "").startsWith("[att]") -> 0
-            else -> 2
+            legacyMode >= 0 -> legacyMode
+            course.isNotEmpty() -> modeKeys.indexOf(Timetable.attMode(this, course)).takeIf { it >= 0 } ?: 0
+            else -> 0
         }
-        val attLinks = (first?.note ?: "").removePrefix("[att]").removePrefix("[manual-att]").trim()
-        val attLinksField = col.field(attLinks, "Paste attendance link(s), one per line")
+        val attLinks = legacyLinks.ifEmpty { if (course.isNotEmpty()) Timetable.userAttLinkRaw(this, course) else "" }
+        val attLinksField = col.field(attLinks, "Paste attendance link(s), one per line (optional)")
         attLinksField.visibility = if (attMode == 0) android.view.View.VISIBLE else android.view.View.GONE
         col.chips(attModes, setOf(attMode), false) { sel ->
             attMode = sel.firstOrNull() ?: 2
@@ -175,16 +187,13 @@ class TimetableEditActivity : Activity() {
                 days.isEmpty() -> toast("Choose at least one day")
                 end <= start -> toast("The end time must be after the start time")
                 else -> {
-                    val baseNote = noteField.text.toString().trim()
-                    val attNote = when (attMode) {
-                        0 -> "[att]" + attLinksField.text.toString().trim()
-                        1 -> "[manual-att]"
-                        else -> baseNote
-                    }
                     Timetable.saveManual(
                         this, if (editing) grp else Timetable.newGroup(), code, titleField.text.toString().trim(),
-                        days, start, end, kinds[kindIdx], attNote,
+                        days, start, end, kinds[kindIdx], noteField.text.toString().trim(),
                     )
+                    Timetable.setAttMode(this, code, modeKeys[attMode])
+                    // pasted links feed the same resolver as the Attendance buttons everywhere
+                    if (attMode == 0) Timetable.setAttendanceLink(this, code, attLinksField.text.toString().trim())
 
                     if (colourTouched || Timetable.colourIndexOrNull(this, code) == null) {
                         Timetable.setColourIndex(this, code, colourIdx)
@@ -213,10 +222,15 @@ class TimetableEditActivity : Activity() {
         val col = screen("Class details")
         var kindIdx = kindIndex(s.kind)
         var colourIdx = Timetable.colourIndexOrNull(this, s.course) ?: Timetable.nextColourIndex(this)
+        // s already carries any time override; Spectrum's own time is in the key "course|day|start|end"
+        val keyParts = s.key.split("|")
+        val specStart = keyParts.getOrNull(2)?.toIntOrNull() ?: s.start
+        val specEnd = keyParts.getOrNull(3)?.toIntOrNull() ?: s.end
 
         col.label(s.course, 22f, Timetable.colours(this, setOf(s.course))[s.course] ?: Ui.TEXT, 8).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label(
-            "${Timetable.DAY_FULL[s.day - 1]}, ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}" +
+            "${Timetable.DAY_FULL[s.day - 1]}, ${Timetable.fmtMin(specStart)} – ${Timetable.fmtMin(specEnd)}" +
+                (if (specStart != s.start || specEnd != s.end) "  (yours: ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)})" else "") +
                 if (s.title.isNotEmpty()) "\n${s.title}" else "",
             15f, Ui.TEXT, 4,
         )
@@ -229,8 +243,8 @@ class TimetableEditActivity : Activity() {
         val times = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val startBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val endBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        var newStart = ov?.first ?: s.start
-        var newEnd = ov?.second ?: s.end
+        var newStart = ov?.first ?: specStart
+        var newEnd = ov?.second ?: specEnd
         lateinit var endOvField: TimeField
         val startOvField = timeField(newStart) {
             newStart = it
@@ -268,10 +282,14 @@ class TimetableEditActivity : Activity() {
         col.swatches(colourIdx) { colourIdx = it }
 
         col.btn("Save") {
+            if (newEnd <= newStart) {
+                toast("The end time must be after the start time")
+                return@btn
+            }
             Timetable.setKind(this, s.key, kinds[kindIdx])
             Timetable.setColourIndex(this, s.course, colourIdx)
             // write overrides only when they differ from Spectrum's values
-            val hasChanged = newStart != s.start || newEnd != s.end
+            val hasChanged = newStart != specStart || newEnd != specEnd
             if (hasChanged) Timetable.setTimeOverride(this, s.key, newStart, newEnd)
             else Timetable.clearTimeOverride(this, s.key)
             Timetable.setMeetingLink(this, s.course, mlinkField.text.toString().trim())
@@ -282,10 +300,13 @@ class TimetableEditActivity : Activity() {
             }
             finish()
         }
-        if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course).isNotEmpty()) {
+        if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course).isNotEmpty() ||
+            Timetable.userAttLinkRaw(this, s.course).isNotEmpty()
+        ) {
             dangerBtn(col, "Reset to Spectrum values") {
                 Timetable.clearTimeOverride(this, s.key)
                 Timetable.setMeetingLink(this, s.course, "")
+                Timetable.setAttendanceLink(this, s.course, "")
                 finish()
             }
         }

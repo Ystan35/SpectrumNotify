@@ -38,7 +38,10 @@ class TimetableActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        box = screen("Timetable", navTo = TimetableActivity::class.java, onRefresh = { Scheduler.pollNow(this) }, actionIcon = R.drawable.ic_add, actionDesc = "Add a class or an event", onAction = { showAddChoice() })
+        box = screen("Timetable", navTo = TimetableActivity::class.java, onRefresh = {
+            Scheduler.pollNow(this)
+            Toast.makeText(this, "Checking Spectrum… the timetable updates when it finishes", Toast.LENGTH_SHORT).show()
+        }, actionIcon = R.drawable.ic_add, actionDesc = "Add a class or an event", onAction = { showAddChoice() })
     }
 
     override fun onResume() {
@@ -80,7 +83,7 @@ class TimetableActivity : Activity() {
         when (mode) {
             0 -> renderDay()
             1 -> renderWeek()
-            else -> MonthGridView.render(this, box) { render() }
+            else -> MonthGridView.render(this, box, onClass = { slotDetail(it) }) { render() }
         }
         if (mode != 2) renderLegend()
     }

@@ -532,7 +532,8 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
         setPadding(dp(4), dp(2), dp(4), dp(2))
     }
     var dot: View? = null
-    for (t in tabs) {
+    val activeIdx = tabs.indexOfFirst { it.cls == active }
+    for ((idx, t) in tabs.withIndex()) {
         val isActive = t.cls == active
         val item = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -548,6 +549,11 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
                         i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     }
                     startActivity(i)
+                    // tabs replace each other instead of piling up (Back from any tab goes Home)
+                    if (active != MainActivity::class.java && t.cls != MainActivity::class.java) finish()
+                    // slide toward the side the tab sits on, like switching tabs, not opening a page
+                    if (idx > activeIdx) overridePendingTransition(R.anim.tab_in_right, R.anim.tab_out_left)
+                    else overridePendingTransition(R.anim.tab_in_left, R.anim.tab_out_right)
                 }
             }
         }

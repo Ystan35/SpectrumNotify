@@ -22,118 +22,214 @@ import java.util.Locale
  */
 object MonthGridView {
 
-    /** Occurrences of user events per date within [month]. */
-    private fun eventsOn(activity: Activity, month: YearMonth): Map<LocalDate, List<Events.Event>> {
+    /** Your events that fall on [date] (one-off or weekly). */
+    private fun eventsFor(activity: Activity, date: LocalDate): List<Events.Event> =
+        Events.all(activity).filter { e -> e.upcoming(date, 0).any { it.first == date } }
+
+    /** Occurrences of your events per date within [month]. */
+    private fun eventsIn(activity: Activity, month: YearMonth): Map<LocalDate, List<Events.Event>> {
         val out = HashMap<LocalDate, MutableList<Events.Event>>()
         val start = month.atDay(1)
         for (e in Events.all(activity)) {
-            for ((d, _) in e.upcoming(start, month.lengthOfMonth().toLong())) {
-                if (d.monthValue != month.monthValue || d.year != month.year) continue
+            for ((d, _) in e.upcoming(start, month.lengthOfMonth() - 1L)) {
+                if (YearMonth.from(d) != month) continue
                 out.getOrPut(d) { ArrayList() }.add(e)
             }
         }
         return out
     }
 
-    /** Renders the whole month view into [box]. [onChanged] after edits. */
-    /** Day sheet: what's on this date — academic marker, classes, events, add-event row. */
+    /** "Today", "Tomorrow", "In 5 days", "3 days ago" — where a date sits from today. */
+    private fun relDay(date: LocalDate): String {
+        val n = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), date)
+        return when {
+            n == 0L -> "Today"
+            n == 1L -> "Tomorrow"
+            n == -1L -> "Yesterday"
+            n > 1 -> "In $n days"
+            else -> "${-n} days ago"
+        }
+    }
+
+    /**
+     * Day sheet: what's on a date — academic marker, classes, events, add-event row.
+     * ‹ › step one day, tapping the date opens a date picker; [onDate] keeps the month grid in step.
+     */
     private fun openDaySheet(
         activity: Activity,
-        date: LocalDate,
-        events: List<Events.Event>,
+        start: LocalDate,
         onChanged: () -> Unit,
-        redraw: () -> Unit,
+        onDate: (LocalDate) -> Unit,
+        onClass: ((Slot) -> Unit)?,
     ) {
         val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
+        var date = start
         val sheet = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(20))
+            setPadding(dp(16), dp(14), dp(16), dp(20))
             background = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = dp(22).toFloat()
                 setColor(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt())
                 setStroke(dp(1), if (Ui.dark) 0xFF3A4150.toInt() else 0xFFD8D4CA.toInt())
             }
         }
-        sheet.addView(TextView(activity).apply {
-            text = EventsUi.fmtDate(date)
-            textSize = 20f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+        lateinit var dialog: AlertDialog
+        lateinit var go: (LocalDate, Int) -> Unit
+
+        // ---- header: ‹  date (tap = picker)  ›
+        fun arrowBtn(arrow: String, desc: String, onClick: () -> Unit): TextView =
+            TextView(activity).apply {
+                text = arrow
+                textSize = 22f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                contentDescription = desc
+                background = rippleBg(Ui.BAR, Ui.BORDER, activity, 24)
+                setOnClickListener { onClick() }
+            }
+        val head = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
+        val titleBox = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            background = rippleBg(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt(), 0, activity, 12)
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        val title = TextView(activity).apply {
+            textSize = 19f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }
+        val subTitle = TextView(activity).apply {
+            textSize = 12f * Ui.fontScale; setTextColor(Ui.CYAN); gravity = Gravity.CENTER
+        }
+        titleBox.addView(title)
+        titleBox.addView(subTitle)
+        titleBox.setOnClickListener {
+            android.app.DatePickerDialog(activity, { _, y, m, d ->
+                val picked = LocalDate.of(y, m + 1, d)
+                go(picked, picked.compareTo(date).coerceIn(-1, 1))
+            }, date.year, date.monthValue - 1, date.dayOfMonth).show()
+        }
+        head.addView(arrowBtn("‹", "Previous day") { go(date.minusDays(1), -1) }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))))
+        head.addView(titleBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6); rightMargin = dp(6) })
+        head.addView(arrowBtn("›", "Next day") { go(date.plusDays(1), 1) }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))))
+        sheet.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val todayChip = TextView(activity).apply {
+            text = "Back to today"
+            textSize = 12f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            minHeight = dp(Ui.touch(40))
+            setPadding(dp(14), 0, dp(14), 0)
+            background = rippleBg(Ui.BAR, Ui.CYAN, activity, 18)
+            setOnClickListener { val t = LocalDate.now(); go(t, t.compareTo(date).coerceIn(-1, 1)) }
+        }
+        sheet.addView(todayChip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4)
         })
 
-        val academic = AcademicCalendar.describe(activity, date)
-        if (academic != null) sheet.addView(TextView(activity).apply {
-            text = academic
-            textSize = 13f; setTextColor(Ui.ORANGE); setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(6), 0, 0)
-        })
-
-        val inTeaching = AcademicCalendar.inTeaching(activity, date)
-        val dow = date.dayOfWeek.value
-        val classList = if (inTeaching) Timetable.on(Timetable.all(activity), date) else emptyList()
+        val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        sheet.addView(android.widget.ScrollView(activity).apply {
+            isVerticalScrollBarEnabled = false
+            addView(body)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         fun sectionLabel(t: String) {
-            sheet.addView(TextView(activity).apply {
-                text = t; textSize = 13f; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(12), 0, dp(2))
+            body.addView(TextView(activity).apply {
+                text = t; textSize = 13f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                setPadding(dp(4), dp(12), 0, dp(2))
             })
         }
-        fun itemRow(title: String, sub: String, onClick: (() -> Unit)? = null) {
+        fun itemRow(rowTitle: String, sub: String, stripe: Int = 0, onClick: (() -> Unit)? = null) {
             val r = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(12))
-                background = roundBg(Ui.BAR, Ui.BORDER, activity, 12)
-                isClickable = onClick != null
-                if (onClick != null) setOnClickListener { onChanged(); onClick() }
-            }
-            r.addView(TextView(activity).apply { text = title; textSize = 14f; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD) })
-            r.addView(TextView(activity).apply { text = sub; textSize = 12f; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0); maxLines = 3 })
-            sheet.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
-        }
-
-        if (classList.isNotEmpty()) {
-            sectionLabel("Classes")
-            for (sl in classList) {
-                val fullName: String = run {
-                    var n = ""
-                    val codeUpper = sl.course.uppercase(java.util.Locale.ROOT)
-                    for (cc in Courses.all(activity)) if (cc.code.uppercase(java.util.Locale.ROOT) == codeUpper) n = cc.name
-                    if (n.isEmpty()) {
-                        val cc = Catalog.load(activity)[codeUpper]
-                        if (cc != null) n = cc.name
-                    }
-                    n
+                background = if (onClick != null) rippleBg(Ui.BAR, if (stripe != 0) stripe else Ui.BORDER, activity, 12)
+                    else roundBg(Ui.BAR, if (stripe != 0) stripe else Ui.BORDER, activity, 12)
+                if (onClick != null) {
+                    isClickable = true
+                    setOnClickListener { dialog.dismiss(); onClick() }
                 }
-                // place: user-set location first, else the slot's own note/room
-                val place = Timetable.locationOf(activity, sl.course)
-                    .ifEmpty { sl.note }
-                    .ifEmpty { "Room not set" }
-                itemRow(
-                    Shorts.display(activity, sl.course) + (if (sl.title.isNotEmpty()) " · " + sl.title else ""),
-                    EventsUi.fmtMin(sl.start) + "–" + EventsUi.fmtMin(sl.end) +
-                        (if (fullName.isNotEmpty()) " · " + fullName else "") +
-                        " · " + place,
-                )
             }
-        }
-        if (events.isNotEmpty()) {
-            sectionLabel("Events")
-            for (ev in events.sortedBy { it.startTime }) {
-                itemRow(
-                    ev.title,
-                    EventsUi.fmtMin(ev.startTime) + "–" + EventsUi.fmtMin(ev.endTime) + (if (ev.note.isNotEmpty()) " · " + ev.note else ""),
-                ) { EventsUi.editor(activity, ev, onChanged) }
-            }
-        }
-        if (classList.isEmpty() && events.isEmpty()) {
-            sheet.addView(TextView(activity).apply {
-                text = if (inTeaching) "Nothing on this day." else "No classes (holiday mode) and no events."
-                textSize = 13f; setTextColor(Ui.DIM); setPadding(0, dp(10), 0, 0)
-            })
-        }
-        itemRow("Add an event on this day", "Opens the event editor with this date filled in") {
-            EventsUi.editor(activity, null, onChanged, prefillDate = date)
+            r.addView(TextView(activity).apply { text = rowTitle; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD) })
+            r.addView(TextView(activity).apply { text = sub; textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            body.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         }
 
-        val dialog = AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_DayNight)
+        fun fill() {
+            title.text = date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH))
+            subTitle.text = relDay(date) + "  ·  tap to pick a date"
+            titleBox.contentDescription = "${date.format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy", Locale.ENGLISH))}, ${relDay(date)}. Tap to pick another date"
+            todayChip.visibility = if (date == LocalDate.now()) View.GONE else View.VISIBLE
+            body.removeAllViews()
+
+            AcademicCalendar.describe(activity, date)?.let { academic ->
+                body.addView(TextView(activity).apply {
+                    text = academic
+                    textSize = 13f * Ui.fontScale; setTextColor(Ui.ORANGE); setTypeface(typeface, Typeface.BOLD)
+                    setPadding(dp(4), dp(8), 0, 0)
+                })
+            }
+            val inTeaching = AcademicCalendar.inTeaching(activity, date)
+            val classList = if (inTeaching) Timetable.on(Timetable.all(activity), date) else emptyList()
+            val events = eventsFor(activity, date)
+            val colours = Timetable.colours(activity, classList.map { it.course }.toSet())
+
+            if (classList.isNotEmpty()) {
+                sectionLabel("Classes")
+                for (sl in classList) {
+                    val codeUpper = sl.course.uppercase(Locale.ROOT)
+                    val fullName = Courses.all(activity).firstOrNull { it.code.uppercase(Locale.ROOT) == codeUpper }?.name
+                        ?: Catalog.load(activity)[codeUpper]?.name ?: ""
+                    // place: user-set location first, else the slot's own note/room
+                    val place = Timetable.locationOf(activity, sl.course).removePrefix("room:").removePrefix("online:")
+                        .let { if (it.startsWith("http")) "Online" else it }
+                        .ifEmpty { sl.note }
+                        .ifEmpty { "Room not set" }
+                    itemRow(
+                        Shorts.display(activity, sl.course) + (if (sl.title.isNotEmpty()) " · " + sl.title else ""),
+                        EventsUi.fmtMin(sl.start) + "–" + EventsUi.fmtMin(sl.end) +
+                            (if (fullName.isNotEmpty()) " · " + fullName else "") + " · " + place,
+                        colours[sl.course] ?: 0,
+                        onClass?.let { cb -> { cb(sl) } },
+                    )
+                }
+            }
+            if (events.isNotEmpty()) {
+                sectionLabel("Events")
+                for (ev in events.sortedBy { it.startTime }) {
+                    itemRow(
+                        ev.title,
+                        EventsUi.fmtMin(ev.startTime) + "–" + EventsUi.fmtMin(ev.endTime) + (if (ev.note.isNotEmpty()) " · " + ev.note else ""),
+                    ) { EventsUi.editor(activity, ev, onChanged) }
+                }
+            }
+            if (classList.isEmpty() && events.isEmpty()) {
+                body.addView(TextView(activity).apply {
+                    text = if (inTeaching) "Nothing on this day." else "No classes (holiday mode) and no events."
+                    textSize = 13f * Ui.fontScale; setTextColor(Ui.DIM); setPadding(dp(4), dp(12), 0, 0)
+                })
+            }
+            sectionLabel("")
+            itemRow("+ Add an event on this day", "Opens the event editor with this date filled in") {
+                EventsUi.editor(activity, null, onChanged, prefillDate = date)
+            }
+        }
+
+        // dir: +1 = later date (content comes from the right), -1 = earlier, 0 = same
+        go = { d, dir ->
+            date = d
+            onDate(d)
+            body.animate().cancel()
+            fill()
+            if (dir != 0) {
+                body.translationX = dir * dp(40).toFloat()
+                body.alpha = 0f
+                body.animate().translationX(0f).alpha(1f).setDuration(200)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            }
+        }
+        fill()
+
+        dialog = AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_DayNight)
             .setView(sheet)
             .create()
         dialog.show()
@@ -146,10 +242,19 @@ object MonthGridView {
         dialog.window?.setDimAmount(0.55f)
     }
 
-    fun render(activity: Activity, box: LinearLayout, onChanged: () -> Unit) {
+    // the month and day you were looking at survive re-renders (e.g. after adding an event),
+    // but a calendar opened much later starts again at today
+    private var keptMonth: YearMonth? = null
+    private var keptSel: LocalDate? = null
+    private var keptAt = 0L
+
+    /** Renders the whole month view into [box]. [onChanged] after edits; [onClass] when a class in the day sheet is tapped. */
+    fun render(activity: Activity, box: LinearLayout, onClass: ((Slot) -> Unit)? = null, onChanged: () -> Unit) {
         val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
-        var month: YearMonth = YearMonth.now()
-        var selected: LocalDate = LocalDate.now()
+        val fresh = System.currentTimeMillis() - keptAt < 30 * 60 * 1000L
+        var month: YearMonth = (if (fresh) keptMonth else null) ?: YearMonth.now()
+        var selected: LocalDate = (if (fresh) keptSel else null) ?: LocalDate.now()
+        fun keep() { keptMonth = month; keptSel = selected; keptAt = System.currentTimeMillis() }
 
         // what each day holds: class days (Mon-Sun during teaching weeks), event days,
         // academic markers. Days with NOTHING stay completely plain — no color at all.
@@ -157,12 +262,6 @@ object MonthGridView {
         // weekdays with a weekly class; one-offs mark only their own date
         val classDays = slots.filter { it.date == null }.map { it.day }.toSet()
         val oneOffDates = slots.mapNotNull { it.date }.toSet()
-        val eventsByDate = HashMap<LocalDate, MutableList<Events.Event>>()
-        for (e in Events.all(activity)) {
-            for ((d, _) in e.upcoming(month.atDay(1).minusMonths(1), 3 * 31 + 10L)) {
-                eventsByDate.getOrPut(d) { ArrayList() }.add(e)
-            }
-        }
 
         val holder = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         box.addView(holder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -170,7 +269,15 @@ object MonthGridView {
         lateinit var redraw: () -> Unit
         val dayDetails = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
 
+        /** Another month: keep the selected day inside it (today when it is this month). */
+        fun showMonth(m: YearMonth) {
+            month = m
+            if (YearMonth.from(selected) != m) selected = if (YearMonth.from(LocalDate.now()) == m) LocalDate.now() else m.atDay(1)
+            redraw()
+        }
+
         redraw = {
+            keep()
             holder.removeAllViews()
 
             // ---- header: ‹ month ›
@@ -191,7 +298,7 @@ object MonthGridView {
                     }
                     setOnClickListener { onClick() }
                 }
-            head.addView(arrowBtn("‹", "Previous month") { month = month.minusMonths(1); redraw() })
+            head.addView(arrowBtn("‹", "Previous month") { showMonth(month.minusMonths(1)) })
             // center = date picker: jump straight to any month (faster than ‹ › spamming)
             head.addView(TextView(activity).apply {
                 text = month.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
@@ -203,19 +310,18 @@ object MonthGridView {
                 setPadding(dp(8), dp(4), dp(8), dp(4))
                 setOnClickListener {
                     android.app.DatePickerDialog(activity, { _, y, m, d ->
-                        month = YearMonth.of(y, m + 1)
-                        selected = if (selected.month == month.month && selected.year == month.year) selected else month.atDay(1)
-                        redraw()
-                    }, month.year, month.monthValue - 1, 1).show()
+                        selected = LocalDate.of(y, m + 1, d)
+                        showMonth(YearMonth.of(y, m + 1))
+                    }, selected.year, selected.monthValue - 1, selected.dayOfMonth).show()
                 }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            head.addView(arrowBtn("›", "Next month") { month = month.plusMonths(1); redraw() })
+            head.addView(arrowBtn("›", "Next month") { showMonth(month.plusMonths(1)) })
             holder.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
             // ---- grid
             val gridHolder = FrameLayout(activity)
             val grid = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-            val eventsOn = eventsByDate.filterKeys { it.monthValue == month.monthValue && it.year == month.year }
+            val eventsOn = eventsIn(activity, month)
             val first = month.atDay(1)
             val lead = (first.dayOfWeek.value + 6) % 7 // Monday-first
             val days = month.lengthOfMonth()
@@ -267,7 +373,13 @@ object MonthGridView {
                         (if (hasEvents) ", has events" else "")
                     setOnClickListener {
                         selected = date
-                        openDaySheet(activity, date, eventsOn[date] ?: emptyList(), onChanged, redraw)
+                        redraw()
+                        // stepping days in the sheet moves the grid's selection (and month) along
+                        openDaySheet(activity, date, onChanged, { d ->
+                            selected = d
+                            if (YearMonth.from(d) != month) month = YearMonth.from(d)
+                            redraw()
+                        }, onClass)
                     }
                 }
                 cellBox.addView(TextView(activity).apply {

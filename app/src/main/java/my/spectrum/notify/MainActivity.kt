@@ -76,12 +76,20 @@ class MainActivity : Activity() {
     private var logStamp = -1L
     private var refreshing = false
     private var refreshStart = 0L
-    private var refreshBase = ""
+    private var refreshBase = 0L
     private var spin: ObjectAnimator? = null
     private var heroClasses: List<Checker.ClassItem> = emptyList()
     private var heroPos = 0
-    private var heroAnim = false
+    private var heroDragging = false
     private var onSlide: ((Int) -> Unit)? = null
+
+    /** While a refresh runs, look for its result every second (the 30 s ticker is far too slow). */
+    private val refreshWatch = object : Runnable {
+        override fun run() {
+            if (!refreshing) return
+            if (checkRefreshDone()) render() else handler.postDelayed(this, 1000)
+        }
+    }
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -117,6 +125,7 @@ class MainActivity : Activity() {
         recreateIfLookChanged()
         ovAt = 0L
         handler.post(ticker)
+        if (refreshing) handler.post(refreshWatch)
         confirmOccDialog()
     }
 
@@ -242,6 +251,7 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        handler.removeCallbacks(refreshWatch)
         super.onPause()
         handler.removeCallbacks(ticker)
     }
@@ -540,9 +550,18 @@ class MainActivity : Activity() {
             return
         }
         if (refreshing) return
+        if (Checker.inQuiet(java.time.ZonedDateTime.now(zone()), p)) {
+            Toast.makeText(this, "Quiet hours (${p.quietStart}:00–${p.quietEnd}:00): checks are paused until they end.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val online = try { getSystemService(android.net.ConnectivityManager::class.java)?.activeNetwork != null } catch (_: Exception) { true }
+        if (!online) {
+            Toast.makeText(this, "No internet connection. The app checks again once you are online.", Toast.LENGTH_LONG).show()
+            return
+        }
         refreshing = true
         refreshStart = System.currentTimeMillis()
-        refreshBase = "${p.lastRunTs}:${p.lastError}"
+        refreshBase = lastAttempt()
         spin = ObjectAnimator.ofFloat(refreshBtn, View.ROTATION, 0f, 360f).apply {
             duration = 900
             repeatCount = ValueAnimator.INFINITE
@@ -550,17 +569,26 @@ class MainActivity : Activity() {
             start()
         }
         Scheduler.pollNow(this)
+        handler.removeCallbacks(refreshWatch)
+        handler.postDelayed(refreshWatch, 1000)
     }
 
-    private fun checkRefreshDone() {
-        if (!refreshing) return
-        val changed = "${p.lastRunTs}:${p.lastError}" != refreshBase
-        val timedOut = System.currentTimeMillis() - refreshStart > 25000
-        if (!changed && !timedOut) return
+    /** When the background check last finished (success or failure), written by Checker.run. */
+    private fun lastAttempt(): Long = getSharedPreferences("health", MODE_PRIVATE).getLong("lastAttemptMs", 0L)
+
+    /** True when a running refresh just ended: stops the spinner, reloads the data, says how it went. */
+    private fun checkRefreshDone(): Boolean {
+        if (!refreshing) return false
+        val changed = lastAttempt() != refreshBase
+        val timedOut = System.currentTimeMillis() - refreshStart > 45000
+        if (!changed && !timedOut) return false
         refreshing = false
+        handler.removeCallbacks(refreshWatch)
         spin?.cancel()
         refreshBtn.rotation = 0f
         ovAt = 0L
+        heroSig = ""
+        dueSig = ""
         try { NextClassWidget.updateAll(this) } catch (_: Exception) { }
         Toast.makeText(
             this,
@@ -571,6 +599,7 @@ class MainActivity : Activity() {
             },
             Toast.LENGTH_SHORT,
         ).show()
+        return true
     }
 
     /** Dot on the bell while there are notifications you have not opened yet. */
@@ -644,9 +673,10 @@ class MainActivity : Activity() {
         val sig = when {
             !loggedIn -> "out"
             next == null -> "none:${ov.due.firstOrNull()?.ts}:${ov.due.firstOrNull()?.let { relShort(it.ts - now) }}"
-            else -> ov.classes.joinToString("|") { "${it.start}:${it.end}:${it.link}" }
+            // the minute is part of the signature so "Starts in …" and the progress bar stay current
+            else -> ov.classes.joinToString("|") { "${it.start}:${it.end}:${it.link}" } + ":" + now / 60
         }
-        if (sig == heroSig && !heroAnim) return
+        if (sig == heroSig || heroDragging) return
         heroSig = sig
 
         // today's classes become swipeable slides, then tomorrow's — capped at TWO days
@@ -743,10 +773,13 @@ class MainActivity : Activity() {
             return
         }
 
-        // container: one gradient card per class, swiped horizontally; course colour tints the label
-        val pager = FrameLayout(this)
-        fun show(pos: Int) {
-            if (heroAnim) return
+        // container: one gradient card per class; drag sideways to move between classes
+        val pager = HeroPager(this)
+        pager.canGo = { dir -> heroPos + dir in slides.indices }
+        pager.onDragState = { heroDragging = it }
+        pager.onCommit = { dir -> onSlide?.invoke(heroPos + dir) }
+        // dir: +1 = the new card comes from the right, -1 from the left, 0 = no animation
+        fun show(pos: Int, dir: Int = 0) {
             heroPos = pos.coerceIn(0, slides.size - 1)
             pager.removeAllViews()
             val c = slides[heroPos]
@@ -800,6 +833,10 @@ class MainActivity : Activity() {
             val hasLink = c.link.isNotEmpty()
             if (hasLink) actionsRow.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Attendance", !hasLink) {
+                if (Timetable.attMode(this@MainActivity, c.course) == "manual") {
+                    Toast.makeText(this@MainActivity, "Attendance for ${Shorts.display(this@MainActivity, c.course)} is taken in class by the lecturer.", Toast.LENGTH_LONG).show()
+                    return@pill
+                }
                 // Attendance needs the ATTENDANCE PAGE specifically — c.link often holds the
                 // MEETING link (the event description contains it, so it scores 100 in
                 // linksForEvent). Resolution order: pasted attendance link, occ-scored
@@ -819,47 +856,29 @@ class MainActivity : Activity() {
             val span = if (live) maxOf(1, c.end - c.start) else maxOf(1, (c.start - now) + (c.end - c.start))
             val done = if (live) now - c.start else (c.start - now).coerceAtLeast(0)
             val frac = (done.toFloat() / span).coerceIn(0f, 1f)
-            val track = FrameLayout(this).apply { setPadding(0, dp(14), 0, 0) }
-            track.addView(View(this).apply {
+            // filled part by weight, so it is a true share of the card width
+            val track = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
                 background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(0x33FFFFFF) }
-            }, FrameLayout.LayoutParams(MATCH, dp(4)))
+            }
             track.addView(View(this).apply {
                 background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(0xFFFFFFFF.toInt()) }
-            }, FrameLayout.LayoutParams((frac * 10000).toInt().coerceAtLeast(dp(8)), dp(4), Gravity.START or Gravity.CENTER_VERTICAL))
-            card.addView(track)
+            }, lp(0, dp(4), frac.coerceAtLeast(0.02f)))
+            track.addView(View(this), lp(0, dp(4), (1f - frac).coerceAtLeast(0f)))
+            card.addView(track, lp(MATCH, dp(4)).apply { topMargin = dp(14) })
             pager.addView(card, lp(MATCH, WRAP))
-
-            // swipe left/right to change slide; a plain tap opens the course sheet.
-            // the touch listener must claim the gesture (DOWN → true) or children with
-            // click listeners eat the events and swiping stops working
-            var dX = 0f
-            var dY = 0f
-            var tracking = false
+            // a plain tap opens the course sheet; sideways drags are taken by the pager
             card.isClickable = true
-            card.setOnTouchListener { _, ev ->
-                when (ev.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> { dX = ev.x; dY = ev.y; tracking = true; true }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (tracking && abs(ev.x - dX) > dp(30) && abs(ev.x - dX) > abs(ev.y - dY)) true else false
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        if (!tracking) return@setOnTouchListener false
-                        tracking = false
-                        val dx = ev.x - dX
-                        val dy = ev.y - dY
-                        when {
-                            ev.actionMasked == MotionEvent.ACTION_CANCEL -> false
-                            dx < -dp(60) && abs(dx) > abs(dy) && heroPos < slides.size - 1 -> { heroAnim = true; onSlide?.invoke(heroPos + 1); heroAnim = false; true }
-                            dx > dp(60) && abs(dx) > abs(dy) && heroPos > 0 -> { heroAnim = true; onSlide?.invoke(heroPos - 1); heroAnim = false; true }
-                            abs(dx) < dp(24) && abs(dy) < dp(24) -> { courseSheet(c); true }
-                            else -> false
-                        }
-                    }
-                    else -> false
-                }
+            card.contentDescription = "${c.course}, ${dayLabel(c.start)} ${hhmm(c.start)}. Tap for links and options" +
+                if (slides.size > 1) ", swipe for other classes" else ""
+            card.setOnClickListener { courseSheet(c) }
+            if (dir != 0) {
+                card.translationX = dir * pager.width * 0.35f
+                card.alpha = 0f
+                card.animate().translationX(0f).alpha(1f).setDuration(220)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
             }
         }
-
 
         // nav: explicit arrows + counter + dots, theme-colored, refreshed on slide change
         val navHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -885,9 +904,9 @@ class MainActivity : Activity() {
                         }
                         if (enabled) setOnClickListener { onClick() }
                     }
-                nav.addView(arrowBtn("‹", "Previous class", heroPos > 0) { onSlide?.invoke(heroPos - 1) })
+                nav.addView(arrowBtn("‹", "Previous class", heroPos > 0) { pager.slide(-1) })
                 nav.addView(tv("Class ${heroPos + 1} of ${slides.size}", 13f, Ui.TEXT, true).apply { setPadding(dp(12), 0, dp(12), 0) }, lp(WRAP, WRAP))
-                nav.addView(arrowBtn("›", "Next class", heroPos < slides.size - 1) { onSlide?.invoke(heroPos + 1) })
+                nav.addView(arrowBtn("›", "Next class", heroPos < slides.size - 1) { pager.slide(1) })
                 navHolder.addView(nav, lp(MATCH, WRAP))
                 val dots = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, dp(4)); clipChildren = false }
                 slides.forEachIndexed { i, sl ->
@@ -904,7 +923,7 @@ class MainActivity : Activity() {
                 navHolder.addView(dots, lp(MATCH, WRAP))
             }
         }
-        onSlide = { pos -> show(pos); renderNav() }
+        onSlide = { pos -> val from = heroPos; show(pos, Integer.signum(pos - from)); renderNav() }
 
         heroBox.removeAllViews()
         heroBox.addView(pager, lp(MATCH, WRAP))
@@ -933,7 +952,12 @@ class MainActivity : Activity() {
         val tint = Timetable.colours(this, setOf(c.course))[c.course] ?: Ui.CYAN
         sheet.addView(tv(Shorts.display(this, c.course), 22f, tint, true))
         val sub = if (c.name.isNotEmpty() && !c.name.equals(c.course, true)) c.name else c.full
-        if (sub.isNotEmpty()) sheet.addView(tv(sub, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, dp(8)) })
+        if (sub.isNotEmpty()) sheet.addView(tv(sub, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        val nowS = System.currentTimeMillis() / 1000
+        val status = if (nowS >= c.start) "happening now, ends ${relIn(c.end - nowS)}" else "starts ${relIn(c.start - nowS)}"
+        sheet.addView(tv("${dayLabel(c.start)} · ${hhmm(c.start)}–${hhmm(c.end)} · $status", 13f, Ui.TEXT, true).apply {
+            setPadding(0, dp(6), 0, dp(8))
+        })
 
         val d2 = localDt(c.start).dayOfWeek.value
         val s2 = localDt(c.start).let { it.hour * 60 + it.minute }
@@ -960,7 +984,8 @@ class MainActivity : Activity() {
             sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
         }
         if (coursePage.isNotEmpty()) row("Open course page", coursePage, coursePage)
-        if (att.isNotEmpty()) row("Attendance", att, att)
+        if (Timetable.attMode(this, c.course) == "manual") row("Attendance", "Taken in class by the lecturer — no link needed", null)
+        else if (att.isNotEmpty()) row("Attendance", att, att)
         if (meeting.isNotEmpty()) row("Join class — meeting link", meeting, meeting)
         // edit this class entry: find the real slot (the editor finish()es silently otherwise)
         val day = localDt(c.start).dayOfWeek.value
@@ -972,21 +997,33 @@ class MainActivity : Activity() {
         if (manualSlot != null) {
             editIntent.putExtra(TimetableEditActivity.EXTRA_GRP, manualSlot.grp)
         } else {
-            val learnedSlot = Timetable.all(this).firstOrNull {
-                it.course.equals(c.course, true) && it.day == day && it.start == startMin
+            // exact time first, else the nearest class of this course that day (a moved or overridden class)
+            val sameDay = Timetable.all(this).filter { it.course.equals(c.course, true) && it.day == day }
+            val learnedSlot = sameDay.firstOrNull { it.start == startMin }
+                ?: sameDay.minByOrNull { abs(it.start - startMin) }?.takeIf { abs(it.start - startMin) <= 180 }
+            if (learnedSlot != null) {
+                if (learnedSlot.manual) editIntent.putExtra(TimetableEditActivity.EXTRA_GRP, learnedSlot.grp)
+                else editIntent.putExtra(TimetableEditActivity.EXTRA_KEY, learnedSlot.key)
             }
-            if (learnedSlot != null) editIntent.putExtra(TimetableEditActivity.EXTRA_KEY, learnedSlot.key)
         }
+        // without a matching entry the editor would close at once; open the timetable instead
+        val canEdit = editIntent.hasExtra(TimetableEditActivity.EXTRA_GRP) || editIntent.hasExtra(TimetableEditActivity.EXTRA_KEY)
         fun editRow() {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
                 background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
             }
-            r.addView(tv("Edit this class", 15f, Ui.TEXT, true))
-            r.addView(tv("Times, name, attendance mode, colour", 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            r.addView(tv(if (canEdit) "Edit this class" else "Open timetable", 15f, Ui.TEXT, true))
+            r.addView(tv(
+                if (canEdit) "Times, name, attendance mode, colour" else "This class is not in your timetable yet; find or add it there",
+                12f, Ui.DIM,
+            ).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
             r.isClickable = true
-            r.setOnClickListener { sheetDismiss(); startActivity(editIntent) }
+            r.setOnClickListener {
+                sheetDismiss()
+                startActivity(if (canEdit) editIntent else Intent(this, TimetableActivity::class.java))
+            }
             sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
         }
         editRow()
@@ -1040,7 +1077,7 @@ class MainActivity : Activity() {
         }
         val left = d.ts - System.currentTimeMillis() / 1000
         val col = if (left < 86400) Ui.RED else if (left < 3 * 86400) Ui.ORANGE else Ui.GREEN
-        sheet.addView(tv("Due in " + relShort(left), 13f, col, true))
+        sheet.addView(tv("Due in " + relShort(left) + " · " + dayLabel(d.ts) + ", " + hhmm(d.ts), 13f, col, true))
         sheet.addView(tv(d.name, 20f, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END })
         if (d.course.isNotEmpty()) sheet.addView(tv(Shorts.display(this, d.course), 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
         if (isDone) sheet.addView(tv("✓ marked as done", 12f, Ui.GREEN, true).apply { setPadding(0, dp(8), 0, 0) })
@@ -1122,8 +1159,13 @@ class MainActivity : Activity() {
 
     private fun renderDue() {
         val now = System.currentTimeMillis() / 1000
+        val health = getSharedPreferences("health", MODE_PRIVATE)
+        fun doneKey(d: Checker.DueItem) = "dueDone:" + d.eventId + ":" + d.ts
+        // finished ones move behind the open ones
         val items = ov.due.filter { it.ts - now < 14 * 86400 }.take(8)
-        val sig = items.joinToString("|") { "${it.ts}${it.name}" }
+            .sortedBy { health.getBoolean(doneKey(it), false) }
+        // the minute keeps "Due in …" current
+        val sig = items.joinToString("|") { "${it.ts}${it.name}" } + ":" + now / 60
         if (sig == dueSig) return
         dueSig = sig
         dueSection.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
@@ -1131,8 +1173,8 @@ class MainActivity : Activity() {
         for (d in items) {
             val left = d.ts - now
             val col = if (left < 86400) Ui.RED else if (left < 3 * 86400) Ui.ORANGE else Ui.GREEN
-            val doneKey = "dueDone:" + d.eventId + ":" + d.ts
-            val isDone = getSharedPreferences("health", MODE_PRIVATE).getBoolean(doneKey, false)
+            val doneKey = doneKey(d)
+            val isDone = health.getBoolean(doneKey, false)
             val c = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
@@ -1154,8 +1196,10 @@ class MainActivity : Activity() {
                 setPadding(0, dp(10), 0, 0)
                 if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
             })
-            if (d.course.isNotEmpty()) c.addView(tv(Shorts.display(this, d.course), 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
-            if (d.course.isNotEmpty()) c.addView(tv(d.course, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
+            val shortName = Shorts.display(this, d.course)
+            if (d.course.isNotEmpty()) c.addView(tv(shortName, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
+            if (d.course.isNotEmpty() && !shortName.equals(d.course, true)) c.addView(tv(d.course, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
+            c.contentDescription = "${d.name}, due in ${relShort(left)}" + (if (isDone) ", marked done" else "")
             dueRow.addView(c, lp(dp(172), WRAP).apply { rightMargin = dp(10) })
         }
     }
@@ -1180,5 +1224,102 @@ class MainActivity : Activity() {
                 render()
             }
         }
+    }
+}
+
+/**
+ * Holds the one visible hero card and moves it with the finger. A sideways drag (also one that starts on a
+ * button) is taken from the children and from the scrolling page; on release the card either slides out and
+ * [onCommit] shows the neighbour, or springs back. At the first/last class the card only stretches a little.
+ */
+private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
+    var canGo: (Int) -> Boolean = { false }
+    var onCommit: (Int) -> Unit = {}
+    var onDragState: (Boolean) -> Unit = {}
+
+    private val slop = android.view.ViewConfiguration.get(ctx).scaledTouchSlop
+    private val flingSpeed = 700 * ctx.resources.displayMetrics.density
+    private var downX = 0f
+    private var downY = 0f
+    private var dragging = false
+    private var vt: android.view.VelocityTracker? = null
+
+    private fun card(): View? = if (childCount > 0) getChildAt(0) else null
+
+    private fun sideways(ev: MotionEvent): Boolean {
+        val dx = ev.x - downX
+        return abs(dx) > slop && abs(dx) > abs(ev.y - downY) * 1.2f
+    }
+
+    private fun startDrag() {
+        dragging = true
+        parent?.requestDisallowInterceptTouchEvent(true)
+        card()?.animate()?.cancel()
+        onDragState(true)
+    }
+
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = ev.x; downY = ev.y; dragging = false
+                vt?.recycle(); vt = android.view.VelocityTracker.obtain()
+                vt?.addMovement(ev)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                vt?.addMovement(ev)
+                if (!dragging && sideways(ev)) startDrag()
+            }
+        }
+        return dragging
+    }
+
+    override fun onTouchEvent(ev: MotionEvent): Boolean {
+        vt?.addMovement(ev)
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { downX = ev.x; downY = ev.y }
+            MotionEvent.ACTION_MOVE -> {
+                if (!dragging) { if (sideways(ev)) startDrag() else return true }
+                val dx = ev.x - downX
+                val shown = if (canGo(if (dx < 0) 1 else -1)) dx else dx * 0.25f
+                card()?.let {
+                    it.translationX = shown
+                    it.alpha = 1f - (abs(shown) / width.coerceAtLeast(1)).coerceAtMost(1f) * 0.5f
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                vt?.computeCurrentVelocity(1000)
+                release(ev.x - downX, vt?.xVelocity ?: 0f)
+            }
+            MotionEvent.ACTION_CANCEL -> release(0f, 0f)
+        }
+        return true
+    }
+
+    private fun release(dx: Float, vx: Float) {
+        vt?.recycle(); vt = null
+        if (!dragging) return
+        dragging = false
+        parent?.requestDisallowInterceptTouchEvent(false)
+        val dir = if (dx < 0) 1 else -1
+        val fling = (dx < 0 && vx < -flingSpeed) || (dx > 0 && vx > flingSpeed)
+        val c = card()
+        if (c != null && dx != 0f && canGo(dir) && (abs(dx) > width * 0.25f || fling)) {
+            c.animate().translationX(-dir * width.toFloat()).alpha(0f).setDuration(160)
+                .withEndAction { onDragState(false); onCommit(dir) }.start()
+        } else if (c != null) {
+            c.animate().translationX(0f).alpha(1f).setDuration(200)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .withEndAction { onDragState(false) }.start()
+        } else {
+            onDragState(false)
+        }
+    }
+
+    /** The ‹ › buttons: same motion as a swipe, without the finger. */
+    fun slide(dir: Int) {
+        if (!canGo(dir)) return
+        val c = card() ?: return onCommit(dir)
+        c.animate().translationX(-dir * width * 0.35f).alpha(0f).setDuration(140)
+            .withEndAction { onCommit(dir) }.start()
     }
 }
