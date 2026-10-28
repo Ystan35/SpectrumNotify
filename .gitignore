@@ -12,8 +12,8 @@ tools/lecturer_data.json
 # Firebase config holds an API key; keep it local, CI injects it from a secret
 app/google-services.json
 
-# Cloudflare Worker local state and keys — never commit these
-worker/.wrangler/
+# Cloudflare Worker lives in the private Ystan35/SpectrumNotify-worker repo; keep it out of this public one
+worker/
 .wrangler/
-worker/adminkey.txt
+adminkey.txt
 .dev.vars
