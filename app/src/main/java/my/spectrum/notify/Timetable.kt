@@ -322,6 +322,13 @@ object Timetable {
 
     fun attendanceKey(course: String) = "att:$course"
 
+    /** How attendance is taken for a course: "link" (Spectrum page), "manual" (lecturer, in class), "none", or "" = not set. */
+    fun attMode(ctx: Context, course: String): String = sp(ctx).getString("attmode:$course", "") ?: ""
+
+    fun setAttMode(ctx: Context, course: String, mode: String) {
+        sp(ctx).edit().putString("attmode:$course", mode).apply()
+    }
+
     // ---------------------------------------------------------- location per course
     // "online:<link>" = online class with a meeting link; "room:<text>" = physical room; "" = not set.
 

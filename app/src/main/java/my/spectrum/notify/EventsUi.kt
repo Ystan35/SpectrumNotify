@@ -98,8 +98,14 @@ object EventsUi {
             }, parts[0], parts[1] - 1, parts[2]).show()
         }
 
-        lbl("Starts"); val startF = field("10:00", existing?.let { fmt(it.startTime) } ?: "10:00"); col.addView(startFieldRow(activity, startF))
-        lbl("Ends"); val endF = field("11:00", existing?.let { fmt(it.endTime) } ?: "11:00"); col.addView(endFieldRow(activity, endF))
+        // time pickers, like the class editor; moving the start keeps the end after it
+        lateinit var endF: TimeField
+        val startF = TimeField(activity, existing?.startTime ?: 10 * 60) { st ->
+            if (endF.minutes <= st) endF.set(minOf(24 * 60 - 1, st + 60))
+        }
+        endF = TimeField(activity, existing?.endTime ?: 11 * 60) { }
+        lbl("Starts"); col.addView(startF.view)
+        lbl("Ends"); col.addView(endF.view)
 
         lbl("Repeat")
         val repeats = listOf("Does not repeat" to Events.REPEAT_NONE, "Every week" to Events.REPEAT_WEEKLY)
@@ -125,42 +131,48 @@ object EventsUi {
             LinearLayout.LayoutParams.MATCH_PARENT,
             (activity.resources.displayMetrics.heightPixels * 0.6).toInt().coerceAtLeast(dp(200)),
         )
-        AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_DayNight)
+        val dialog = AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_DayNight)
             .setTitle(if (existing == null) "Add an event" else "Edit event")
             .setView(scroll)
-            .setPositiveButton("Save") { _, _ ->
-                val title = titleF.text.toString().trim()
-                val st = toMin(startF.text.toString())
-                val en = toMin(endF.text.toString())
-                when {
-                    title.isEmpty() -> Toast.makeText(activity, "Give the event a name.", Toast.LENGTH_LONG).show()
-                    st == null || en == null -> Toast.makeText(activity, "Write the times as HH:MM, for example 10:00.", Toast.LENGTH_LONG).show()
-                    en <= st -> Toast.makeText(activity, "The end time must be after the start time.", Toast.LENGTH_LONG).show()
-                    else -> {
-                        Events.save(activity, Events.Event(
-                            existing?.id ?: Events.newId(), title, noteF.text.toString().trim(),
-                            date, st, en, repeat, remind,
-                        ))
-                        Toast.makeText(activity, "Event saved.", Toast.LENGTH_SHORT).show()
-                        onChanged()
-                    }
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+            .apply { if (existing != null) setNeutralButton("Delete", null) }
+            .show()
+        // Save checks first and keeps the dialog (and what you typed) open when something is missing
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val title = titleF.text.toString().trim()
+            val st = startF.minutes
+            val en = endF.minutes
+            when {
+                title.isEmpty() -> { titleF.error = "Give the event a name"; titleF.requestFocus() }
+                en <= st -> Toast.makeText(activity, "The end time must be after the start time.", Toast.LENGTH_LONG).show()
+                else -> {
+                    Events.save(activity, Events.Event(
+                        existing?.id ?: Events.newId(), title, noteF.text.toString().trim(),
+                        date, st, en, repeat, remind,
+                    ))
+                    Toast.makeText(activity, "Event saved.", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    onChanged()
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .setNeutralButton(if (existing == null) "" else "Delete") { _, _ ->
-                existing?.let { Events.delete(activity, it.id); Toast.makeText(activity, "Event deleted.", Toast.LENGTH_SHORT).show(); onChanged() }
-            }
-            .show()
+        }
+        if (existing != null) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Delete this event?")
+                .setMessage("“${existing.title}”" + (if (existing.repeat == Events.REPEAT_WEEKLY) " and all its weekly repeats" else "") + " will be removed.")
+                .setPositiveButton("Delete") { _, _ ->
+                    Events.delete(activity, existing.id)
+                    Toast.makeText(activity, "Event deleted.", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    onChanged()
+                }
+                .setNegativeButton("Keep", null)
+                .show()
+        }
     }
 
     private fun titleFieldRow(activity: Activity, f: EditText): LinearLayout =
-        LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(f, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-    private fun startFieldRow(activity: Activity, f: EditText): LinearLayout = single(activity, f)
-    private fun endFieldRow(activity: Activity, f: EditText): LinearLayout = single(activity, f)
-    private fun single(activity: Activity, f: EditText): LinearLayout =
         LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(f, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

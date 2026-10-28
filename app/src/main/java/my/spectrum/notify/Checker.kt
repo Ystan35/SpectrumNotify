@@ -117,6 +117,11 @@ object Checker {
     }
 
     // ------------------------------------------------------------ event helpers
+    /** A deadline the user hid on Home ("Hide this (wrong?)"): no card, no reminder. */
+    fun isHiddenDeadline(ctx: Context, eventId: Long): Boolean =
+        eventId != 0L && ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
+            .getStringSet("hiddenEvents", emptySet())!!.contains("dl:$eventId")
+
     fun isAttEvent(e: JSONObject): Boolean = e.str("modulename") == "attendance" || ATT_RE.containsMatchIn(e.str("name"))
 
     private fun isManual(e: JSONObject, p: Prefs): Boolean {
@@ -288,7 +293,7 @@ object Checker {
         }.filter { it.end > now }.sortedBy { it.start }
         val due = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().mapNotNull { e ->
             val ts = e.optLong("timesort")
-            if (ts <= now) return@mapNotNull null
+            if (ts <= now || isHiddenDeadline(ctx, e.optLong("id"))) return@mapNotNull null
             val act = e.optJSONObject("action")
             DueItem(
                 unesc(e.str("name")).ifEmpty { "Deadline" },
@@ -596,6 +601,7 @@ object Checker {
             val ts = e.optLong("timesort")
             val remaining = ts - now
             if (remaining <= 0) continue
+            if (isHiddenDeadline(ctx, e.optLong("id"))) continue
             upcoming.add(e)
             val applicable = p.deadlineList.filter { remaining <= it * 3600L }
             if (applicable.isEmpty()) continue
@@ -813,7 +819,7 @@ object Checker {
     private fun sendDue(ctx: Context, st: State, p: Prefs) {
         val now = ZonedDateTime.now(zone())
         val cal = myCalendar(st, p)
-        val dl = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs()
+        val dl = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().filter { !isHiddenDeadline(ctx, it.optLong("id")) }
         val links = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
         try { checkClassLinks(ctx, st, p, cal, links, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "class links: $e") }
         try { sendMorningSummary(ctx, st, p, cal, dl, now) } catch (e: Exception) { Log.w(TAG, "summary: $e") }
@@ -890,6 +896,9 @@ object Checker {
                 }
             }
         }
+        // every finished attempt, success or failure: the Home refresh spinner waits for this
+        ctx.getSharedPreferences("health", Context.MODE_PRIVATE).edit()
+            .putLong("lastAttemptMs", System.currentTimeMillis()).apply()
         try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
         try { NextClassWidget.updateAll(ctx) } catch (e: Exception) { Log.w(TAG, "widget: $e") }
         Scheduler.scheduleAll(ctx)
