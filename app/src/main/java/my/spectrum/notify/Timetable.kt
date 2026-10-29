@@ -297,6 +297,26 @@ object Timetable {
 
     // ---------------------------------------------------------- user overrides for learned slots
 
+    /**
+     * Courses back in person (e.g. online classes over after the haze): their meeting links are ignored everywhere
+     * (no Join class, no link in alerts) and the room is shown. Stored as "inperson:CODE" = when you switched (epoch s).
+     */
+    fun inPerson(ctx: Context, course: String): Boolean =
+        course.isNotEmpty() && sp(ctx).contains("inperson:" + course.uppercase(Locale.ROOT))
+
+    fun inPersonSince(ctx: Context, course: String): Long =
+        sp(ctx).getLong("inperson:" + course.uppercase(Locale.ROOT), 0L)
+
+    fun setInPerson(ctx: Context, courses: Collection<String>, on: Boolean) {
+        val now = System.currentTimeMillis() / 1000
+        val e = sp(ctx).edit()
+        for (c in courses) {
+            val k = "inperson:" + c.uppercase(Locale.ROOT)
+            if (on) { if (!sp(ctx).contains(k)) e.putLong(k, now) } else e.remove(k)
+        }
+        e.apply()
+    }
+
     /** Meeting link override for a course (user pasted); empty = use the auto-detected one. */
     fun meetingLinkOf(ctx: Context, course: String): String =
         (sp(ctx).getString("mlink:$course", "") ?: "").ifEmpty {

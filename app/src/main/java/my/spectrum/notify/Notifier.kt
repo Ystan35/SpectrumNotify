@@ -55,7 +55,8 @@ object Notifier {
             .setContentIntent(openAppIntent(ctx, logTs))
         for ((i, bt) in buttons.take(3).withIndex()) {
             if (bt.second.isEmpty()) continue
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(bt.second)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = AppLink.intent(ctx, bt.second, (logTs.hashCode() and 0x7fffffff))
+                ?: Intent(Intent.ACTION_VIEW, Uri.parse(bt.second)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val code = (logTs.hashCode() and 0x7fffffff) + i
             val pi = PendingIntent.getActivity(
                 ctx, code, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT

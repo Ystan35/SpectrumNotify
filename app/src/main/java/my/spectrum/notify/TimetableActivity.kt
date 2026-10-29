@@ -84,6 +84,21 @@ class TimetableActivity : BaseActivity() {
         }
 
         box.chips(listOf("Day", "Week", "Month"), setOf(mode), false) { mode = it.first(); render() }
+        // shortcut to Settings → Online or in person, with how many courses are in person now
+        val nIn = Courses.all(this).count { Timetable.inPerson(this, it.code) }
+        box.addView(TextView(this).apply {
+            text = (if (nIn > 0) "📍 $nIn course" + (if (nIn > 1) "s" else "") + " in person" else "💻 Classes online or in person") + "  ›"
+            textSize = 13f * Ui.fontScale
+            setTextColor(Ui.CYAN)
+            minHeight = dp(Ui.touch(40))
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            contentDescription = "Set which classes are online or in person"
+            setOnClickListener {
+                startActivity(android.content.Intent(this@TimetableActivity, SettingsActivity::class.java)
+                    .putExtra(SettingsActivity.EXTRA_OPEN, "inperson"))
+            }
+        }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(4) })
         when (mode) {
             0 -> renderDay()
             1 -> renderWeek()
@@ -205,6 +220,7 @@ class TimetableActivity : BaseActivity() {
         val userLoc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
         val locLine = when {
+            Timetable.inPerson(this, s.course) -> "📍 In person" + (if (userLoc.startsWith("room:")) " · " + userLoc.removePrefix("room:") else if (room.isNotEmpty()) " · $room" else "")
             userLoc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
             userLoc.startsWith("room:") -> "📍 " + userLoc.removePrefix("room:")
             autoMeeting.isNotEmpty() -> "💻 Online (auto)"
@@ -530,6 +546,7 @@ class TimetableActivity : BaseActivity() {
         val autoMeeting = meetingOf(s)
         val attUrl = userAttLink(s.course).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
         val locLine = when {
+            Timetable.inPerson(this, s.course) -> if (loc.startsWith("room:")) "📍 In person · " + loc.removePrefix("room:") else ""
             loc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
             loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
             autoMeeting.isNotEmpty() -> "💻 Online (auto)"
