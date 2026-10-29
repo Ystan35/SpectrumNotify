@@ -404,32 +404,32 @@ class ShuttleActivity : BaseActivity() {
             card.addView(tv(head, Type.BODY_L, Ui.TEXT, true))
             // roughly how long until the first bus comes, and until you have to set off (within the next day)
             val waitLine = waitText(j, java.time.temporal.ChronoUnit.DAYS.between(today, day) * 24 * 60 - now)
-            if (waitLine.isNotEmpty()) card.addView(tv(waitLine, Type.LABEL, Ui.CYAN, true).apply { setPadding(0, dp(4), 0, 0) })
+            if (waitLine.isNotEmpty()) card.addView(iconText(R.drawable.ic_timer, waitLine, Type.LABEL, Ui.CYAN, true).apply { setPadding(0, dp(4), 0, 0) })
             // the chosen journey step by step; the others in one line ("BA 14:09 → Rapid T789")
             if (on) for (leg in j.legs) card.addView(tv(legText(d, leg), Type.LABEL, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
             else card.addView(tv(if (j.walkOnly) "🚶 Walk all the way" else j.buses.joinToString(" → ") { b ->
                 "🚌 " + b.ride.route.label.removePrefix("Route ") + if (b.ride.route.frequent) "" else " " + ShuttleModel.fmt(b.ride.depart)
             } + " · tap for the steps", Type.LABEL, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
-            if (on && j.walkOnly) card.addView(chip("Walking route in Maps", false, size = Type.LABEL, padH = 12) { open(ShuttleModel.mapsWalkUrl(from, to)) },
+            if (on && j.walkOnly) card.addView(button("Walking route in Maps", Emphasis.SECONDARY) { open(ShuttleModel.mapsWalkUrl(from, to)) },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
-            card.contentDescription = head + ". " + waitLine.removePrefix("⏱ ").let { if (it.isEmpty()) "" else "$it. " } + j.legs.joinToString(". ") { legText(d, it).drop(2) } + if (on) ". Shown on the map." else ". Tap to show it on the map."
+            card.contentDescription = head + ". " + waitLine.let { if (it.isEmpty()) "" else "$it. " } + j.legs.joinToString(". ") { legText(d, it).drop(2) } + if (on) ". Shown on the map." else ". Tap to show it on the map."
             box.addView(card, lp())
         }
         if (list.any { j -> j.buses.any { it.ride.route.frequent } }) box.label("Rapid KL times count the longest wait.", Type.CAPTION, Ui.DIM, 4)
         return list.getOrNull(chosenJ)
     }
 
-    /** "⏱ AB comes in ~14 min · leave in 7 min"; [offset] = minutes from now to midnight of the planned day. */
+    /** "AB comes in ~14 min · leave in 7 min" (shown after a timer icon); [offset] = minutes from now to midnight of the planned day. */
     private fun waitText(j: ShuttleModel.Journey, offset: Long): String {
         fun dur(m: Long) = if (m < 60) "$m min" else "${m / 60} h" + (if (m % 60 > 0) " ${m % 60} min" else "")
         val leave = offset + j.depart
         if (leave < 0 || leave > 24 * 60) return ""
         val leaveS = if (leave <= 0) "leave now" else "leave in ${dur(leave)}"
-        val bus = j.buses.firstOrNull() ?: return "⏱ " + leaveS.replaceFirstChar { it.uppercase() }
+        val bus = j.buses.firstOrNull() ?: return leaveS.replaceFirstChar { it.uppercase() }
         val wait = offset + bus.ride.depart
         val name = bus.ride.route.label.removePrefix("Route ")
         val comes = if (wait <= 0) "$name is due now" else "$name comes in ~${dur(wait)}"
-        return "⏱ $comes" + if (leave < wait) " · $leaveS" else ""
+        return comes + if (leave < wait) " · $leaveS" else ""
     }
 
     private fun render() {

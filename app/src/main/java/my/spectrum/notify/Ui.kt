@@ -222,7 +222,8 @@ fun Context.button(label: String, emphasis: Emphasis, accent: Int = Ui.CYAN, onC
         gravity = Gravity.CENTER
         minHeight = c.dp(Ui.touch(48))
         minWidth = c.dp(Ui.touch(48))
-        setPadding(c.dp(if (emphasis == Emphasis.TERTIARY) 12 else 18), 0, c.dp(if (emphasis == Emphasis.TERTIARY) 12 else 18), 0)
+        // vertical padding so a label that wraps at large text sizes still fits inside the pill
+        setPadding(c.dp(if (emphasis == Emphasis.TERTIARY) 12 else 18), c.dp(6), c.dp(if (emphasis == Emphasis.TERTIARY) 12 else 18), c.dp(6))
         background = GradientDrawable().apply {
             cornerRadius = c.dp(Radius.PILL).toFloat()
             when (emphasis) {

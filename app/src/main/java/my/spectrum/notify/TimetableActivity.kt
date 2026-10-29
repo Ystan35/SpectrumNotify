@@ -206,7 +206,10 @@ class TimetableActivity : BaseActivity() {
         }
         val room = choice?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ") ?: ""
         val lecturer = choice?.detail() ?: ""
-        val detail = listOf(s.title, s.note).filter { it.isNotEmpty() }.joinToString("  ·  ")
+        // Spectrum classes: the course title as Home shows it, not Spectrum's raw event name ("Attendance - … (2026/2027 Group 3)")
+        val full = Courses.all(this).firstOrNull { it.code.equals(s.course, true) }?.name?.takeIf { it.isNotEmpty() }
+            ?: Catalog.find(this, s.course)?.name ?: ""
+        val detail = listOf(if (s.manual) s.title else Timetable.classTitle(s.course, full, s.title), s.note).filter { it.isNotEmpty() }.joinToString("  ·  ")
         val oneOff = if (s.date != null) "This week only" else ""
         val meta = listOf(oneOff, detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  ")
         col.addView(tv(meta, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
@@ -247,10 +250,14 @@ class TimetableActivity : BaseActivity() {
             }
         if (link.isNotEmpty()) att.addView(openBtn("Attendance", link, true), LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
         if (meeting.isNotEmpty()) att.addView(openBtn("Join class", meeting, link.isEmpty()), LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(6) })
-        // says what it does: "+" alone read as "add a class"
-        att.addView(button("+ Link", Emphasis.TERTIARY) { pasteAttendance(s.course) }.apply {
+        // round link icon: "+ Link" as text wrapped mid-word at large text sizes
+        att.addView(android.widget.ImageButton(this).apply {
+            setImageResource(R.drawable.lk_link)
+            setColorFilter(Ui.CYAN)
+            background = rippleBg(0, Ui.BORDER, this@TimetableActivity, Radius.PILL)
             contentDescription = "Paste an attendance link for ${s.course}"
-        }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(2) })
+            setOnClickListener { pasteAttendance(s.course) }
+        }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply { leftMargin = dp(6) })
         if (link.isEmpty() && meeting.isEmpty()) {
             att.addView(tv("no link yet — tap to paste", Type.CAPTION, Ui.DIM).apply {
                 setPadding(dp(8), 0, 0, 0)

@@ -69,9 +69,11 @@ class CoursesActivity : BaseActivity() {
         val colours = Timetable.colours(this, list.map { it.code }.toSet())
         box.label("${list.size} course" + (if (list.size == 1) "" else "s"), Type.BODY, Ui.DIM, 8)
         // page actions: two equal SECONDARY buttons, then a quiet text action (none outshouts the courses)
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(button("Refresh my classes", Emphasis.SECONDARY) { refreshClasses() }, LinearLayout.LayoutParams(0, WRAP, 1f))
-        actions.addView(button("Set short names", Emphasis.SECONDARY) { batchShorts(list) }.apply {
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; isBaselineAligned = false }
+        actions.addView(button("Refresh classes", Emphasis.SECONDARY) { refreshClasses() }.apply {
+            contentDescription = "Refresh my classes from Spectrum"
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        actions.addView(button("Short names", Emphasis.SECONDARY) { batchShorts(list) }.apply {
             contentDescription = "Set short names for all courses"
         }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(8) })
         box.addView(actions, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
@@ -103,7 +105,7 @@ class CoursesActivity : BaseActivity() {
 
         // header: code (and your short form) small in the course colour, the course name big and bold under it
         val short = Shorts.get(this, c.code)
-        // short names are set for all courses at once (Set short names, above); tapping this line changes just this one
+        // short names are set for all courses at once (Short names, above); tapping this line changes just this one
         col.addView(tv(c.code.uppercase() + if (short.isNotEmpty()) "  ·  $short" else "", Type.LABEL, colour, true).apply {
             letterSpacing = 0.06f
             isClickable = true

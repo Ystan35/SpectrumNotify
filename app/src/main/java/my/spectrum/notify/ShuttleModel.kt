@@ -89,8 +89,9 @@ object ShuttleModel {
         class Walk(val from: Place, val to: Place, val meters: Int?, val minutes: Int?, val noBus: Boolean) : Plan()
     }
 
-    const val WALK_M_PER_MIN = 80.0
-    const val WALK_DETOUR = 1.3
+    // paths wind round buildings and roads (~1.7× the straight line) at ~70 m/min: matches Google Maps (2.8 km, 40 min to Pharmacy)
+    const val WALK_M_PER_MIN = 70.0
+    const val WALK_DETOUR = 1.7
     /** Within this many metres walking always wins. */
     const val WALK_ALWAYS_M = 500
     /** Be at the destination this many minutes before class. */
