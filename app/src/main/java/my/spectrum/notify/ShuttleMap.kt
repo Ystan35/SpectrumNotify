@@ -185,10 +185,77 @@ class ShuttleMap(private val ctx: Context, private val onPlace: (ShuttleModel.Pl
             })
             fit.add(g)
         }
+        // names beside the dots: from/to first, then stops on the line, faculties, the rest (any that would overlap are left out)
+        val ranked = d.places.values.filter { pt(it) != null }.sortedBy { p ->
+            when { p.id == from?.id || p.id == to?.id -> 0; p.id in onRoute -> 1; !p.isStop -> 2; else -> 3 }
+        }
+        view.overlays.add(LabelOverlay(ranked.map { Triple(pt(it)!!, label(it), it.id == from?.id || it.id == to?.id) }))
         view.overlays.add(CopyrightOverlay(ctx).apply { setTextColor(Ui.DIM) })
         view.invalidate()
 
         if (moved && fit.isNotEmpty()) { pendingFit = fit; applyFit() }
+    }
+
+    /**
+     * A short map name: the abbreviation in brackets (API, FSKTM), "Engineering" for "Faculty of Engineering",
+     * "Za'ba (KK7)" for a college, Rapid KL stops without their KL code.
+     */
+    private fun label(p: ShuttleModel.Place): String {
+        val paren = Regex("""\s*\(([^)]*)\)\s*$""").find(p.name)
+        val base = paren?.let { p.name.substring(0, it.range.first) } ?: p.name
+        val inner = paren?.groupValues?.get(1).orEmpty()
+        val kk = p.aka.filter { Regex("""KK\d+""").matches(it) }
+        val s = when {
+            inner.matches(Regex("""KL\d+""")) -> base
+            inner.isNotEmpty() && inner == inner.uppercase() -> inner
+            base.startsWith("Faculty of ") -> base.removePrefix("Faculty of ") + if (inner.isNotEmpty()) " ($inner)" else ""
+            base.endsWith(" RC") && kk.isNotEmpty() -> base.removeSuffix(" RC") + " (" + kk.joinToString("/") + ")"
+            else -> p.name
+        }
+        return if (s.length > 26) s.take(25).trimEnd() + "…" else s
+    }
+
+    /** Draws the names; a name that would cover a dot or an earlier name is skipped, so zooming in shows more. */
+    private inner class LabelOverlay(private val items: List<Triple<GeoPoint, String, Boolean>>) : org.osmdroid.views.overlay.Overlay() {
+        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = ctx.dp(11).toFloat() * Ui.fontScale
+            color = if (Ui.dark) 0xFFE8EAED.toInt() else 0xFF202124.toInt()
+        }
+        private val halo = Paint(text).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = ctx.dp(3).toFloat()
+            strokeJoin = Paint.Join.ROUND
+            color = if (Ui.dark) 0xE0202124.toInt() else 0xE0FFFFFF.toInt()
+        }
+        private val bold = android.graphics.Typeface.DEFAULT_BOLD
+
+        override fun draw(c: Canvas, mv: MapView, shadow: Boolean) {
+            if (shadow) return
+            val proj = mv.projection
+            val pts = items.map { proj.toPixels(it.first, null) }
+            val taken = ArrayList<android.graphics.RectF>()
+            val r = ctx.dp(6).toFloat()
+            pts.forEach { taken.add(android.graphics.RectF(it.x - r, it.y - r, it.x + r, it.y + r)) }
+            val gap = ctx.dp(9).toFloat()
+            items.forEachIndexed { i, (_, name, main) ->
+                val p = pts[i]
+                if (p.x < -200 || p.y < -50 || p.x > mv.width + 50 || p.y > mv.height + 50) return@forEachIndexed
+                text.typeface = if (main) bold else android.graphics.Typeface.DEFAULT
+                halo.typeface = text.typeface
+                val w = text.measureText(name)
+                val h = text.textSize
+                // right of the dot, else left of it
+                val right = android.graphics.RectF(p.x + gap, p.y - h / 2, p.x + gap + w, p.y + h / 2)
+                val left = android.graphics.RectF(p.x - gap - w, p.y - h / 2, p.x - gap, p.y + h / 2)
+                val box = listOf(right, left).firstOrNull { b ->
+                    b.left >= 0 && b.right <= mv.width && taken.withIndex().none { (k, t) -> k != i && android.graphics.RectF.intersects(t, b) }
+                } ?: if (main) right else return@forEachIndexed
+                taken.add(box)
+                val y = box.centerY() - (text.descent() + text.ascent()) / 2
+                c.drawText(name, box.left, y, halo)
+                c.drawText(name, box.left, y, text)
+            }
+        }
     }
 
     /** Points to fit the camera to once the map has a size (it has none right after moving between tabs). */
