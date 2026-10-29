@@ -2,6 +2,9 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.29.1 (versionCode 92)
+- Shuttle planner: each trip card now says roughly how long until the bus comes and when to set off, e.g. "⏱ BA comes in ~23 min · leave in 18 min" (walk-only trips: "Leave now" / "Leave in 10 min"). It updates every minute and also works for tomorrow's trips within the next 24 hours.
+
 ## 0.29.0 (versionCode 91)
 - Online or in person (Settings → Online or in person, or Timetable → "Classes online or in person ›"): when online classes end, e.g. once the air quality is fine again, tick the courses (all ticked to start) and Mark ticked as in person. For those courses Join class and meeting links disappear from Home, the timetable, the month timeline, the widget and the alerts; the room is shown instead ("📍 In person · BK2"), and the 10-minute alert says "in person" with the Attendance button. The class-start attendance reminder stays. Mark ticked as online brings the links back; both offer Undo.
 - If a course set to in person posts a new meeting link on Spectrum, you get one notification per link: "WIX1003 posted a meeting link. Is it online again?" with Online again / Keep in person / Open link.
