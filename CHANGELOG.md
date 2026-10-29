@@ -7,7 +7,7 @@
 - Map (OpenStreetMap, no account or key): every stop as a dot, faculties in orange, From in green and To in red, the chosen journey or route drawn in its colours. Tap a dot to go from or to it, or see its next buses. Pinch to zoom; dimmed greys in the dark theme.
 - Place picker with search, grouped into faculties, residential colleges and bus stops. Short names work: KK1–KK13, FSKTM/FCSIT, FK, FS, FOL, FOM, PASUM, DTC, LRT, Library … Your home stop is listed first.
 - Your last three trips as chips, one tap to plan again.
-- bus.json: coordinates for the UM shuttle stops (41 of 57 places; International House and the five Rapid Stops on route D still have none), ten faculty buildings, and short names per place. FSKTM is now served by its own AB stop (Kinabalu / Tun Ahmad Zaidi RC) rather than the Main Library.
+- bus.json: coordinates for the UM shuttle stops (41 of 57 places; International House and the five Rapid Stops on route D still have none), ten faculty buildings, and short names per place (a college lists only its own KK numbers). FSKTM is now served by its own AB stop (Kinabalu / Tun Ahmad Zaidi RC) rather than the Main Library.
 - Home's bus-or-walk line benefits too: with coordinates, walking times are known for most classes.
 
 ## 0.27.2 (versionCode 88)
