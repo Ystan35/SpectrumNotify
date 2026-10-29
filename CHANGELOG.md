@@ -2,6 +2,9 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.29.2 (versionCode 93)
+- Shuttle map: stop and place names are written beside the dots (e.g. "Dayasari (KK5)", "API", "Perpustakaan UM"). From and To are in bold; names that would overlap are left out and appear as you zoom in.
+
 ## 0.29.1 (versionCode 92)
 - Shuttle planner: each trip card now says roughly how long until the bus comes and when to set off, e.g. "⏱ BA comes in ~23 min · leave in 18 min" (walk-only trips: "Leave now" / "Leave in 10 min"). It updates every minute and also works for tomorrow's trips within the next 24 hours.
 
