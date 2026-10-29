@@ -46,6 +46,8 @@ object ShuttleModel {
         /** "um" (UM shuttle, fixed trips) or "rapid" (Rapid KL, a bus every few minutes). */
         val operator: String = "um",
         val bands: List<Band> = emptyList(),
+        /** The road between stops[i] and stops[i+1] as (lat, lng) points; empty = not known (tools/route_shapes.py). */
+        val shape: List<List<Pair<Double, Double>>> = emptyList(),
     ) {
         val frequent: Boolean get() = bands.isNotEmpty()
         val label: String get() = if (operator == "rapid") "Rapid $id" else "Route $id"
@@ -131,6 +133,14 @@ object ShuttleModel {
         (java.lang.Long.parseLong(s.removePrefix("#"), 16) or 0xFF000000L).toInt()
     } catch (_: Exception) { 0xFF4A90D9.toInt() }
 
+    private fun parseShape(a: JSONArray?): List<List<Pair<Double, Double>>> {
+        if (a == null) return emptyList()
+        return (0 until a.length()).map { i ->
+            val seg = a.optJSONArray(i) ?: return@map emptyList()
+            (0 until seg.length()).mapNotNull { k -> seg.optJSONArray(k)?.let { pt -> Pair(pt.optDouble(0), pt.optDouble(1)) } }
+        }
+    }
+
     fun parse(text: String): Data {
         val root = JSONObject(text)
         val places = LinkedHashMap<String, Place>()
@@ -171,6 +181,7 @@ object ShuttleModel {
                 o.optBoolean("tailEstimated", false),
                 parseSchedule(o.optJSONObject("schedule"), base),
                 o.optString("operator", "um"), bands,
+                parseShape(o.optJSONArray("shape")),
             ))
         }
         val fac = LinkedHashMap<String, String>()

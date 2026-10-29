@@ -39,6 +39,8 @@ class ShuttleMap(private val ctx: Context, private val onPlace: (ShuttleModel.Pl
         view = MapView(ctx).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
+            // the map moves between the Navigate and Explore tabs: keep it alive when detached (onDestroy ends it)
+            setDestroyMode(false)
             zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.SHOW_AND_FADEOUT)
             minZoomLevel = 13.0
             maxZoomLevel = 19.0
@@ -55,6 +57,7 @@ class ShuttleMap(private val ctx: Context, private val onPlace: (ShuttleModel.Pl
             contentDescription = "Map of the UM shuttle and Rapid KL stops"
         }
         keepTouches(view)
+        view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (pendingFit != null) view.post { applyFit() } }
     }
 
     /** Inside a scroll view: while a finger is on the map, the map pans and the page does not scroll. */
@@ -98,6 +101,23 @@ class ShuttleMap(private val ctx: Context, private val onPlace: (ShuttleModel.Pl
         return if (r.toIdx > r.fromIdx) s.subList(r.fromIdx, r.toIdx + 1) else s.subList(r.fromIdx, s.size) + s.subList(1, r.toIdx + 1)
     }
 
+    /** Segment indices a ride covers (segment i = stops[i] → stops[i+1]); a frequent loop's ride can go past the start. */
+    private fun rideSegments(r: ShuttleModel.Ride): List<Int> {
+        val n = r.route.stops.size
+        return if (r.toIdx > r.fromIdx) (r.fromIdx until r.toIdx).toList() else (r.fromIdx until n - 1).toList() + (0 until r.toIdx).toList()
+    }
+
+    /** The line along the road for [segs] of [route]; a segment without a road path is a straight line. */
+    private fun roadPoints(d: ShuttleModel.Data, route: ShuttleModel.Route, segs: List<Int>): List<GeoPoint> {
+        val out = ArrayList<GeoPoint>()
+        for (i in segs) {
+            val road = route.shape.getOrNull(i).orEmpty()
+            if (road.size >= 2) road.forEach { out.add(GeoPoint(it.first, it.second)) }
+            else listOf(route.stops[i], route.stops[i + 1]).mapNotNull { d.places[it]?.let(::pt) }.forEach { out.add(it) }
+        }
+        return out
+    }
+
     /**
      * Draw [route] (its whole line), or [journey] when one is chosen. [from]/[to] get bigger dots.
      * The camera moves to fit only when what is drawn changed.
@@ -113,7 +133,7 @@ class ShuttleMap(private val ctx: Context, private val onPlace: (ShuttleModel.Pl
         if (journey != null) {
             for (leg in journey.legs) when (leg) {
                 is ShuttleModel.Leg.Bus -> {
-                    val pts = rideStops(leg.ride).mapNotNull { d.places[it]?.let(::pt) }
+                    val pts = roadPoints(d, leg.ride.route, rideSegments(leg.ride))
                     if (pts.size >= 2) view.overlays.add(line(pts, leg.ride.route.color, 5, false))
                     fit.addAll(pts)
                 }
@@ -123,7 +143,7 @@ class ShuttleMap(private val ctx: Context, private val onPlace: (ShuttleModel.Pl
                 }
             }
         } else if (route != null) {
-            val pts = route.stops.mapNotNull { d.places[it]?.let(::pt) }
+            val pts = roadPoints(d, route, (0 until route.stops.size - 1).toList())
             if (pts.size >= 2) view.overlays.add(line(pts, route.color, 4, false))
             fit.addAll(pts)
         }
@@ -151,17 +171,38 @@ class ShuttleMap(private val ctx: Context, private val onPlace: (ShuttleModel.Pl
             })
             if (chosen) fit.add(g)
         }
+        // your location (not one of the places): a blue dot
+        for (p in listOfNotNull(from, to)) {
+            if (p.id in d.places) continue
+            val g = pt(p) ?: continue
+            view.overlays.add(Marker(view).apply {
+                position = g
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                setIcon(dotIcon(0xFF4285F4.toInt(), 0xFFFFFFFF.toInt(), 20))
+                title = p.name
+                infoWindow = null
+                setOnMarkerClickListener { _, _ -> true }
+            })
+            fit.add(g)
+        }
         view.overlays.add(CopyrightOverlay(ctx).apply { setTextColor(Ui.DIM) })
         view.invalidate()
 
-        if (moved && fit.isNotEmpty()) {
-            view.post {
-                if (fit.size == 1) { view.controller.setZoom(17.0); view.controller.setCenter(fit[0]) }
-                else view.zoomToBoundingBox(BoundingBox.fromGeoPoints(fit).increaseByScale(1.3f), false, ctx.dp(24))
-            }
-        }
+        if (moved && fit.isNotEmpty()) { pendingFit = fit; applyFit() }
+    }
+
+    /** Points to fit the camera to once the map has a size (it has none right after moving between tabs). */
+    private var pendingFit: List<GeoPoint>? = null
+
+    private fun applyFit() {
+        val fit = pendingFit ?: return
+        if (view.width == 0 || view.height == 0) return   // the layout listener tries again
+        pendingFit = null
+        if (fit.size == 1) { view.controller.setZoom(17.0); view.controller.setCenter(fit[0]) }
+        else view.zoomToBoundingBox(BoundingBox.fromGeoPoints(fit).increaseByScale(1.3f), false, ctx.dp(24))
     }
 
     fun onResume() = view.onResume()
     fun onPause() = view.onPause()
+    fun onDestroy() = view.onDetach()
 }
