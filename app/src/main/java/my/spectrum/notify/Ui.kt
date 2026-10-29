@@ -248,7 +248,15 @@ fun Activity.screen(
     if (onRefresh != null) attachPullToRefresh(sv, onRefresh)
     root.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
     if (navTo != null) addNavBar(root, navTo)
-    setContentView(root)
+    if (navTo != null) {
+        // tabs: the floating toolbox group (Aa + back to top) floats over the page
+        val frame = FrameLayout(this)
+        frame.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        setContentView(frame)
+        attachToolbox(frame, sv)
+    } else {
+        setContentView(root)
+    }
     return col
 }
 
@@ -760,7 +768,7 @@ fun Activity.addNavBar(page: LinearLayout, active: Class<*>) {
 // ---------------------------------------------------------------- floating toolbox (all tabs)
 
 /** The draggable "Aa" toolbox button + its quick sheet. Lives on every tab. */
-fun Activity.attachToolbox(root: FrameLayout) {
+fun Activity.attachToolbox(root: FrameLayout, scroll: ScrollView? = null) {
     val fab = TextView(this).apply {
         text = "Aa"
         textSize = 17f * Ui.fontScale
@@ -775,7 +783,41 @@ fun Activity.attachToolbox(root: FrameLayout) {
         rightMargin = dp(14); bottomMargin = dp(78)
     }
     root.addView(fab, fabLp)
-    setupFabDrag(fab, fabLp, root) { showQuickSheet(root, fabLp) }
+
+    // "back to top" ↑ sits just above Aa as one group: it follows Aa when dragged and only shows
+    // once the page is scrolled down about a screen
+    val upSize = dp(Ui.touch(44))
+    val up = TextView(this).apply {
+        text = "↑"
+        textSize = 18f * Ui.fontScale
+        setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER
+        setTextColor(Ui.CYAN)
+        background = rippleBg(Ui.BAR, Ui.CYAN, this@attachToolbox, 24)
+        contentDescription = "Back to top"
+        elevation = dp(6).toFloat()
+        visibility = View.GONE
+        alpha = 0f
+    }
+    val upLp = FrameLayout.LayoutParams(upSize, upSize, Gravity.BOTTOM or Gravity.END)
+    fun sync() {
+        upLp.rightMargin = fabLp.rightMargin + (fabLp.width - upSize) / 2
+        upLp.bottomMargin = fabLp.bottomMargin + fabLp.height + dp(10)
+        if (up.parent != null) root.updateViewLayout(up, upLp)
+    }
+    sync()
+    root.addView(up, upLp)
+    if (scroll != null) {
+        fun show(on: Boolean) {
+            if (on == (up.visibility == View.VISIBLE)) return
+            up.animate().cancel()
+            if (on) { up.visibility = View.VISIBLE; up.animate().alpha(1f).setDuration(150).start() }
+            else up.animate().alpha(0f).setDuration(150).withEndAction { up.visibility = View.GONE }.start()
+        }
+        scroll.setOnScrollChangeListener { _, _, y, _, _ -> show(y > scroll.height * 0.8f) }
+        up.setOnClickListener { scroll.smoothScrollTo(0, 0); show(false) }
+    }
+    setupFabDrag(fab, fabLp, root, onMoved = { sync() }) { showQuickSheet(root, fabLp) }
 }
 
 fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) {
@@ -950,7 +992,7 @@ fun Activity.closeQuickSheet(root: FrameLayout) {
 }
 
 /** Tap opens the quick sheet; holding still and dragging moves the button and snaps it to the nearest edge. */
-fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onTap: () -> Unit) {
+fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onMoved: () -> Unit = {}, onTap: () -> Unit) {
     var downX = 0f
     var downY = 0f
     var startX = 0
@@ -977,6 +1019,7 @@ fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: 
                     fabLp.rightMargin = (startX - dx).coerceIn(0, root.width - v.width)
                     fabLp.bottomMargin = (startY - dy).coerceIn(dp(64), root.height - v.width)
                     root.updateViewLayout(v, fabLp)
+                    onMoved()
                 }
                 true
             }
@@ -986,6 +1029,7 @@ fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: 
                     val toEnd = fabLp.rightMargin < (root.width - v.width) / 2
                     fabLp.rightMargin = if (toEnd) dp(14) else root.width - v.width - dp(14)
                     root.updateViewLayout(v, fabLp)
+                    onMoved()
                     moved = false  // a finished drag never counts as a tap
                 } else if (System.currentTimeMillis() - pressTime < 600) {
                     onTap()

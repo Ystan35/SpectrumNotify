@@ -2,6 +2,18 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.26.3 (versionCode 84)
+- Timetable: the "Events" tab is now "Month".
+- Month → a day (below the grid and in the day pop-up): classes and your events on one vertical timeline. Start and end time on the left, a rail with a dot per class in the course colour (◆ for events), and a card per item: "WIX1003 · Computer Systems and Organization" (Spectrum's code prefix and capitals cleaned up), then "Tutorial · Online · Occ 2". Gaps of 30 min or more read "Free 11:00–13:00"; on today a red "now" line, or ONGOING on the item happening right now. Tap a class for Join class / Attendance / Course page / Details right on the card; tap an event to edit it.
+- The Occ shown is the same as Settings and Courses (your confirmed Occ, else the one predicted from your attendance), never the group list in Spectrum's class title.
+- Back to top: a ↑ button above the Aa toolbox button, as one group that moves together; it appears once a page is scrolled about a screen down. The toolbox group is now on every tab.
+- Fix: Home drew the Aa button twice, one on top of the other.
+- Fix: Home showed the same class twice when you also had your own (or UM-list) entry for that course at an overlapping time; Spectrum's class now wins, as on the Timetable.
+- Attendance reminder: a second alert when each class starts (your corrected time), "WIX1003 has started: sign your attendance", with Sign attendance and Join class buttons. Not sent where the lecturer takes attendance in class or attendance is by Teams recording; quiet hours apply. On by default; Settings → Your classes → Remind me when a class starts.
+- When Spectrum's class hides your own entry for the same course and time, the Home card says so ("Your own WIX1003 entry (12:00–13:00) is hidden …").
+- Fix: Home said "Attendance for this course is by Teams recording" for every class from your own timetable with no link; it now says so only for courses set as Teams-recording.
+- Month day heading no longer repeats the month ("Thu 7 Jan", the year only when it is not this year).
+
 ## 0.26.2 (versionCode 83)
 - Settings → UM links: the toolbox shortcuts get their own section. Each link has a line icon picked from 19 (school, payment, library, calendar, mail, book, web, document, bus, food, Wi-Fi, person, star, grades, video, link, home, map, help), a name and a web address (https:// added if left out; a mistake keeps the dialog open and says why). Reorder with ▲ ▼, add any of your Spectrum course pages, Reset to UM defaults; removing or resetting offers Undo. Links saved before get an icon guessed from their name. The toolbox shows the icons, and its "Edit UM links" opens this section.
 - Fix: with the app on Light and the phone on Dark (or the reverse), dialogs, time/date pickers and dropdowns followed the phone and drew dark with dark text (the Occ dialog's course codes were unreadable). Every screen now applies the app's Colour mode to Android's own parts too.

@@ -83,7 +83,7 @@ class TimetableActivity : BaseActivity() {
             return
         }
 
-        box.chips(listOf("Day", "Week", "Events"), setOf(mode), false) { mode = it.first(); render() }
+        box.chips(listOf("Day", "Week", "Month"), setOf(mode), false) { mode = it.first(); render() }
         when (mode) {
             0 -> renderDay()
             1 -> renderWeek()

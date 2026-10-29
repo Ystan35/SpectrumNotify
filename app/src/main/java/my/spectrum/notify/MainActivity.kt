@@ -500,170 +500,9 @@ class MainActivity : BaseActivity() {
         page.addView(navBar, lp(MATCH, WRAP))
         root.addView(page, FrameLayout.LayoutParams(MATCH, MATCH))
 
-        // floating toolbox: tap opens a quick appearance sheet; hold and drag to move the button.
-        val fab = TextView(this).apply {
-            text = "Aa"
-            textSize = 17f * Ui.fontScale
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setTextColor(Ui.CYAN)
-            background = rippleBg(Ui.BAR, Ui.CYAN, this@MainActivity, 26)
-            contentDescription = "Appearance settings. Tap to open, hold and drag to move."
-            elevation = dp(6).toFloat()
-        }
-        val fabLp = FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48)), Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = dp(14); bottomMargin = dp(78)
-        }
-        root.addView(fab, fabLp)
-        setupFabDrag(fab, fabLp, root) { showQuickSheet(root, fabLp) }
-        attachToolbox(root)
+        // floating toolbox group (Aa + back to top); Home used to add a second, older Aa on top of it
+        attachToolbox(root, scroll)
         setContentView(root)
-    }
-
-    /** Small sheet above the FAB: theme / text size / contrast toggles, one tap each. */
-    private fun showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) {
-        if (root.findViewWithTag<View>("quicksheet") != null) return
-        val p = Prefs(this)
-
-        val sheet = LinearLayout(this).apply {
-            tag = "quicksheet"
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(14))
-            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
-            elevation = dp(8).toFloat()
-        }
-        fun row(name: String, value: String, onCycle: () -> Unit) {
-            val r = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = dp(48)
-                isClickable = true
-                background = rippleBg(Ui.BAR, 0, this@MainActivity, 12)
-            }
-            r.addView(tv(name, 14f, Ui.TEXT), lp(0, WRAP, 1f))
-            r.addView(tv("$value  ▸", 13f, Ui.CYAN, true))
-            r.setOnClickListener { onCycle() }
-            sheet.addView(r)
-        }
-        val themeNames = listOf("Phone", "Light", "Dark")
-        row("Colour mode", themeNames[p.themeMode]) {
-            p.themeMode = (p.themeMode + 1) % 3
-            recreate()
-        }
-        val sizeNames = listOf("Normal", "Large", "Extra large")
-        row("Text size", sizeNames[p.textScale]) {
-            p.textScale = (p.textScale + 1) % 3
-            recreate()
-        }
-        val conNames = listOf("Off", "On")
-        row("High contrast", conNames[if (p.highContrast) 1 else 0]) {
-            p.highContrast = !p.highContrast
-            recreate()
-        }
-        sheet.addView(View(this), lp(MATCH, dp(6)))
-        val more = TextView(this).apply {
-            text = "More appearance settings"
-            textSize = 13f * Ui.fontScale
-            setTextColor(Ui.CYAN)
-            minHeight = dp(44)
-            gravity = Gravity.CENTER_VERTICAL
-            isClickable = true
-            background = rippleBg(Ui.BAR, 0, this@MainActivity, 12)
-        }
-        more.setOnClickListener {
-            closeQuickSheet(root)
-            startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_OPEN, "appearance"))
-        }
-        sheet.addView(more)
-
-        val dim = View(this).apply {
-            tag = "quicksheetdim"
-            setBackgroundColor(0x66000000)
-            elevation = dp(7).toFloat()
-        }
-        dim.setOnClickListener { closeQuickSheet(root) }
-        root.addView(dim, FrameLayout.LayoutParams(MATCH, MATCH))
-        // Anchor the sheet to the toolbox wherever it was dragged: horizontal edge with more
-        // room wins (sheet is 230dp wide), and it opens above the button unless the button is
-        // near the top, in which case it opens below.
-        val sheetW = dp(230)
-        val sheetHGuess = dp(260)
-        val spaceRight = root.width - fabLp.rightMargin - fabLp.width
-        val spaceLeft = fabLp.rightMargin
-        val onRight = spaceRight >= sheetW || spaceRight >= spaceLeft
-        val fabTopY = root.height - fabLp.bottomMargin - fabLp.height
-        val openBelow = fabTopY < sheetHGuess
-        val lp = FrameLayout.LayoutParams(sheetW, WRAP).apply {
-            if (onRight) {
-                gravity = Gravity.END
-                rightMargin = dp(14)
-            } else {
-                gravity = Gravity.START
-                leftMargin = dp(14)
-            }
-            if (openBelow) {
-                gravity = gravity or Gravity.TOP
-                topMargin = fabTopY + fabLp.height + dp(10)
-            } else {
-                gravity = gravity or Gravity.BOTTOM
-                bottomMargin = fabLp.bottomMargin + fabLp.height + dp(10)
-            }
-        }
-        root.addView(sheet, lp)
-    }
-
-    private fun closeQuickSheet(root: FrameLayout) {
-        root.findViewWithTag<View>("quicksheet")?.let { root.removeView(it) }
-        root.findViewWithTag<View>("quicksheetdim")?.let { root.removeView(it) }
-    }
-
-    /** Tap opens the quick sheet; holding still and dragging moves the button and snaps it to the nearest edge. */
-    private fun setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onTap: () -> Unit) {
-        var downX = 0f
-        var downY = 0f
-        var startX = 0
-        var startY = 0
-        var moved = false
-        var dragging = false
-        var pressTime = 0L
-        fab.setOnTouchListener { v, ev ->
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = ev.rawX; downY = ev.rawY
-                    startX = fabLp.rightMargin; startY = fabLp.bottomMargin
-                    moved = false; dragging = false; pressTime = System.currentTimeMillis()
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = (ev.rawX - downX).toInt()
-                    val dy = (ev.rawY - downY).toInt()
-                    if (!dragging && (abs(dx) > dp(8) || abs(dy) > dp(8))) dragging = true
-                    if (dragging) {
-                        moved = true
-                        v.parent?.requestDisallowInterceptTouchEvent(true)
-                        // margins are measured from BOTTOM/END, so the button tracks the finger
-                        fabLp.rightMargin = (startX - dx).coerceIn(0, root.width - v.width)
-                        fabLp.bottomMargin = (startY - dy).coerceIn(dp(64), root.height - v.width)
-                        root.updateViewLayout(v, fabLp)
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (dragging) {
-                        // snap to the nearer horizontal edge
-                        val toEnd = fabLp.rightMargin < (root.width - v.width) / 2
-                        fabLp.rightMargin = if (toEnd) dp(14) else root.width - v.width - dp(14)
-                        root.updateViewLayout(v, fabLp)
-                        moved = false  // a finished drag never counts as a tap
-                    } else if (System.currentTimeMillis() - pressTime < 600) {
-                        onTap()
-                    }
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> { dragging = false; true }
-                else -> false
-            }
-        }
     }
 
     // ------------------------------------------------------------ refresh button
@@ -942,6 +781,12 @@ class MainActivity : BaseActivity() {
                     if (c.manual) "Attendance for this course is by Teams recording." else "No online link yet. It may be in person, or not posted. The app keeps checking.",
                     13f, soft,
                 ).apply { setPadding(0, dp(10), 0, 0) })
+            }
+            if (c.hiddenOwn.isNotEmpty()) {
+                card.addView(tv(
+                    "Your own ${Shorts.display(this, c.code.ifEmpty { c.course })} entry (${c.hiddenOwn}) is hidden: Spectrum lists this class at the same time.",
+                    12f, soft,
+                ).apply { setPadding(0, dp(8), 0, 0) })
             }
             // horizontal scroll so three pills never get squeezed into wrapping vertically
             // its own padded zone: a sideways drag that starts here scrolls the buttons, never the card (HeroPager)

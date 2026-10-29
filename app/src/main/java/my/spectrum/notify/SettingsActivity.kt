@@ -209,7 +209,17 @@ class SettingsActivity : BaseActivity() {
         dailyPicker("Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00") { p.afternoonTime = it }
 
         target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
-            contents = listOf("My Occ", "Classes to ignore", "Teams-recording courses"))
+            contents = listOf("My Occ", "Attendance reminder", "Classes to ignore", "Teams-recording courses"))
+        heading("Attendance reminder", "A second alert when each class starts, with a Sign attendance button, so you do not forget. " +
+            "Not sent for classes where the lecturer takes attendance in class or attendance is by Teams recording.")
+        target.addView(android.widget.Switch(this).apply {
+            text = "Remind me when a class starts"
+            textSize = 14f * Ui.fontScale
+            setTextColor(Ui.TEXT)
+            minHeight = dp(Ui.touch(48))
+            isChecked = p.attStartAlert
+            setOnCheckedChangeListener { _, on -> p.attStartAlert = on; Scheduler.scheduleAll(this@SettingsActivity) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         // My Occ per course as a dropdown (like the UM-timetable picker):
         // catalog occs first; if the course is missing from the catalog, fall back to learned occs.
         val learned = Groups.learnedPerCourse(this)

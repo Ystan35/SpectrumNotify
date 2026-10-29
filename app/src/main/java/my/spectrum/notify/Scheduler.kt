@@ -131,6 +131,12 @@ object Scheduler {
             val code = (e.optLong("id") * 31 + start).hashCode()
             setAlarm(ctx, at * 1000, code)
             codes.add(code)
+            // second alarm at the start itself: "sign your attendance" (Checker.checkAttendanceStart)
+            if (p.attStartAlert && start + 20 > now) {
+                val code2 = code xor 0x2A2A2A
+                setAlarm(ctx, (start + 20) * 1000, code2)
+                codes.add(code2)
+            }
         }
         parseHm(p.summaryTime)?.let { setAlarm(ctx, nextDaily(it), 1); codes.add(1) }
         parseHm(p.afternoonTime)?.let { setAlarm(ctx, nextDaily(it), 2); codes.add(2) }

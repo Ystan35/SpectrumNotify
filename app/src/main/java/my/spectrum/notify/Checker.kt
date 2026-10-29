@@ -143,10 +143,15 @@ object Checker {
     fun myCalendar(st: State, p: Prefs): List<JSONObject> =
         (st.j.optJSONArray("cal") ?: JSONArray()).objs().filter { !isSkipped(it, p) }
 
+    /** manual = attendance by Teams recording (Settings → Your classes); own = from your timetable, not Spectrum. */
     data class ClassItem(
         val name: String, val course: String, val full: String,
         val start: Long, val end: Long, val link: String, val courseUrl: String, val manual: Boolean,
         val courseId: Long = 0L,
+        val code: String = "",
+        val own: Boolean = false,
+        /** Your own entries for this course hidden because this Spectrum class overlaps them, e.g. "12:00–13:00". */
+        val hiddenOwn: String = "",
     )
     data class DueItem(val name: String, val course: String, val ts: Long, val url: String, val eventId: Long = 0L)
     class Overview(val classes: List<ClassItem>, val due: List<DueItem>)
@@ -277,6 +282,7 @@ object Checker {
                 linksForEvent(ctx, e, cal, links).firstOrNull()?.first ?: "",
                 if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site,
                 isManual(e, p), cid,
+                code = Timetable.courseCode(c),
             )
         }.filter { it.end > now }.sortedBy { it.start }
         val due = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().mapNotNull { e ->
@@ -310,10 +316,23 @@ object Checker {
                 slot.title.ifEmpty { "Class" }, slot.course,
                 slot.course, start, end,
                 meeting.ifEmpty { att },
-                coursePage, true, cid,
+                coursePage,
+                // Teams-recording courses only — this used to be true for every own entry, so Home said
+                // "Attendance for this course is by Teams recording" for any class you added
+                p.manualList.any { slot.course.lowercase().contains(it) }, cid,
+                code = slot.course.uppercase(), own = true,
             )
         }
-        val merged = (classes + manualClasses)
+        // the same class must not show twice: Spectrum's wins over your own entry for that course when their
+        // times overlap (as on the Timetable); only start times within 15 min were merged before
+        fun overlap(c: ClassItem, m: ClassItem) = c.code.equals(m.code, true) && c.start < m.end && m.start < c.end
+        val ownKept = manualClasses.filter { m -> classes.none { c -> overlap(c, m) } }
+        // say so on the Spectrum card, so a dropped entry of yours is never a silent surprise
+        val shown = classes.map { c ->
+            val hidden = manualClasses.filter { m -> overlap(c, m) }
+            if (hidden.isEmpty()) c else c.copy(hiddenOwn = hidden.joinToString(", ") { "${hhmm(it.start)}–${hhmm(it.end)}" })
+        }
+        val merged = (shown + ownKept)
             .distinctBy { "${it.course}:${it.start / 900}" }
             .sortedBy { it.start }
         return Overview(merged, due)
@@ -638,6 +657,44 @@ object Checker {
         return Pair(midnight + o.first * 60L, midnight + o.second * 60L)
     }
 
+    /**
+     * When a class starts (your corrected time), one alert so you do not forget to sign attendance:
+     * Attendance and Join class buttons. Skipped for courses where the lecturer takes attendance in class or
+     * attendance is by Teams recording, and when turned off in Settings → Your classes.
+     */
+    private fun checkAttendanceStart(ctx: Context, st: State, p: Prefs, cal: List<JSONObject>, now: Long) {
+        if (!p.attStartAlert) return
+        val sent = st.strings("att_sent")
+        val links = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
+        for (e in cal) {
+            if (!isAttEvent(e)) continue
+            val (start, end) = classTimes(ctx, e)
+            if (now < start || now > minOf(end, start + 15 * 60)) continue
+            val key = "attstart:${e.optLong("id")}:$start"
+            if (key in sent) continue
+            val c = e.optJSONObject("course")
+            val code = Timetable.courseCode(c)
+            if (Timetable.attMode(ctx, code) == "manual" || isManual(e, p)) { sent.add(key); continue }
+            val name = unesc(e.str("name"))
+            val z = localDt(start)
+            val (_, att, coursePage) = linksForCourse(
+                ctx, code, courseId(e), groupTokens(name), preferLecOf(name),
+                day = z.dayOfWeek.value, startMin = z.hour * 60 + z.minute, endMin = localDt(end).let { it.hour * 60 + it.minute },
+            )
+            val meeting = linksForEvent(ctx, e, cal, links).firstOrNull { linkIsMeeting(it.first) }?.first ?: ""
+            val buttons = ArrayList<Pair<String, String>>()
+            att.ifEmpty { coursePage }.takeIf { it.isNotEmpty() }?.let { buttons.add(Pair("Sign attendance", it)) }
+            if (meeting.isNotEmpty()) buttons.add(Pair("Join class", meeting))
+            Notifier.push(
+                ctx, "$code has started: sign your attendance",
+                "$name\nStarted ${hhmm(start)}. Open the attendance page and mark yourself present.",
+                true, buttons,
+            )
+            sent.add(key)
+        }
+        st.putStrings("att_sent", sent.toList().takeLast(200))
+    }
+
     private fun checkClassLinks(ctx: Context, st: State, p: Prefs, cal: List<JSONObject>, links: Map<String, List<Link>>, now: Long) {
         val sent = st.strings("links_sent")
         for (e in cal) {
@@ -838,6 +895,7 @@ object Checker {
         try { checkClassLinks(ctx, st, p, cal, links, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "class links: $e") }
         try { sendMorningSummary(ctx, st, p, cal, dl, now) } catch (e: Exception) { Log.w(TAG, "summary: $e") }
         try { sendAfternoon(ctx, st, p, cal, now) } catch (e: Exception) { Log.w(TAG, "afternoon: $e") }
+        try { checkAttendanceStart(ctx, st, p, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "attendance start: $e") }
     }
 
     /** Called by the alarm receiver: act on cached data, no network. */
