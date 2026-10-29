@@ -25,13 +25,13 @@ object AcademicCalendarEditor {
         var semEnd = dt.semEnd
         val F = DateTimeFormatter.ofPattern("d MMM yyyy")
 
-        fun lbl(t: String) { col.label(t, 13f, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD) }
+        fun lbl(t: String) { col.label(t, Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD) }
         fun dateRow(title: String, initial: LocalDate?, onPick: (LocalDate) -> Unit) {
             lbl(title)
             val b = Button(activity); b.isAllCaps = false
             b.text = initial?.format(F) ?: "Not set"
             b.setOnClickListener {
-                val base = initial ?: LocalDate.now()
+                val base = initial ?: LocalDate.now(zone())
                 android.app.DatePickerDialog(activity, { _, y, m, d ->
                     val picked = LocalDate.of(y, m + 1, d)
                     onPick(picked)
@@ -42,10 +42,10 @@ object AcademicCalendarEditor {
         }
         // label as a text field
         val labelF = EditText(activity).apply {
-            setText(dt.label); setTextSize(14f); setTextColor(Ui.TEXT); setSingleLine()
-            background = roundBg(Ui.BAR, Ui.BORDER, activity, 10); setPadding(dp(10), dp(9), dp(10), dp(9))
+            setText(dt.label); textSize = Type.BODY * Ui.fontScale; setTextColor(Ui.TEXT); setSingleLine()
+            background = roundBg(Ui.BAR, Ui.BORDER, activity, Radius.SM); setPadding(dp(10), dp(9), dp(10), dp(9))
         }
-        col.label("Semester name", 13f, Ui.TEXT, 0).setTypeface(null, Typeface.BOLD)
+        col.label("Semester name", Type.LABEL, Ui.TEXT, 0).setTypeface(null, Typeface.BOLD)
         col.addView(labelF, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
 
         dateRow("Teaching starts", teachStart) { teachStart = it }
@@ -58,7 +58,7 @@ object AcademicCalendarEditor {
         col.label(
             "During breaks and after teaching ends, class entries hide from the timetable, " +
                 "hero card and widgets — but Spectrum notifications keep coming.",
-            12f, Ui.DIM, 12,
+            Type.CAPTION, Ui.DIM, 12,
         )
 
         val scroll = android.widget.ScrollView(activity).apply { addView(col) }
@@ -66,7 +66,7 @@ object AcademicCalendarEditor {
             ViewGroup.LayoutParams.MATCH_PARENT,
             (activity.resources.displayMetrics.heightPixels * 0.7).toInt().coerceAtLeast(dp(240)),
         )
-        AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_DayNight)
+        AlertDialog.Builder(activity, Ui.dialogTheme)
             .setTitle("Semester dates")
             .setView(scroll)
             .setPositiveButton("Save") { _, _ ->

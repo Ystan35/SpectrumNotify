@@ -56,12 +56,12 @@ class TimetableEditActivity : BaseActivity() {
         val first = own.firstOrNull()
 
         if (!editing) {
-            col.label("Studying at UM? Choose your course and your Lecture / Tutorial Occ from the UM timetable.", 12f, Ui.DIM, 6)
+            col.label("Studying at UM? Choose your course and your Lecture / Tutorial Occ from the UM timetable.", Type.CAPTION, Ui.DIM, 6)
             col.btn("Pick from UM timetable") {
                 startActivity(Intent(this, CatalogActivity::class.java))
                 finish()
             }
-            col.label("Or add a class by hand:", 12f, Ui.DIM, 14)
+            col.label("Or add a class by hand:", Type.CAPTION, Ui.DIM, 14)
         }
 
         var course = first?.course ?: ""
@@ -78,8 +78,8 @@ class TimetableEditActivity : BaseActivity() {
         var setSwatch: (Int) -> Unit = {}
 
         // course code, with the courses already in the timetable as quick picks
-        col.label("Course code", 13f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("For example WIA2010. Pick one below, or type a new one.", 12f, Ui.DIM, 2)
+        col.label("Course code", Type.LABEL, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("For example WIA2010. Pick one below, or type a new one.", Type.CAPTION, Ui.DIM, 2)
         val courseField = col.field(course, "WIA2010")
         courseField.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
@@ -108,17 +108,17 @@ class TimetableEditActivity : BaseActivity() {
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
 
-        col.label("Type", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Type", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         col.chips(kindLabels, setOf(kindIdx), false) { kindIdx = it.first() }
 
-        col.label("Days", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("Choose every day this class happens at the same time.", 12f, Ui.DIM, 2)
+        col.label("Days", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Choose every day this class happens at the same time.", Type.CAPTION, Ui.DIM, 2)
         col.chips(Timetable.DAYS, days.map { it - 1 }.toSet(), true) { sel ->
             days.clear()
             days.addAll(sel.map { it + 1 })
         }
 
-        col.label("Time", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Time", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         val times = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val startBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val endBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -132,9 +132,9 @@ class TimetableEditActivity : BaseActivity() {
         }
         endField = timeField(end) { end = it }
         val fieldLp = { LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) } }
-        startBox.label("Starts", 12f, Ui.DIM, 0)
+        startBox.label("Starts", Type.CAPTION, Ui.DIM, 0)
         startBox.addView(startField.view, fieldLp())
-        endBox.label("Ends", 12f, Ui.DIM, 0)
+        endBox.label("Ends", Type.CAPTION, Ui.DIM, 0)
         endBox.addView(endField.view, fieldLp())
         times.addView(startBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         times.addView(endBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(12) })
@@ -151,13 +151,13 @@ class TimetableEditActivity : BaseActivity() {
         val legacyLinks = if (legacyMode == 0) oldNote.removePrefix("[att]").trim() else ""
         val cleanNote = if (legacyMode >= 0) "" else oldNote
 
-        col.label("Name (optional)", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Name (optional)", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         val titleField = col.field(first?.title ?: "", "Lecture, Group A")
-        col.label("Room or note (optional)", 13f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Room or note (optional)", Type.LABEL, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
         val noteField = col.field(cleanNote, "Hall 3, bring laptop")
 
-        col.label("Attendance", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("How is attendance taken for this class?", 12f, Ui.DIM, 2)
+        col.label("Attendance", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("How is attendance taken for this class?", Type.CAPTION, Ui.DIM, 2)
         // mode: Spectrum link (auto/paste) or manual by lecturer (no link needed)
         val attModes = listOf("Spectrum link", "Manual by lecturer", "None")
         val modeKeys = listOf("link", "manual", "none")
@@ -174,12 +174,12 @@ class TimetableEditActivity : BaseActivity() {
             attLinksField.visibility = if (attMode == 0) android.view.View.VISIBLE else android.view.View.GONE
         }
         col.label("Spectrum link = the app finds the attendance page automatically, and you can paste extra links. " +
-            "Manual by lecturer = the lecturer marks attendance in person, so no link is needed.", 12f, Ui.DIM, 6)
+            "Manual by lecturer = the lecturer marks attendance in person, so no link is needed.", Type.CAPTION, Ui.DIM, 6)
 
         val stopPicked = busStopPicker(col, course)
 
-        col.label("Colour", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("One colour per course, so every class of the same course looks the same.", 12f, Ui.DIM, 2)
+        col.label("Colour", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("One colour per course, so every class of the same course looks the same.", Type.CAPTION, Ui.DIM, 2)
         setSwatch = col.swatches(colourIdx) { colourIdx = it; colourTouched = true }
 
         col.btn("Save") {
@@ -230,19 +230,19 @@ class TimetableEditActivity : BaseActivity() {
         val specStart = keyParts.getOrNull(2)?.toIntOrNull() ?: s.start
         val specEnd = keyParts.getOrNull(3)?.toIntOrNull() ?: s.end
 
-        col.label(s.course, 22f, Timetable.colours(this, setOf(s.course))[s.course] ?: Ui.TEXT, 8).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label(s.course, Type.HEADLINE, Timetable.colours(this, setOf(s.course))[s.course] ?: Ui.TEXT, 8).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label(
             "${Timetable.DAY_FULL[s.day - 1]}, ${Timetable.fmtMin(specStart)} – ${Timetable.fmtMin(specEnd)}" +
                 (if (specStart != s.start || specEnd != s.end) "  (yours: ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)})" else "") +
                 if (s.title.isNotEmpty()) "\n${s.title}" else "",
-            15f, Ui.TEXT, 4,
+            Type.BODY_L, Ui.TEXT, 4,
         )
-        col.label("This class comes from Spectrum. You can override its time and meeting link below.", 12f, Ui.DIM, 6)
+        col.label("This class comes from Spectrum. You can override its time and meeting link below.", Type.CAPTION, Ui.DIM, 6)
 
         // time override (the Spectrum event may cover all sessions; yours may differ)
         val ov = Timetable.timeOverride(this, s.key)
-        col.label("Time override", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("Only if your session time differs from what Spectrum lists. Leave untouched to follow Spectrum.", 12f, Ui.DIM, 2)
+        col.label("Time override", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Only if your session time differs from what Spectrum lists. Leave untouched to follow Spectrum.", Type.CAPTION, Ui.DIM, 2)
         val times = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val startBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val endBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -254,36 +254,36 @@ class TimetableEditActivity : BaseActivity() {
             if (newEnd <= it) { newEnd = minOf(24 * 60 - 1, it + 60); endOvField.set(newEnd) }
         }
         endOvField = timeField(newEnd) { newEnd = it }
-        startBox.label("Starts", 12f, Ui.DIM, 0)
+        startBox.label("Starts", Type.CAPTION, Ui.DIM, 0)
         startBox.addView(startOvField.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
-        endBox.label("Ends", 12f, Ui.DIM, 0)
+        endBox.label("Ends", Type.CAPTION, Ui.DIM, 0)
         endBox.addView(endOvField.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         times.addView(startBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         times.addView(endBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(12) })
         col.addView(times, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
 
         // attendance link override (the Attendance pill reads this first)
-        col.label("Attendance link", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("Paste your occ's attendance page to override the automatically picked one.", 12f, Ui.DIM, 2)
+        col.label("Attendance link", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Paste your occ's attendance page to override the automatically picked one.", Type.CAPTION, Ui.DIM, 2)
         val attLinkField = col.field(Timetable.userAttLinkRaw(this, s.course), "https://spectrum.um.edu.my/mod/attendance/view.php?id=…")
 
         // meeting link override
-        col.label("Meeting link", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("Detected automatically from Spectrum. Paste your own to override, or clear to go back.", 12f, Ui.DIM, 2)
+        col.label("Meeting link", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Detected automatically from Spectrum. Paste your own to override, or clear to go back.", Type.CAPTION, Ui.DIM, 2)
         val mlinkField = col.field(Timetable.meetingLinkOf(this, s.course), "https://teams.microsoft.com/…")
 
-        col.label("Type", 13f, Ui.TEXT, 24).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Type", Type.LABEL, Ui.TEXT, 24).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label(
             if (s.kind == SlotKind.CLASS) "Spectrum did not say whether this is a lecture, tutorial or lab. Choose one if you know."
             else "Spotted from the class name on Spectrum. Change it if it is wrong.",
-            12f, Ui.DIM, 2,
+            Type.CAPTION, Ui.DIM, 2,
         )
         col.chips(kindLabels, setOf(kindIdx), false) { kindIdx = it.first() }
 
         val stopPicked = busStopPicker(col, s.course)
 
-        col.label("Colour", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("Applies to every ${s.course} class.", 12f, Ui.DIM, 2)
+        col.label("Colour", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Applies to every ${s.course} class.", Type.CAPTION, Ui.DIM, 2)
         col.swatches(colourIdx) { colourIdx = it }
 
         col.btn("Save") {
@@ -325,7 +325,7 @@ class TimetableEditActivity : BaseActivity() {
             Timetable.justHidden = s.key   // the Timetable screen offers Undo when it comes back
             finish()
         }
-        col.label("You can undo this right after, or bring removed classes back from the Timetable screen.", 12f, Ui.DIM, 6)
+        col.label("You can undo this right after, or bring removed classes back from the Timetable screen.", Type.CAPTION, Ui.DIM, 6)
     }
 
     // ------------------------------------------------------------ helpers
@@ -336,8 +336,8 @@ class TimetableEditActivity : BaseActivity() {
     private fun busStopPicker(col: LinearLayout, course: String): () -> String {
         val places = Shuttle.placesForPicker(this)
         val guess = ShuttleModel.guessPlace(Shuttle.data(this), course)
-        col.label("Nearest bus stop", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("Where this course's classes are, for the UM shuttle on Home and the leave-by alert. Applies to every class of the course.", 12f, Ui.DIM, 2)
+        col.label("Nearest bus stop", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Where this course's classes are, for the UM shuttle on Home and the leave-by alert. Applies to every class of the course.", Type.CAPTION, Ui.DIM, 2)
         var picked = if (course.isNotEmpty()) Timetable.busStop(this, course) else ""
         val names = listOf("Auto" + (guess?.let { " (${it.name})" } ?: " (not known)")) + places.map { it.name }
         val sel = places.indexOfFirst { it.id == picked } + 1
@@ -353,6 +353,6 @@ class TimetableEditActivity : BaseActivity() {
     private fun dangerBtn(col: LinearLayout, text: String, onClick: () -> Unit) {
         val b = col.btn(text, onClick)
         b.setTextColor(Ui.RED)
-        b.background = roundBg(Ui.BAR, Ui.RED, this, 24)
+        b.background = roundBg(Ui.BAR, Ui.RED, this, Radius.PILL)
     }
 }

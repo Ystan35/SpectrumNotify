@@ -14,7 +14,7 @@ import android.widget.TextView
 
 /**
  * Settings → UM links: the shortcut list shown in the floating toolbox. Each link has a line icon,
- * a name and a web address. Tap a link to edit it, ▲ ▼ to reorder; removing or resetting offers Undo.
+ * a name and a web address. Tap a link to edit it, the up/down arrows to reorder; removing or resetting offers Undo.
  */
 object LinksEditor {
 
@@ -35,14 +35,14 @@ object LinksEditor {
         fun redraw() = renderSection(activity, box)
         fun saveAndRedraw(list: List<Shortcuts.Link>) { Shortcuts.save(activity, list); redraw() }
 
-        if (links.isEmpty()) box.label("No links yet. Add one below, or reset to the UM defaults.", 13f, Ui.DIM, 8)
+        if (links.isEmpty()) box.label("No links yet. Add one below, or reset to the UM defaults.", Type.LABEL, Ui.DIM, 8)
         links.forEachIndexed { i, l ->
             val row = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 minimumHeight = activity.dp(Ui.touch(56))
                 setPadding(activity.dp(12), activity.dp(6), activity.dp(4), activity.dp(6))
-                background = rippleBg(Ui.BAR, Ui.BORDER, activity, 14)
+                background = rippleBg(Ui.BAR, Ui.BORDER, activity, Radius.MD)
                 isClickable = true
                 contentDescription = "${l.name}, ${l.url}. Tap to edit."
                 setOnClickListener { editOne(activity, i) { redraw() } }
@@ -50,18 +50,20 @@ object LinksEditor {
             row.addView(activity.icon(l.icon, 24, Ui.CYAN))
             val text = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(activity.dp(12), 0, activity.dp(4), 0) }
             text.addView(TextView(activity).apply {
-                this.text = l.name; textSize = 15f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                this.text = l.name; textSize = Type.BODY_L * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             })
             text.addView(TextView(activity).apply {
                 this.text = l.url.removePrefix("https://").removePrefix("http://").trimEnd('/')
-                textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+                textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             })
             row.addView(text, LinearLayout.LayoutParams(0, WRAP, 1f))
-            fun move(label: String, to: Int, enabled: Boolean) = TextView(activity).apply {
-                this.text = label; textSize = 16f * Ui.fontScale; gravity = Gravity.CENTER
-                setTextColor(if (enabled) Ui.CYAN else Ui.tint(Ui.DIM, 0x55))
-                minWidth = activity.dp(Ui.touch(44)); minHeight = activity.dp(Ui.touch(44))
+            fun move(up: Boolean, to: Int, enabled: Boolean) = android.widget.ImageView(activity).apply {
+                setImageResource(R.drawable.ic_expand_more)
+                rotation = if (up) 180f else 0f
+                setColorFilter(if (enabled) Ui.CYAN else Ui.tint(Ui.DIM, 0x55))
+                scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                minimumWidth = activity.dp(Ui.touch(48)); minimumHeight = activity.dp(Ui.touch(48))
                 isEnabled = enabled; isClickable = enabled
                 contentDescription = "Move ${l.name} " + (if (to < i) "up" else "down")
                 setOnClickListener {
@@ -70,8 +72,8 @@ object LinksEditor {
                     saveAndRedraw(m)
                 }
             }
-            row.addView(move("▲", i - 1, i > 0))
-            row.addView(move("▼", i + 1, i < links.size - 1))
+            row.addView(move(true, i - 1, i > 0))
+            row.addView(move(false, i + 1, i < links.size - 1))
             box.addView(row, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = activity.dp(8) })
         }
 
@@ -105,12 +107,12 @@ object LinksEditor {
         var chosen = old?.icon ?: ""
         val col = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
 
-        col.label("Icon", 13f, Ui.TEXT, 4).setTypeface(null, Typeface.BOLD)
+        col.label("Icon", Type.LABEL, Ui.TEXT, 4).setTypeface(null, Typeface.BOLD)
         val cells = ArrayList<Pair<String, ImageView>>()
         fun paint() = cells.forEach { (k, v) ->
             val on = k == chosen
             v.setColorFilter(if (on) onAccent() else Ui.TEXT)
-            v.background = if (on) roundBg(Ui.CYAN, 0, activity, 12) else rippleBg(Ui.BAR, Ui.BORDER, activity, 12)
+            v.background = if (on) roundBg(Ui.CYAN, 0, activity, Radius.MD) else rippleBg(Ui.BAR, Ui.BORDER, activity, Radius.MD)
             v.contentDescription = Shortcuts.iconLabel(k) + if (on) ", selected" else ""
         }
         Shortcuts.ICONS.chunked(5).forEach { chunk ->
@@ -132,19 +134,19 @@ object LinksEditor {
 
         fun field(hintText: String, value: String, uri: Boolean): EditText = EditText(activity).apply {
             setText(value); hint = hintText
-            textSize = 15f * Ui.fontScale; setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM); setSingleLine()
+            textSize = Type.BODY_L * Ui.fontScale; setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM); setSingleLine()
             if (uri) inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            background = roundBg(Ui.BAR, Ui.BORDER, activity, 10)
+            background = roundBg(Ui.BAR, Ui.BORDER, activity, Radius.SM)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             minHeight = dp(Ui.touch(48))
         }
-        col.label("Name", 13f, Ui.TEXT, 14).setTypeface(null, Typeface.BOLD)
+        col.label("Name", Type.LABEL, Ui.TEXT, 14).setTypeface(null, Typeface.BOLD)
         val nameF = field("e.g. Library", old?.name ?: "", false)
         col.addView(nameF, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
-        col.label("Web address", 13f, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
+        col.label("Web address", Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
         val urlF = field("e.g. umlib.um.edu.my", old?.url ?: "", true)
         col.addView(urlF, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
-        col.label("https:// is added for you if you leave it out.", 12f, Ui.DIM, 4)
+        col.label("https:// is added for you if you leave it out.", Type.CAPTION, Ui.DIM, 4)
 
         val scroll = android.widget.ScrollView(activity).apply { addView(col) }
         val b = AlertDialog.Builder(activity, Ui.dialogTheme)
