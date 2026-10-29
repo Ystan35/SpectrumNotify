@@ -27,6 +27,8 @@ object ShuttleModel {
         /** What Google Maps should search for when there are no coordinates. */
         val query: String,
         val lat: Double?, val lng: Double?,
+        /** Short names to search by: college numbers (KK12), faculty abbreviations (FSKTM, FCSIT). */
+        val aka: List<String> = emptyList(),
     )
 
     class Schedule(val days: Set<Int>, val starts: List<Int>, val fridayBreak: IntRange?)
@@ -72,7 +74,10 @@ object ShuttleModel {
      * Ride [route] from stop index [fromIdx] (leaving [depart]) to stop index [toIdx] (arriving [arrive]).
      * For a frequent route, [depart] is when to be at the stop and [arrive] counts the longest [wait].
      */
-    class Ride(val route: Route, val fromIdx: Int, val toIdx: Int, val depart: Int, val arrive: Int, val wait: Int = 0)
+    class Ride(val route: Route, val fromIdx: Int, val toIdx: Int, val depart: Int, val arrive: Int, val wait: Int = 0) {
+        /** Which bus this is: the route and when that trip passed its first stop (same for every stop of one trip). */
+        val trip: String get() = "${route.id}@${depart - route.offsets[fromIdx]}"
+    }
 
     sealed class Plan {
         /** Origin and destination are the same place: nothing to do. */
@@ -140,6 +145,7 @@ object ShuttleModel {
                 o.optString("q", "").ifEmpty { "$name, Universiti Malaya, Kuala Lumpur" },
                 if (o.has("lat")) o.optDouble("lat") else null,
                 if (o.has("lng")) o.optDouble("lng") else null,
+                strs(o.optJSONArray("aka")),
             )
         }
         val base = parseSchedule(root.optJSONObject("schedule"), null)
@@ -304,6 +310,172 @@ object ShuttleModel {
         val c = courseCode.uppercase()
         val key = d.faculties.keys.filter { c.startsWith(it) }.maxByOrNull { it.length } ?: return null
         return d.places[d.faculties[key]]
+    }
+
+    // ------------------------------------------------------------------ journeys (the Shuttle screen's planner)
+
+    /** One part of a journey: a walk or a bus ride, from [start] to [end] (minutes after midnight). */
+    sealed class Leg {
+        abstract val start: Int
+        abstract val end: Int
+        /** [meters] is null when a place has no coordinates (then [end] − [start] is a guess). */
+        class Walk(val from: Place, val to: Place, val meters: Int?, override val start: Int, override val end: Int) : Leg()
+        class Bus(val ride: Ride) : Leg() {
+            override val start: Int get() = ride.depart
+            override val end: Int get() = ride.arrive
+        }
+    }
+
+    class Journey(val legs: List<Leg>) {
+        val depart: Int get() = legs.first().start
+        val arrive: Int get() = legs.last().end
+        val buses: List<Leg.Bus> get() = legs.filterIsInstance<Leg.Bus>()
+        val walkOnly: Boolean get() = buses.isEmpty()
+        /** Same buses at the same times: the same journey. */
+        val key: String get() = if (walkOnly) "walk" else buses.joinToString("|") { "${it.ride.route.id}@${it.ride.depart}:${it.ride.fromIdx}-${it.ride.toIdx}" }
+    }
+
+    /** Stops within this walk of a place count as places to get on or off. */
+    private const val ACCESS_M = 450
+    /** A change between two stops this close (UM Central ↔ Perpustakaan UM) is a short walk. */
+    private const val CHANGE_M = 250
+    /** At least this long between getting off and the next bus. */
+    private const val CHANGE_MIN = 2
+    /** A walk to a stop that has no coordinates (only "near"): a guess. */
+    private const val NEAR_GUESS_MIN = 3
+    /** Walking all the way is offered up to this long. */
+    private const val WALK_MAX_MIN = 45
+
+    /** Every ride on [date]: each trip, from each stop to each later stop (and the loop cases [ride] allows). */
+    fun allRides(d: Data, date: LocalDate): List<Ride> {
+        val out = ArrayList<Ride>()
+        for (r in d.routes) {
+            val rs = runs(r, date)
+            for ((k, run) in rs.withIndex()) {
+                for (i in run.first until r.stops.size - 1) {
+                    val reached = HashSet<String>()
+                    reached.add(r.stops[i])
+                    for (j in i + 1 until r.stops.size) if (reached.add(r.stops[j])) {
+                        out.add(Ride(r, i, j, run.at(i), run.at(j) + run.wait, run.wait))
+                    }
+                    if (r.frequent && r.loop) {
+                        for (j in 1 until i) if (reached.add(r.stops[j])) {
+                            out.add(Ride(r, i, j, run.at(i), run.end + r.offsets[j] - r.offsets[0] + run.wait, run.wait))
+                        }
+                        continue
+                    }
+                    val next = rs.getOrNull(k + 1)
+                    if (r.loop && next != null && next.first == 0 && next.start - run.end in 0..STAY_ON_MAX_WAIT) {
+                        for (j in 1 until r.stops.size) if (reached.add(r.stops[j])) out.add(Ride(r, i, j, run.at(i), next.at(j)))
+                    }
+                }
+            }
+        }
+        return out.filter { it.arrive >= it.depart }
+    }
+
+    /** Stops to get on or off at for [p], with the walking minutes and metres between them (0 for the stop itself). */
+    private fun access(d: Data, p: Place): Map<String, Pair<Int, Int?>> {
+        val out = HashMap<String, Pair<Int, Int?>>()
+        if (p.isStop) out[p.id] = Pair(0, 0)
+        else if (p.near in d.places) {
+            val s = d.places.getValue(p.near)
+            out[p.near] = walkEstimate(p, s)?.let { Pair(it.second, it.first) } ?: Pair(NEAR_GUESS_MIN, null)
+        }
+        for (s in d.places.values) {
+            if (!s.isStop || s.id in out) continue
+            val w = walkEstimate(p, s) ?: continue
+            if (w.first <= ACCESS_M * WALK_DETOUR) out[s.id] = Pair(w.second, w.first)
+        }
+        return out
+    }
+
+    /** Stops close enough to change buses on foot, with the walking minutes (a stop to itself: 0). */
+    private fun changes(d: Data, stop: String): List<Pair<String, Int>> {
+        val a = d.places[stop] ?: return listOf(Pair(stop, 0))
+        val out = arrayListOf(Pair(stop, 0))
+        for (s in d.places.values) {
+            if (!s.isStop || s.id == stop) continue
+            val w = walkEstimate(a, s) ?: continue
+            if (w.first <= CHANGE_M * WALK_DETOUR) out.add(Pair(s.id, w.second))
+        }
+        return out
+    }
+
+    /**
+     * Ways from [from] to [to] on [date], at most one change of bus. [arriveBy] false: leave at or after [time],
+     * soonest arrival first; true: arrive by [time], latest departure first. Up to [max] journeys, plus walking
+     * the whole way when that is under [WALK_MAX_MIN] minutes (or faster than any bus).
+     */
+    fun journeys(d: Data, from: Place, to: Place, date: LocalDate, time: Int, arriveBy: Boolean, max: Int = 4): List<Journey> {
+        if (from.id == to.id) return emptyList()
+        val rides = allRides(d, date)
+        val onAt = access(d, from)
+        val offAt = access(d, to)
+        // second buses: only rides that end near the destination, by the stop you get on
+        val byBoard = rides.filter { it.route.stops[it.toIdx] in offAt }.groupBy { it.route.stops[it.fromIdx] }
+        // first buses worth trying: around the asked time (keeps the search small)
+        fun near(r: Ride) = if (arriveBy) r.depart in time - 240..time else r.depart in time - 30..time + 240
+        val cand = ArrayList<Journey>()
+
+        fun walkLeg(a: Place, b: Place, start: Int, min: Int, m: Int?) = Leg.Walk(a, b, m, start, start + min)
+        // the place, then the stop by id
+        fun place(id: String) = d.places.getValue(id)
+        fun build(r1: Ride, change: Pair<String, Int>?, r2: Ride?): Journey {
+            val legs = ArrayList<Leg>()
+            val a = r1.route.stops[r1.fromIdx]
+            val (accMin, accM) = onAt.getValue(a)
+            if (a != from.id) legs.add(walkLeg(from, place(a), r1.depart - accMin, accMin, accM))
+            legs.add(Leg.Bus(r1))
+            val last = r2 ?: r1
+            if (r2 != null && change != null) {
+                val x = r1.route.stops[r1.toIdx]
+                if (change.first != x) legs.add(walkLeg(place(x), place(change.first), r1.arrive, change.second, meters(place(x), place(change.first))))
+                legs.add(Leg.Bus(r2))
+            }
+            val b = last.route.stops[last.toIdx]
+            val (egMin, egM) = offAt.getValue(b)
+            if (b != to.id) legs.add(walkLeg(place(b), to, last.arrive, egMin, egM))
+            return Journey(legs)
+        }
+
+        val directs = rides.filter { it.route.stops[it.fromIdx] in onAt && it.route.stops[it.toIdx] in offAt }
+        for (r in directs) cand.add(build(r, null, null))
+        // one change: first bus to x, walk to x' (or stay at x), second bus on to the destination
+        for (r1 in rides) {
+            if (r1.route.stops[r1.fromIdx] !in onAt || !near(r1)) continue
+            val x = r1.route.stops[r1.toIdx]
+            if (x in offAt) continue   // that is a direct journey
+            for ((x2, w) in changes(d, x)) {
+                val ready = r1.arrive + w + CHANGE_MIN
+                // the first second bus you can make (any route but the same one, which would just be staying on)
+                val r2 = byBoard[x2].orEmpty()
+                    .filter { it.depart >= ready && it.route.id != r1.route.id }
+                    .minByOrNull { it.arrive } ?: continue
+                cand.add(build(r1, Pair(x2, w), r2))
+            }
+        }
+        val inTime = cand.filter { if (arriveBy) it.arrive <= time else it.depart >= time }
+        // drop journeys another one beats: leaves no earlier and arrives no later, with no more buses
+        val kept = inTime.filter { j ->
+            inTime.none { o -> o !== j && o.depart >= j.depart && o.arrive <= j.arrive && o.buses.size <= j.buses.size &&
+                (o.depart > j.depart || o.arrive < j.arrive || o.buses.size < j.buses.size) }
+        }.distinctBy { it.key }
+            // the same bus trips, boarded or left at a neighbouring stop: keep the one with the least walking
+            .sortedWith(compareBy<Journey> { j -> j.legs.filterIsInstance<Leg.Walk>().sumOf { it.end - it.start } }.thenBy { it.arrive })
+            .distinctBy { j -> j.buses.joinToString("|") { it.ride.trip } }
+        var out = if (arriveBy) kept.sortedWith(compareByDescending<Journey> { it.depart }.thenBy { it.arrive })
+            else kept.sortedWith(compareBy<Journey> { it.arrive }.thenByDescending { it.depart })
+        out = out.take(max)
+
+        val w = walkEstimate(from, to)
+        if (w != null) {
+            val start = if (arriveBy) time - w.second else time
+            val walk = Journey(listOf(Leg.Walk(from, to, w.first, start, start + w.second)))
+            val beatsBuses = out.isEmpty() || (if (arriveBy) walk.depart >= out.first().depart else walk.arrive <= out.first().arrive)
+            if (w.second <= WALK_MAX_MIN || beatsBuses) out = if (beatsBuses) listOf(walk) + out else out + walk
+        }
+        return out
     }
 
     /** Google Maps walking directions: by coordinates when both places have them, else by name. */

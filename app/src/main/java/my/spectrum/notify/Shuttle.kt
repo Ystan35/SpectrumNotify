@@ -70,6 +70,17 @@ object Shuttle {
     fun leadMin(ctx: Context): Int = prefs(ctx).getInt("lead", 10)
     fun setLeadMin(ctx: Context, m: Int) = prefs(ctx).edit().putInt("lead", m).apply()
 
+    /** Your last trips planned on the Shuttle screen, newest first, as (from id, to id). */
+    fun recentTrips(ctx: Context): List<Pair<String, String>> =
+        (prefs(ctx).getString("recent", "") ?: "").split(";").mapNotNull { t ->
+            t.split(">").takeIf { it.size == 2 && it[0].isNotEmpty() && it[1].isNotEmpty() }?.let { Pair(it[0], it[1]) }
+        }
+
+    fun addRecentTrip(ctx: Context, from: String, to: String) {
+        val list = (listOf(Pair(from, to)) + recentTrips(ctx).filter { it != Pair(from, to) }).take(3)
+        prefs(ctx).edit().putString("recent", list.joinToString(";") { "${it.first}>${it.second}" }).apply()
+    }
+
     /** The place a course's classes are at: your choice in the class editor, else the guess from its code. */
     fun placeFor(ctx: Context, course: String): ShuttleModel.Place? {
         val d = data(ctx)
