@@ -169,38 +169,15 @@ object MonthGridView {
                 })
             }
             val inTeaching = AcademicCalendar.inTeaching(activity, date)
-            val classList = if (inTeaching) Timetable.on(Timetable.all(activity), date) else emptyList()
+            val classList = if (inTeaching) Timetable.on(Timetable.all(activity, AcademicCalendar.labelFor(activity, date)), date) else emptyList()
             val events = eventsFor(activity, date)
-            val colours = Timetable.colours(activity, classList.map { it.course }.toSet())
 
-            if (classList.isNotEmpty()) {
-                sectionLabel("Classes")
-                for (sl in classList) {
-                    val codeUpper = sl.course.uppercase(Locale.ROOT)
-                    val fullName = Courses.all(activity).firstOrNull { it.code.uppercase(Locale.ROOT) == codeUpper }?.name
-                        ?: Catalog.load(activity)[codeUpper]?.name ?: ""
-                    // place: user-set location first, else the slot's own note/room
-                    val place = Timetable.locationOf(activity, sl.course).removePrefix("room:").removePrefix("online:")
-                        .let { if (it.startsWith("http")) "Online" else it }
-                        .ifEmpty { sl.note }
-                        .ifEmpty { "Room not set" }
-                    itemRow(
-                        Shorts.display(activity, sl.course) + (if (sl.title.isNotEmpty()) " · " + sl.title else ""),
-                        EventsUi.fmtMin(sl.start) + "–" + EventsUi.fmtMin(sl.end) +
-                            (if (fullName.isNotEmpty()) " · " + fullName else "") + " · " + place,
-                        colours[sl.course] ?: 0,
-                        onClass?.let { cb -> { cb(sl) } },
-                    )
-                }
-            }
-            if (events.isNotEmpty()) {
-                sectionLabel("Events")
-                for (ev in events.sortedBy { it.startTime }) {
-                    itemRow(
-                        ev.title,
-                        EventsUi.fmtMin(ev.startTime) + "–" + EventsUi.fmtMin(ev.endTime) + (if (ev.note.isNotEmpty()) " · " + ev.note else ""),
-                    ) { EventsUi.editor(activity, ev, onChanged) }
-                }
+            if (classList.isNotEmpty() || events.isNotEmpty()) {
+                body.addView(DayTimeline.build(
+                    activity, date, classList, events,
+                    onEvent = { ev -> dialog.dismiss(); EventsUi.editor(activity, ev, onChanged) },
+                    onClass = onClass?.let { cb -> { sl: Slot -> dialog.dismiss(); cb(sl) } },
+                ), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
             }
             if (classList.isEmpty() && events.isEmpty()) {
                 body.addView(TextView(activity).apply {
@@ -258,10 +235,12 @@ object MonthGridView {
 
         // what each day holds: class days (Mon-Sun during teaching weeks), event days,
         // academic markers. Days with NOTHING stay completely plain — no color at all.
-        val slots = Timetable.all(activity)
-        // weekdays with a weekly class; one-offs mark only their own date
-        val classDays = slots.filter { it.date == null }.map { it.day }.toSet()
-        val oneOffDates = slots.mapNotNull { it.date }.toSet()
+        // each date shows the classes of ITS semester (different subjects each semester); one list per semester
+        val bySem = HashMap<String?, List<Slot>>()
+        fun classesOn(date: LocalDate): List<Slot> {
+            val sem = AcademicCalendar.labelFor(activity, date)
+            return Timetable.on(bySem.getOrPut(sem) { Timetable.all(activity, sem) }, date)
+        }
 
         val holder = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         box.addView(holder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -350,7 +329,7 @@ object MonthGridView {
                 val isToday = date == LocalDate.now()
                 val hasEvents = eventsOn[date]?.isNotEmpty() == true
                 // class days only count when the day is inside teaching weeks (holiday mode)
-                val hasClasses = (date.dayOfWeek.value in classDays || date in oneOffDates) && AcademicCalendar.inTeaching(activity, date)
+                val hasClasses = AcademicCalendar.inTeaching(activity, date) && classesOn(date).isNotEmpty()
                 val hasAnything = hasEvents || hasClasses
 
                 val cellBox = LinearLayout(activity).apply {
@@ -405,7 +384,7 @@ object MonthGridView {
 
             // ---- selected-day details
             dayDetails.removeAllViews()
-            renderDay(activity, dayDetails, selected, eventsOn[selected] ?: emptyList(), onChanged) { redraw() }
+            renderDay(activity, dayDetails, selected, eventsOn[selected] ?: emptyList(), onChanged, onClass) { redraw() }
             holder.addView(dayDetails, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         redraw()
@@ -425,48 +404,29 @@ object MonthGridView {
         date: LocalDate,
         events: List<Events.Event>,
         onChanged: () -> Unit,
+        onClass: ((Slot) -> Unit)?,
         redraw: () -> Unit,
     ) {
         val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
-        box.label(EventsUi.fmtDate(date) + " · " + date.format(DateTimeFormatter.ofPattern("MMMM yyyy")), 15f, Ui.TEXT, 18)
+        // "Thu 7 Jan" already names the month; the year only when it is not this year
+        box.label(EventsUi.fmtDate(date) + (if (date.year != LocalDate.now().year) " ${date.year}" else ""), 15f, Ui.TEXT, 18)
             .setTypeface(null, Typeface.BOLD)
 
         AcademicCalendar.describe(activity, date)?.let {
             box.label(it, 13f, Ui.ORANGE, 6).setTypeface(null, Typeface.BOLD)
         }
 
-        // classes: only inside teaching weeks (holiday mode)
+        // classes (only inside teaching weeks: holiday mode) and your events on one timeline
         val inTeaching = AcademicCalendar.inTeaching(activity, date)
-        if (inTeaching) {
-            val dow = date.dayOfWeek.value
-            val slots = Timetable.on(Timetable.all(activity), date)
-            if (slots.isNotEmpty()) {
-                box.label("Classes", 13f, Ui.TEXT, 10).setTypeface(null, Typeface.BOLD)
-                for (s in slots.sortedBy { it.start }) {
-                    box.label("${Timetable.fmtMin(s.start)}–${Timetable.fmtMin(s.end)} · ${Shorts.display(activity, s.course)}${if (s.title.isNotEmpty()) " (${s.title})" else ""}", 13f, Ui.DIM, 4)
-                }
-            }
-        }
-
-        if (events.isNotEmpty()) {
-            box.label("Events", 13f, Ui.TEXT, 10).setTypeface(null, Typeface.BOLD)
-            for (e in events.sortedBy { it.startTime }) {
-                val card = LinearLayout(activity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(12), dp(10), dp(12), dp(12))
-                    background = roundBg(Ui.BAR, Ui.BORDER, activity, 12)
-                    isClickable = true
-                    setOnClickListener { EventsUi.editor(activity, e, { onChanged(); redraw() }) }
-                }
-                card.addView(TextView(activity).apply {
-                    text = "${fmtMin(e.startTime)}–${fmtMin(e.endTime)} · ${e.title}"
-                    textSize = 13f; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
-                })
-                if (e.note.isNotEmpty()) card.addView(TextView(activity).apply {
-                    text = e.note; textSize = 12f; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0); maxLines = 2
-                })
-                box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
-            }
+        val slots = if (inTeaching) Timetable.on(Timetable.all(activity, AcademicCalendar.labelFor(activity, date)), date) else emptyList()
+        if (slots.isNotEmpty() || events.isNotEmpty()) {
+            box.addView(DayTimeline.build(
+                activity, date, slots, events,
+                onEvent = { e -> EventsUi.editor(activity, e, { onChanged(); redraw() }) },
+                onClass = onClass,
+            ), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        } else if (inTeaching) {
+            box.label("Nothing on this day.", 13f, Ui.DIM, 6)
         }
 
         if (!inTeaching && events.isEmpty()) {

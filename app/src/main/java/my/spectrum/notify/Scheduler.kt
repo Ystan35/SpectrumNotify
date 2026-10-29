@@ -125,12 +125,18 @@ object Scheduler {
         val codes = LinkedHashSet<Int>()
         for (e in cal) {
             if (!classesActive || !Checker.isAttEvent(e)) continue
-            val start = e.optLong("timestart")
+            val start = Checker.classTimes(ctx, e).first   // honours your Time Override
             val at = start - 590  // fires just inside the 10-minute window
             if (at <= now || at > now + 3 * 86400) continue
             val code = (e.optLong("id") * 31 + start).hashCode()
             setAlarm(ctx, at * 1000, code)
             codes.add(code)
+            // second alarm at the start itself: "sign your attendance" (Checker.checkAttendanceStart)
+            if (p.attStartAlert && start + 20 > now) {
+                val code2 = code xor 0x2A2A2A
+                setAlarm(ctx, (start + 20) * 1000, code2)
+                codes.add(code2)
+            }
         }
         parseHm(p.summaryTime)?.let { setAlarm(ctx, nextDaily(it), 1); codes.add(1) }
         parseHm(p.afternoonTime)?.let { setAlarm(ctx, nextDaily(it), 2); codes.add(2) }

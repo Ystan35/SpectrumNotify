@@ -19,7 +19,7 @@ import java.util.Locale
  *  - Class learned from Spectrum: the time comes from Spectrum so it is shown read-only;
  *    you can change its type and the course colour, or remove it from your timetable.
  */
-class TimetableEditActivity : Activity() {
+class TimetableEditActivity : BaseActivity() {
     companion object {
         const val EXTRA_GRP = "grp"   // id of one of your own entries
         const val EXTRA_KEY = "key"   // key of a class learned from Spectrum
@@ -39,7 +39,7 @@ class TimetableEditActivity : Activity() {
         val grp = intent.getStringExtra(EXTRA_GRP) ?: ""
         val key = intent.getStringExtra(EXTRA_KEY) ?: ""
         val own = if (grp.isNotEmpty()) Timetable.manualGroup(this, grp) else emptyList()
-        val learned = if (key.isNotEmpty()) Timetable.all(this).firstOrNull { it.key == key } else null
+        val learned = if (key.isNotEmpty()) Timetable.all(this, null).firstOrNull { it.key == key } else null
         if ((grp.isNotEmpty() && own.isEmpty()) || (key.isNotEmpty() && learned == null)) {
             finish()
             return
@@ -204,7 +204,7 @@ class TimetableEditActivity : Activity() {
         }
         if (editing) {
             dangerBtn(col, "Delete this class") {
-                android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                android.app.AlertDialog.Builder(this, Ui.dialogTheme)
                     .setTitle("Delete this class?")
                     .setMessage("It will be removed from your timetable. You can add it again, but you will have to re-enter the times.")
                     .setPositiveButton("Delete") { _, _ ->
@@ -298,6 +298,7 @@ class TimetableEditActivity : Activity() {
             if (attLinkField.text.toString().trim() != Timetable.userAttLinkRaw(this, s.course)) {
                 Timetable.setAttendanceLink(this, s.course, attLinkField.text.toString().trim())
             }
+            Scheduler.scheduleAll(this)   // the class alarm moves with the new time right away
             finish()
         }
         if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course).isNotEmpty() ||
@@ -307,14 +308,18 @@ class TimetableEditActivity : Activity() {
                 Timetable.clearTimeOverride(this, s.key)
                 Timetable.setMeetingLink(this, s.course, "")
                 Timetable.setAttendanceLink(this, s.course, "")
+                // a link pasted in the Location dialog (pre-0.25.1) would otherwise come back as the override
+                if (Timetable.locationOf(this, s.course).startsWith("online:")) Timetable.setLocation(this, s.course, "online:")
+                Scheduler.scheduleAll(this)
                 finish()
             }
         }
         dangerBtn(col, "Remove from my timetable") {
             Timetable.hide(this, s.key)
+            Timetable.justHidden = s.key   // the Timetable screen offers Undo when it comes back
             finish()
         }
-        col.label("Removed classes can be brought back from the Timetable screen.", 12f, Ui.DIM, 6)
+        col.label("You can undo this right after, or bring removed classes back from the Timetable screen.", 12f, Ui.DIM, 6)
     }
 
     // ------------------------------------------------------------ helpers

@@ -8,7 +8,7 @@ import android.widget.Switch
 import android.widget.Toast
 
 /** Choose which pages (sections) of one course send notifications. New pages are on by default. */
-class SectionsActivity : Activity() {
+class SectionsActivity : BaseActivity() {
     companion object {
         const val EXTRA_ID = "cid"
         const val EXTRA_NAME = "name"

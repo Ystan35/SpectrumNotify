@@ -18,7 +18,7 @@ import java.util.Locale
  * Pick a course from the UM timetable, then choose your Lecture Occ and Tutorial Occ from drop-down lists.
  * Saving adds the chosen slots to the timetable and sets "My group" so other groups' posts are hidden.
  */
-class CatalogActivity : Activity() {
+class CatalogActivity : BaseActivity() {
     private lateinit var holder: LinearLayout
     private lateinit var status: TextView
 
