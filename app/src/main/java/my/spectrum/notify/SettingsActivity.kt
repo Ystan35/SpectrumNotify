@@ -30,6 +30,8 @@ class SettingsActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // opened from an "Online again / Keep in person" notification button
+        AppLink.handle(this, intent)
         p = Prefs(this)
         val col = screen("Settings", navTo = SettingsActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
         var target: LinearLayout = col   // the open-able body of the current section
@@ -273,6 +275,12 @@ class SettingsActivity : BaseActivity() {
             "Format: COURSE:occN, comma separated. Write off to disable the filter.",
             p.myGroups, "WIX1003:occ2, WIX1003:t3",
         )
+
+        target = accordion(col, "ONLINE OR IN PERSON",
+            "When online classes end (e.g. the air quality is fine again), mark courses as in person: Join class and meeting links " +
+                "go away for them and the room is shown. Attendance reminders stay.",
+            key = "inperson", icon = R.drawable.ic_cat_class, contents = listOf("In person", "Online again"))
+        ClassModeEditor.render(this, target)
 
         target = accordion(col, "DEADLINES", icon = R.drawable.ic_cat_deadline,
             contents = listOf("Remind me before a deadline"))

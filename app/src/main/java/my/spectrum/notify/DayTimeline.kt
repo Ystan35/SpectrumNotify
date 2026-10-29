@@ -55,7 +55,7 @@ object DayTimeline {
      * Spectrum's full names start with the code and are often in capitals ("WIX1003 COMPUTER SYSTEMS AND
      * ORGANIZATION"): drop the code and write the rest in title case ("Computer Systems and Organization").
      */
-    private fun courseName(code: String, raw: String): String {
+    fun courseName(code: String, raw: String): String {
         var n = raw.trim().removePrefix(code).removePrefix(code.uppercase(Locale.ROOT)).trim().trimStart('-', '·', ':').trim()
         if (n.isNotEmpty() && n == n.uppercase(Locale.ROOT)) {
             val small = setOf("and", "of", "the", "in", "for", "to", "a", "an", "on", "with", "dan", "di")
@@ -83,6 +83,7 @@ object DayTimeline {
         val loc = Timetable.locationOf(ctx, s.course)
         return when {
             loc.startsWith("room:") && loc.length > 5 -> loc.removePrefix("room:")
+            Timetable.inPerson(ctx, s.course) -> s.note.ifEmpty { "In person" }
             loc.startsWith("online:") -> "Online"
             s.note.isNotEmpty() -> s.note
             meeting.isNotEmpty() -> "Online"

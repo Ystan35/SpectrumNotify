@@ -221,7 +221,7 @@ object Checker {
         val p = Prefs(ctx)
         val id = if (courseId != 0L) courseId else courseIdForCode(ctx, code)
         val att = Timetable.userAttLinkRaw(ctx, code).ifEmpty { attendanceUrl(ctx, id, preferLec) }
-        val meeting = Timetable.meetingLinkOf(ctx, code).ifEmpty {
+        val meeting = if (Timetable.inPerson(ctx, code)) "" else Timetable.meetingLinkOf(ctx, code).ifEmpty {
             if (id == 0L) "" else {
                 val ls = linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
                     .get(id.toString()) ?: emptyList()
@@ -348,6 +348,8 @@ object Checker {
 
     private fun linksForEvent(ctx: Context, e: JSONObject, cal: List<JSONObject>, links: Map<String, List<Link>>): List<Pair<String, String>> {
         val cid = courseId(e)
+        // back in person: no meeting links for this course anywhere (hero, alerts, widget)
+        if (Timetable.inPerson(ctx, Timetable.courseCode(e.optJSONObject("course")))) return emptyList()
         var evTokens = groupTokens(e.str("name"))
         if (evTokens.isEmpty()) evTokens = courseGroupTokens(cid, cal)
         val cands = ArrayList<Cand>()
@@ -546,6 +548,7 @@ object Checker {
                 st.j.put("occ_courses", cm)
             }
             linksByCourse["$cid"] = result.second
+            askOnlineAgain(ctx, st, Timetable.courseCode(c), prevLinks["$cid"], result.second)
             val known = st.j.has(ckey)
             val old = st.strings(ckey)
             val newKeys = snap.keys.filter { it !in old }
@@ -570,6 +573,24 @@ object Checker {
             st.putStrings(ckey, snap.keys)
         }
         st.j.put("links", linksToJson(linksByCourse))
+    }
+
+    /**
+     * A course set to in person posted a meeting link it did not have before: ask once per link whether its
+     * classes are online again (Online again / Keep in person / the link).
+     */
+    private fun askOnlineAgain(ctx: Context, st: State, code: String, before: List<Link>?, now: List<Link>) {
+        if (before == null || !Timetable.inPerson(ctx, code)) return
+        val known = before.map { it.url }.toSet()
+        val fresh = now.firstOrNull { linkIsMeeting(it.url) && it.url !in known } ?: return
+        val asked = st.strings("online_asked")
+        val key = "$code|${fresh.url}"
+        if (key in asked) return
+        asked.add(key)
+        st.putStrings("online_asked", asked.toList().takeLast(100))
+        Notifier.push(ctx, "${Shorts.display(ctx, code)} posted a meeting link",
+            "You set ${Shorts.display(ctx, code)} to in person. Is it online again?\n${fresh.label}\n${fresh.url}", true,
+            listOf(Pair("Online again", AppLink.online(code)), Pair("Keep in person", AppLink.keepInPerson(code)), Pair("Open link", fresh.url)))
     }
 
     // ------------------------------------------------------------ moodle notifications
@@ -753,6 +774,22 @@ object Checker {
             val mins = maxOf(0L, Math.round((start - now) / 60.0))
             val whenS = fmtTime(start)
             val note = if (isManual(e, p)) "\nAttendance for this class is via Teams record." else ""
+            val code = Timetable.courseCode(c)
+            if (Timetable.inPerson(ctx, code)) {
+                // in person: a plain reminder with the room, and the attendance page when there is one
+                if (kok in sent) continue
+                val room = Timetable.locationOf(ctx, code).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
+                val cid = courseId(e)
+                val att = attendanceUrl(ctx, cid)
+                val buttons = ArrayList<Pair<String, String>>()
+                if (att.isNotEmpty() && !isManual(e, p)) buttons.add(Pair("Attendance", att))
+                if (cid != 0L) buttons.add(Pair("Course page", "${p.site}/course/view.php?id=$cid"))
+                Notifier.push(ctx, "Class in ~$mins min: $cname · in person",
+                    "$name\nStarts $whenS" + (if (room.isNotEmpty()) " · $room" else "") + ".$note", true, buttons)
+                sent.add(kok)
+                sent.add(kno)
+                continue
+            }
             val ls = linksForEvent(ctx, e, cal, links)
             if (ls.isNotEmpty()) {
                 val body = "$name\nStarts $whenS.$note\n\nOnline link:" +

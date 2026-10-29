@@ -2,6 +2,10 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.29.0 (versionCode 91)
+- Online or in person (Settings → Online or in person, or Timetable → "Classes online or in person ›"): when online classes end, e.g. once the air quality is fine again, tick the courses (all ticked to start) and Mark ticked as in person. For those courses Join class and meeting links disappear from Home, the timetable, the month timeline, the widget and the alerts; the room is shown instead ("📍 In person · BK2"), and the 10-minute alert says "in person" with the Attendance button. The class-start attendance reminder stays. Mark ticked as online brings the links back; both offer Undo.
+- If a course set to in person posts a new meeting link on Spectrum, you get one notification per link: "WIX1003 posted a meeting link. Is it online again?" with Online again / Keep in person / Open link.
+
 ## 0.28.1 (versionCode 90)
 - Shuttle screen in two tabs: **Navigate** (plan a trip, with its map) and **Explore** (next buses from any stop, every route's stops and times, with the route on its own map). Home's bus line opens Explore on that route.
 - Trip planner: choose the day (Today, Tomorrow, or any day from the calendar), so tonight you can see which bus to take tomorrow morning. Another day starts at "Leave at 8:00"; Leave now goes back to today. It warns when the UM shuttle does not run that day (weekends, outside teaching weeks, Friday prayer break).

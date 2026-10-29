@@ -153,6 +153,7 @@ class NotificationsActivity : BaseActivity() {
 
     private fun openUrl(url: String) {
         if (url.isEmpty()) return
+        AppLink.intent(this, url)?.let { startActivity(it); return }
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         } catch (e: Exception) {

@@ -802,8 +802,12 @@ class MainActivity : BaseActivity() {
                 }
             }
             if (c.link.isEmpty() || c.manual) {
+                val inPerson = Timetable.inPerson(this, c.code.ifEmpty { c.course })
+                val room = Timetable.locationOf(this, c.code.ifEmpty { c.course }).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
                 card.addView(tv(
-                    if (c.manual) "Attendance for this course is by Teams recording." else "No online link yet. It may be in person, or not posted. The app keeps checking.",
+                    if (c.manual) "Attendance for this course is by Teams recording."
+                    else if (inPerson) "📍 In person" + (if (room.isNotEmpty()) " · $room" else "") + ". Online links are ignored for this course."
+                    else "No online link yet. It may be in person, or not posted. The app keeps checking.",
                     13f, soft,
                 ).apply { setPadding(0, dp(10), 0, 0) })
             }
