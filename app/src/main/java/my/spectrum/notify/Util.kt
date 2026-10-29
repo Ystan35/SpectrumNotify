@@ -24,7 +24,9 @@ fun clean(text: String?, n: Int = 60): String {
     return if (t.length <= n) t else t.substring(0, n - 1) + "…"
 }
 
-fun zone(): ZoneId = ZoneId.systemDefault()
+/** Every UM time is Malaysian time, whatever zone the phone is set to (Spectrum instants and the UM timetable agree). */
+fun zone(): ZoneId = MYT
+private val MYT: ZoneId = ZoneId.of("Asia/Kuala_Lumpur")
 fun localDt(ts: Long): ZonedDateTime = Instant.ofEpochSecond(ts).atZone(zone())
 fun fmtTime(ts: Long): String =
     localDt(ts).format(DateTimeFormatter.ofPattern("EEE dd MMM, HH:mm", Locale.ENGLISH))

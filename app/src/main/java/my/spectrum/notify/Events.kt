@@ -109,9 +109,9 @@ object Events {
             val t = o.second
             d.isAfter(today) || (d == today && t.isAfter(now.toLocalTime().minusMinutes(1)))
         } ?: return null
-        return e.date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().epochSecond.let {
+        return e.date.atStartOfDay(zone()).toInstant().epochSecond.let {
             // rebuild from occurrence date, not stored date (weekly repeats differ)
-            first.first.atTime(first.second).atZone(java.time.ZoneId.systemDefault()).toInstant().epochSecond
+            first.first.atTime(first.second).atZone(zone()).toInstant().epochSecond
         }
     }
 

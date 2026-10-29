@@ -70,37 +70,8 @@ class NotificationsActivity : BaseActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(2), dp(4), 0, dp(4))
         }
-        recHead.addView(tv("Your notifications", 14f, Ui.DIM), lp(0, WRAP, 1f))
-        // debug toggle: shows/hides system lines like "Check OK" and skipped-item notes
-        val dbg = TextView(this).apply {
-            text = if (p.debugLog) "🐞 On" else "🐞 Off"
-            textSize = 13f
-            setTextColor(if (p.debugLog) Ui.CYAN else Ui.DIM)
-            minHeight = dp(44)
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(8), 0)
-            isClickable = true
-            background = rippleBg(Ui.BAR, 0, this@NotificationsActivity, 10)
-        }
-        dbg.setOnClickListener {
-            p.debugLog = !p.debugLog
-            dbg.text = if (p.debugLog) "🐞 On" else "🐞 Off"
-            dbg.setTextColor(if (p.debugLog) Ui.CYAN else Ui.DIM)
-            if (!p.debugLog) {
-                // purge already-saved debug lines so Off is immediate, not just for new ones
-                NotifyLog.purgeDebug(this)
-                logStamp = -1L
-            }
-            recSig = ""
-            render()
-        }
-        recHead.addView(dbg)
-        recHead.addView(tv("Clear all", 14f, Ui.CYAN, true).apply {
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            minHeight = dp(44)
-            setPadding(dp(12), 0, dp(2), 0)
-            setOnClickListener { confirmClear() }
-        })
+        recHead.addView(tv("Your notifications", Type.BODY, Ui.DIM), lp(0, WRAP, 1f))
+        recHead.addView(button("Clear all", Emphasis.TERTIARY) { confirmClear() })
         content.addView(recHead)
         chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         content.addView(HorizontalScrollView(this).apply {
@@ -141,13 +112,6 @@ class NotificationsActivity : BaseActivity() {
     }
 
     // ------------------------------------------------------------ small helpers
-    private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
-        TextView(this).apply {
-            this.text = text
-            textSize = size * Ui.fontScale
-            setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-        }
 
     private fun lp(w: Int, h: Int, weight: Float = 0f) = LinearLayout.LayoutParams(w, h, weight)
 
@@ -161,7 +125,6 @@ class NotificationsActivity : BaseActivity() {
         }
     }
 
-    private fun onPrimary(): Int = if (Ui.dark) Ui.BG else 0xFFFFFFFF.toInt()
 
     private fun yIn(v: View, ancestor: View): Int {
         var y = 0
@@ -175,7 +138,7 @@ class NotificationsActivity : BaseActivity() {
 
     private fun confirmClear() {
         if (entries.isEmpty()) return
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Clear all notifications?")
             .setMessage("This only clears the list in the app. Nothing changes on Spectrum.")
             .setPositiveButton("Clear") { _, _ ->
@@ -230,12 +193,12 @@ class NotificationsActivity : BaseActivity() {
             val sel = f.first == filter
             val label = if (counts[i] > 0 && f.first.isNotEmpty()) "${f.second}  ${counts[i]}" else f.second
             chipRow.addView(
-                tv(label, 14f, if (sel) onPrimary() else Ui.TEXT, sel).apply {
+                tv(label, Type.BODY, if (sel) onAccent() else Ui.TEXT, sel).apply {
                     gravity = Gravity.CENTER
-                    minHeight = dp(40)
+                    minHeight = dp(Ui.touch(48))
                     setPadding(dp(16), 0, dp(16), 0)
                     background = GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
+                        cornerRadius = dp(Radius.PILL).toFloat()
                         if (sel) setColor(Ui.CYAN) else { setColor(Ui.BAR); setStroke(dp(1), Ui.BORDER) }
                     }
                     setOnClickListener {
@@ -269,7 +232,7 @@ class NotificationsActivity : BaseActivity() {
                 recordsBox.addView(c, lp(MATCH, WRAP).apply { bottomMargin = dp(10) })
             } else {
                 val count = if (e.n > 1) " (×${e.n})" else ""
-                recordsBox.addView(tv("${ago(NotifyLog.atOf(e))} · ${e.title}$count", 12f, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
+                recordsBox.addView(tv("${ago(NotifyLog.atOf(e))} · ${e.title}$count", Type.CAPTION, Ui.YELLOW).apply { setPadding(dp(4), dp(2), dp(4), dp(12)) })
             }
         }
         if (openTs > 0) {
@@ -291,12 +254,12 @@ class NotificationsActivity : BaseActivity() {
         }, lp(dp(44), dp(44)))
         box.addView(tv(
             if (!loggedIn) "Nothing here yet" else if (filter.isEmpty()) "You're all caught up" else "Nothing in this category",
-            17f, Ui.TEXT, true,
+            Type.TITLE, Ui.TEXT, true,
         ).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         box.addView(tv(
             if (!loggedIn) "Log in to start receiving class links, deadlines and materials."
             else "New class links, deadlines and materials will show up here.",
-            13f, Ui.DIM,
+            Type.LABEL, Ui.DIM,
         ).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         return box
     }
@@ -341,10 +304,10 @@ class NotificationsActivity : BaseActivity() {
             setPadding(dp(12), 0, dp(8), 0)
         }
         val meta = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        meta.addView(tv(Cat.label(cat), 11f, col, true).apply { letterSpacing = 0.06f })
-        meta.addView(tv("· ${ago(NotifyLog.atOf(e))}", 12f, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
+        meta.addView(tv(Cat.label(cat), Type.CAPTION, col, true).apply { letterSpacing = 0.06f })
+        meta.addView(tv("· ${ago(NotifyLog.atOf(e))}", Type.CAPTION, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
         col2.addView(meta)
-        val title = tv(e.title, 15f, Ui.TEXT, true).apply {
+        val title = tv(e.title, Type.BODY_L, Ui.TEXT, true).apply {
             ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(3), 0, 0)
         }
@@ -352,7 +315,7 @@ class NotificationsActivity : BaseActivity() {
         col2.addView(title)
         var body: TextView? = null
         if (e.body.isNotEmpty()) {
-            body = tv(e.body.take(3000), 13f, Ui.DIM).apply {
+            body = tv(e.body.take(3000), Type.LABEL, Ui.DIM).apply {
                 ellipsize = TextUtils.TruncateAt.END
                 setLinkTextColor(Ui.CYAN)
                 setPadding(0, dp(6), 0, 0)
@@ -389,7 +352,7 @@ class NotificationsActivity : BaseActivity() {
                     NotifyLog.unmarkDone(this, e.ts)
                     logStamp = -1L; recSig = ""; render()
                 } else {
-                    AlertDialog.Builder(this)
+                    AlertDialog.Builder(this, Ui.dialogTheme)
                         .setTitle("Mark as done?")
                         .setMessage("The title stays on the list with a line through it, so you can still find it. Nothing is deleted, and you can undo with \"Mark as not done\".")
                         .setPositiveButton("Mark as done") { _, _ ->
@@ -428,33 +391,16 @@ class NotificationsActivity : BaseActivity() {
         if (btns.isNotEmpty() || extraChips.isNotEmpty()) {
             val chipLine = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(12), 0, 0)
+                // lines up with the title, not the category badge (40dp badge + 12dp gap)
+                setPadding(dp(52), dp(12), 0, 0)
             }
             for ((i, b) in btns.withIndex()) {
-                val chip = tv(b.first, 13f, if (i == 0) onPrimary() else col, true).apply {
-                    gravity = Gravity.CENTER
-                    minHeight = dp(40)
-                    setPadding(dp(16), 0, dp(16), 0)
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
-                        if (i == 0) setColor(col) else { setColor(0x00000000); setStroke(dp(1), col) }
-                    }
-                    setOnClickListener { openUrl(b.second) }
-                }
+                val chip = button(b.first, if (i == 0) Emphasis.PRIMARY else Emphasis.SECONDARY, col) { openUrl(b.second) }
                 chips.add(chip)
                 chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
             }
             for (x in extraChips) {
-                val chip = tv(x.first, 13f, col, true).apply {
-                    gravity = Gravity.CENTER
-                    minHeight = dp(40)
-                    setPadding(dp(16), 0, dp(16), 0)
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
-                        setColor(0x00000000); setStroke(dp(1), col)
-                    }
-                    setOnClickListener { x.second() }
-                }
+                val chip = button(x.first, Emphasis.SECONDARY, col) { x.second() }
                 chips.add(chip)
                 chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
             }
@@ -469,7 +415,7 @@ class NotificationsActivity : BaseActivity() {
             body?.maxLines = if (open) Int.MAX_VALUE else 2
             body?.setTextColor(if (open) Ui.TEXT else Ui.DIM)
             for ((i, c) in chips.withIndex()) c.visibility = if (i == 0 || open) View.VISIBLE else View.GONE
-            card.background = roundBg(Ui.BAR, if (open) col else Ui.BORDER, this, 16)
+            card.background = roundBg(Ui.BAR, if (open) col else Ui.BORDER, this, Radius.MD)
             if (open) dot.visibility = View.GONE
         }
         fun toggle() {

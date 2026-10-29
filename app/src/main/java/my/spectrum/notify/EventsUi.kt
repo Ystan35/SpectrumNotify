@@ -22,8 +22,8 @@ import java.time.format.DateTimeFormatter
 object EventsUi {
 
     fun fmtDate(d: LocalDate): String =
-        if (d == LocalDate.now()) "Today"
-        else if (d == LocalDate.now().plusDays(1)) "Tomorrow"
+        if (d == LocalDate.now(zone())) "Today"
+        else if (d == LocalDate.now(zone()).plusDays(1)) "Tomorrow"
         else d.format(DateTimeFormatter.ofPattern("EEE d MMM"))
 
     /**
@@ -32,8 +32,8 @@ object EventsUi {
      */
     fun render(activity: Activity, box: LinearLayout, onChanged: () -> Unit) {
         val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
-        box.label("Your events", 16f, Ui.TEXT, 20).setTypeface(null, Typeface.BOLD)
-        val today = LocalDate.now()
+        box.label("Your events", Type.BODY_L, Ui.TEXT, 20).setTypeface(null, Typeface.BOLD)
+        val today = LocalDate.now(zone())
         val rows = ArrayList<Triple<Events.Event, LocalDate, Int>>() // event, occurrence date, minutes
         for (e in Events.all(activity)) {
             for ((d, t) in e.upcoming(today, 30)) {
@@ -46,25 +46,25 @@ object EventsUi {
             box.label(
                 "No events yet. Add things classes don't cover: presentations, meetings, " +
                     "study sessions, submission days — with an optional weekly repeat and reminder.",
-                13f, Ui.DIM, 6,
+                Type.LABEL, Ui.DIM, 6,
             )
         }
         for ((e, d, min) in rows.take(40)) {
             val card = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
-                background = roundBg(Ui.BAR, Ui.BORDER, activity, 14)
+                background = roundBg(Ui.BAR, Ui.BORDER, activity, Radius.MD)
                 isClickable = true
-                background = rippleBg(Ui.BAR, Ui.BORDER, activity, 14)
+                background = rippleBg(Ui.BAR, Ui.BORDER, activity, Radius.MD)
                 setOnClickListener { editor(activity, e, onChanged) }
             }
-            card.addView(tv(activity, "${fmtDate(d)} · ${fmt(min)}–${fmt(e.endTime)}", 13f, Ui.CYAN, true))
-            card.addView(tv(activity, e.title, 15f, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0) })
+            card.addView(tv(activity, "${fmtDate(d)} · ${fmt(min)}–${fmt(e.endTime)}", Type.LABEL, Ui.CYAN, true))
+            card.addView(tv(activity, e.title, Type.BODY_L, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0) })
             val meta = ArrayList<String>()
             if (e.repeat == Events.REPEAT_WEEKLY) meta.add("repeats weekly")
             if (e.reminderMin > 0) meta.add("reminds ${e.reminderMin} min before")
             if (e.note.isNotEmpty()) meta.add(e.note)
-            if (meta.isNotEmpty()) card.addView(tv(activity, meta.joinToString(" · "), 12f, Ui.DIM).apply { setPadding(0, dp(3), 0, 0); maxLines = 2 })
+            if (meta.isNotEmpty()) card.addView(tv(activity, meta.joinToString(" · "), Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(3), 0, 0); maxLines = 2 })
             box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
         box.btn("Add an event") { editor(activity, null, onChanged) }
@@ -78,17 +78,17 @@ object EventsUi {
         fun field(hintText: String, value: String, single: Boolean = true): EditText =
             EditText(activity).apply {
                 setText(value); hint = hintText
-                setTextSize(14f); setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM)
+                textSize = Type.BODY * Ui.fontScale; setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM)
                 setSingleLine(single)
-                background = roundBg(Ui.BAR, Ui.BORDER, activity, 10)
+                background = roundBg(Ui.BAR, Ui.BORDER, activity, Radius.SM)
                 setPadding(dp(10), dp(9), dp(10), dp(9))
             }
-        fun lbl(t: String) { col.label(t, 13f, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD) }
+        fun lbl(t: String) { col.label(t, Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD) }
 
         val titleF = field("e.g. Presentation, study group", existing?.title ?: "")
         lbl("Title"); col.addView(titleFieldRow(activity, titleF))
 
-        var date: LocalDate = existing?.date ?: prefillDate ?: LocalDate.now()
+        var date: LocalDate = existing?.date ?: prefillDate ?: LocalDate.now(zone())
         lateinit var dateBtn: Button
         dateBtn = col.btn(dateLabel(date)) {
             val parts = date.toString().split("-").map { it.toInt() }
@@ -131,7 +131,7 @@ object EventsUi {
             LinearLayout.LayoutParams.MATCH_PARENT,
             (activity.resources.displayMetrics.heightPixels * 0.6).toInt().coerceAtLeast(dp(200)),
         )
-        val dialog = AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_DayNight)
+        val dialog = AlertDialog.Builder(activity, Ui.dialogTheme)
             .setTitle(if (existing == null) "Add an event" else "Edit event")
             .setView(scroll)
             .setPositiveButton("Save", null)
@@ -194,8 +194,5 @@ object EventsUi {
     }
 
     private fun tv(a: Activity, t: String, size: Float, color: Int, bold: Boolean = false): TextView =
-        TextView(a).apply {
-            text = t; textSize = size * Ui.fontScale; setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-        }
+        a.tv(t, size, color, bold)
 }

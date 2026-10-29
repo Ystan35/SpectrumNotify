@@ -61,13 +61,6 @@ class ShuttleActivity : BaseActivity() {
         override fun run() { render(); handler.postDelayed(this, 60_000) }
     }
 
-    private fun tv(text: CharSequence, size: Float, color: Int, bold: Boolean = false): TextView =
-        TextView(this).apply {
-            this.text = text
-            textSize = size * Ui.fontScale
-            setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -116,7 +109,7 @@ class ShuttleActivity : BaseActivity() {
         val provider = listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER)
             .firstOrNull { try { lm.isProviderEnabled(it) } catch (_: Exception) { false } }
         if (provider == null) {
-            Toast.makeText(this, "Location is off. Turn it on in quick settings, then tap 📍 again.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Location is off. Turn it on in quick settings, then tap the location button again.", Toast.LENGTH_LONG).show()
             return
         }
         val recent = listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER)
@@ -223,12 +216,12 @@ class ShuttleActivity : BaseActivity() {
 
     /** Looks like the app's dropdowns; opens [pickPlace]. */
     private fun pickerField(text: String, title: String, onPick: (String) -> Unit): TextView =
-        tv("$text  ▾", 14f, Ui.TEXT).apply {
+        iconText(0, text, Type.BODY, Ui.TEXT, trailing = R.drawable.ic_expand_more).apply {
             setPadding(dp(12), dp(12), dp(12), dp(12))
             minHeight = dp(Ui.touch(48))
             gravity = Gravity.CENTER_VERTICAL
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            background = rippleBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, 10)
+            background = rippleBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, Radius.SM)
             isClickable = true
             contentDescription = "$title: $text. Tap to choose."
             setOnClickListener { pickPlace(title, onPick) }
@@ -252,8 +245,8 @@ class ShuttleActivity : BaseActivity() {
         val search = android.widget.EditText(this).apply {
             hint = "Search, e.g. FSKTM, KK12, library"
             setSingleLine()
-            textSize = 15f * Ui.fontScale; setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM)
-            background = roundBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, 10)
+            textSize = Type.BODY_L * Ui.fontScale; setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM)
+            background = roundBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, Radius.SM)
             setPadding(dp(12), dp(10), dp(12), dp(10))
         }
         col.addView(search, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -279,21 +272,21 @@ class ShuttleActivity : BaseActivity() {
             // "Raja Dr Nazrin Shah RC · KK12": the short names that are not in the name already
             fun row(p: ShuttleModel.Place, label: String = p.name + p.aka.filter { a -> !p.name.contains(a, true) && a.none { it == ' ' } }
                 .takeIf { it.isNotEmpty() }?.joinToString(", ", " · ").orEmpty()) {
-                list.addView(tv(label, 15f, Ui.TEXT).apply {
+                list.addView(tv(label, Type.BODY_L, Ui.TEXT).apply {
                     setPadding(dp(8), dp(12), dp(8), dp(12))
-                    background = rippleBg(Ui.BG, 0, this@ShuttleActivity, 8)
+                    background = rippleBg(Ui.BG, 0, this@ShuttleActivity, Radius.SM)
                     isClickable = true
                     setOnClickListener { dlg.dismiss(); onPick(p.id) }
                 })
             }
-            if (words.isEmpty()) d.places[home]?.let { list.label("Your home stop", 12f, Ui.CYAN, 8); row(it) }
+            if (words.isEmpty()) d.places[home]?.let { list.label("Your home stop", Type.CAPTION, Ui.CYAN, 8); row(it) }
             for (g in 0..2) {
                 val inG = hits.filter { groupOf(it) == g }
                 if (inG.isEmpty()) continue
-                list.label(heads[g], 12f, Ui.CYAN, 12).setTypeface(null, Typeface.BOLD)
+                list.label(heads[g], Type.CAPTION, Ui.CYAN, 12).setTypeface(null, Typeface.BOLD)
                 inG.forEach { row(it) }
             }
-            if (hits.isEmpty()) list.label("Nothing matches \"$q\".", 13f, Ui.DIM, 12)
+            if (hits.isEmpty()) list.label("Nothing matches \"$q\".", Type.LABEL, Ui.DIM, 12)
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(e: android.text.Editable?) = fill(e?.toString() ?: "")
@@ -308,13 +301,15 @@ class ShuttleActivity : BaseActivity() {
     private fun renderPlanner(d: ShuttleModel.Data, today: LocalDate, now: Int): ShuttleModel.Journey? {
         val box = planBox
         val lp = { LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) } }
-        box.label("Plan a trip", 13f, Ui.TEXT, 8).setTypeface(null, Typeface.BOLD)
-        box.label("From", 12f, Ui.DIM, 6)
+        box.sectionHeading("Plan a trip", 8)
+        box.label("From", Type.CAPTION, Ui.DIM, 6)
         val fromRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fromRow.addView(pickerField(placeOf(d, fromId)?.name ?: "Choose where you start", "From") { id ->
             if (id != fromId) setTrip(id, toId.takeIf { it != id } ?: "")
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        fromRow.addView(chip("📍", fromId == ME, size = 16f, padH = 10) { useMyLocation() }.apply {
+        fromRow.addView(chip("", fromId == ME, size = Type.BODY_L, padH = 12) { useMyLocation() }.apply {
+            setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_place, 0, 0, 0)
+            compoundDrawableTintList = android.content.res.ColorStateList.valueOf(if (fromId == ME) onAccent() else Ui.CYAN)
             contentDescription = "Use my location as the start"
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(6) })
         box.addView(fromRow, lp())
@@ -322,11 +317,11 @@ class ShuttleActivity : BaseActivity() {
         toRow.addView(pickerField(placeOf(d, toId)?.name ?: "Choose where to go", "To") { id ->
             if (id != toId) setTrip(fromId, id.takeIf { it != fromId } ?: "")
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        toRow.addView(chip("⇅", false, size = 16f, padH = 10) {
+        toRow.addView(chip("⇅", false, size = Type.BODY_L, padH = 10) {
             if (toId.isNotEmpty()) setTrip(toId, fromId)
         }.apply { contentDescription = "Swap from and to" },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(6) })
-        box.label("To", 12f, Ui.DIM, 8)
+        box.label("To", Type.CAPTION, Ui.DIM, 8)
         box.addView(toRow, lp())
 
         // your last trips, one tap to plan again
@@ -335,7 +330,7 @@ class ShuttleActivity : BaseActivity() {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             for ((a, b) in recent) {
                 fun short(id: String) = place(d, id).substringBefore(" (").let { if (it.length > 16) it.take(15) + "…" else it }
-                row.addView(chip("${short(a)} → ${short(b)}", false, size = 12f, padH = 10) { setTrip(a, b) }.apply {
+                row.addView(chip("${short(a)} → ${short(b)}", false, size = Type.CAPTION, padH = 10) { setTrip(a, b) }.apply {
                     contentDescription = "Plan again: ${place(d, a)} to ${place(d, b)}"
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(6) })
             }
@@ -375,7 +370,7 @@ class ShuttleActivity : BaseActivity() {
         val from = placeOf(d, fromId)
         val to = placeOf(d, toId)
         if (from == null || to == null) {
-            box.label("Pick where you want to go, or tap a dot on the map.", 12f, Ui.DIM, 8)
+            box.label("Pick where you want to go, or tap a dot on the map.", Type.CAPTION, Ui.DIM, 8)
             return null
         }
         val time = if (mode == 0) now else atMin
@@ -383,44 +378,44 @@ class ShuttleActivity : BaseActivity() {
         // a day the UM shuttle does not run, or outside teaching weeks: say so before the trips
         val umRuns = d.routes.any { !it.frequent && ShuttleModel.runs(it, day).isNotEmpty() }
         when {
-            !umRuns -> box.label("No UM shuttle $dayWord (it runs Monday to Friday). Rapid KL buses still run.", 12f, Ui.ORANGE, 8)
-            !AcademicCalendar.inTeaching(this, day) -> box.label("${dayWord.replaceFirstChar { it.uppercase() }} is outside teaching weeks: the UM shuttle may not run.", 12f, Ui.ORANGE, 8)
-            day.dayOfWeek == DayOfWeek.FRIDAY -> box.label("Friday: no UM shuttle 12:30 pm – 2:30 pm.", 12f, Ui.DIM, 8)
+            !umRuns -> box.label("No UM shuttle $dayWord (it runs Monday to Friday). Rapid KL buses still run.", Type.CAPTION, Ui.ORANGE, 8)
+            !AcademicCalendar.inTeaching(this, day) -> box.label("${dayWord.replaceFirstChar { it.uppercase() }} is outside teaching weeks: the UM shuttle may not run.", Type.CAPTION, Ui.ORANGE, 8)
+            day.dayOfWeek == DayOfWeek.FRIDAY -> box.label("Friday: no UM shuttle 12:30 pm – 2:30 pm.", Type.CAPTION, Ui.DIM, 8)
         }
         val list = ShuttleModel.journeys(d, from, to, day, time, mode == 2, max = 3)
         if (list.isEmpty()) {
-            box.label(if (mode == 2) "No bus gets there by ${ShuttleModel.fmt(time)} $dayWord." else "No more buses for this trip $dayWord.", 13f, Ui.ORANGE, 8)
+            box.label(if (mode == 2) "No bus gets there by ${ShuttleModel.fmt(time)} $dayWord." else "No more buses for this trip $dayWord.", Type.LABEL, Ui.ORANGE, 8)
             return null
         }
-        if (day != today) box.label("Trips for ${day.format(dayFmt)}:", 12f, Ui.CYAN, 8).setTypeface(null, Typeface.BOLD)
+        if (day != today) box.label("Trips for ${day.format(dayFmt)}:", Type.CAPTION, Ui.CYAN, 8).setTypeface(null, Typeface.BOLD)
         if (chosenJ >= list.size) chosenJ = 0
         list.forEachIndexed { i, j ->
             val on = i == chosenJ
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
-                background = rippleBg(if (on) Ui.tint(Ui.CYAN, 0x22) else Ui.BAR, if (on) Ui.CYAN else Ui.BORDER, this@ShuttleActivity, 12)
+                background = rippleBg(if (on) Ui.tint(Ui.CYAN, 0x22) else Ui.BAR, if (on) Ui.CYAN else Ui.BORDER, this@ShuttleActivity, Radius.MD)
                 isClickable = true
                 setOnClickListener { chosenJ = i; render() }
             }
             val mins = j.arrive - j.depart
             val kind = when (j.buses.size) { 0 -> "walk"; 1 -> "direct"; else -> "${j.buses.size - 1} change" }
             val head = "${ShuttleModel.fmt(j.depart)} → ${ShuttleModel.fmt(j.arrive)}  ·  $mins min  ·  $kind"
-            card.addView(tv(head, 15f, Ui.TEXT, true))
+            card.addView(tv(head, Type.BODY_L, Ui.TEXT, true))
             // roughly how long until the first bus comes, and until you have to set off (within the next day)
             val waitLine = waitText(j, java.time.temporal.ChronoUnit.DAYS.between(today, day) * 24 * 60 - now)
-            if (waitLine.isNotEmpty()) card.addView(tv(waitLine, 13f, Ui.CYAN, true).apply { setPadding(0, dp(4), 0, 0) })
+            if (waitLine.isNotEmpty()) card.addView(tv(waitLine, Type.LABEL, Ui.CYAN, true).apply { setPadding(0, dp(4), 0, 0) })
             // the chosen journey step by step; the others in one line ("BA 14:09 → Rapid T789")
-            if (on) for (leg in j.legs) card.addView(tv(legText(d, leg), 13f, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
+            if (on) for (leg in j.legs) card.addView(tv(legText(d, leg), Type.LABEL, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
             else card.addView(tv(if (j.walkOnly) "🚶 Walk all the way" else j.buses.joinToString(" → ") { b ->
                 "🚌 " + b.ride.route.label.removePrefix("Route ") + if (b.ride.route.frequent) "" else " " + ShuttleModel.fmt(b.ride.depart)
-            } + " · tap for the steps", 13f, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
-            if (on && j.walkOnly) card.addView(chip("Walking route in Maps", false, size = 13f, padH = 12) { open(ShuttleModel.mapsWalkUrl(from, to)) },
+            } + " · tap for the steps", Type.LABEL, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
+            if (on && j.walkOnly) card.addView(chip("Walking route in Maps", false, size = Type.LABEL, padH = 12) { open(ShuttleModel.mapsWalkUrl(from, to)) },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
             card.contentDescription = head + ". " + waitLine.removePrefix("⏱ ").let { if (it.isEmpty()) "" else "$it. " } + j.legs.joinToString(". ") { legText(d, it).drop(2) } + if (on) ". Shown on the map." else ". Tap to show it on the map."
             box.addView(card, lp())
         }
-        if (list.any { j -> j.buses.any { it.ride.route.frequent } }) box.label("Rapid KL times count the longest wait.", 11f, Ui.DIM, 4)
+        if (list.any { j -> j.buses.any { it.ride.route.frequent } }) box.label("Rapid KL times count the longest wait.", Type.CAPTION, Ui.DIM, 4)
         return list.getOrNull(chosenJ)
     }
 
@@ -452,7 +447,7 @@ class ShuttleActivity : BaseActivity() {
         if (tab == 0) {
             val shownJourney = renderPlanner(d, today, now)
             planBox.addView(map.view, mapLp)
-            planBox.label("Green: from · red: to · blue: you · orange: faculties. Tap a dot to choose it. Pinch to zoom.", 11f, Ui.DIM, 4)
+            planBox.label("Green: from · red: to · blue: you · orange: faculties. Tap a dot to choose it. Pinch to zoom.", Type.CAPTION, Ui.DIM, 4)
             map.show(d, null, shownJourney,
                 placeOf(d, fromId), placeOf(d, toId))
             return
@@ -468,10 +463,10 @@ class ShuttleActivity : BaseActivity() {
             today.dayOfWeek == DayOfWeek.FRIDAY -> "Friday: no buses 12:30 pm – 2:30 pm (Friday prayer)."
             else -> ""
         }
-        if (status.isNotEmpty()) col.label(status, 13f, Ui.ORANGE, 6).setTypeface(null, Typeface.BOLD)
+        if (status.isNotEmpty()) col.label(status, Type.LABEL, Ui.ORANGE, 6).setTypeface(null, Typeface.BOLD)
 
         // ---- next buses from a stop
-        col.label("Next buses from", 13f, Ui.TEXT, 16).setTypeface(null, Typeface.BOLD)
+        col.sectionHeading("Next buses from", 16)
         val stops = d.places.values.filter { it.isStop }.sortedBy { it.name.lowercase(Locale.ROOT) }
         // a building has no buses of its own: its stop's
         val busFrom = stopId.takeIf { d.places[it]?.isStop == true } ?: "UMC"
@@ -492,7 +487,7 @@ class ShuttleActivity : BaseActivity() {
                 "No more buses from here today." + (later?.let { (day, dep) ->
                     " Next: ${day.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))} ${ShuttleModel.fmt(dep.time)}, route ${dep.run.route.id}."
                 } ?: ""),
-                13f, Ui.DIM, 8,
+                Type.LABEL, Ui.DIM, 8,
             )
         }
         for (dep in next) {
@@ -501,20 +496,20 @@ class ShuttleActivity : BaseActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
-                background = rippleBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, 12)
+                background = rippleBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, Radius.MD)
                 isClickable = true
                 setOnClickListener { routeIdx = d.routes.indexOf(r); render() }
             }
-            row.addView(tv(r.id, 14f, onAccent(), true).apply {
+            row.addView(tv(r.id, Type.BODY, onAccent(), true).apply {
                 gravity = Gravity.CENTER
-                background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(r.color) }
+                background = GradientDrawable().apply { cornerRadius = dp(Radius.SM).toFloat(); setColor(r.color) }
             }, LinearLayout.LayoutParams(dp(44), dp(32)))
             val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
             val mins = dep.time - now
             val head = if (r.frequent) "Rapid · every ~${dep.run.wait} min (until ${ShuttleModel.fmt(r.bandsOn(today).maxOf { it.to })})"
                 else "${ShuttleModel.fmt(dep.time)}  ·  " + (if (mins <= 0) "now" else "in $mins min")
-            texts.addView(tv(head, 15f, Ui.TEXT, true))
-            texts.addView(tv("→ " + r.stops.drop(dep.idx + 1).joinToString(" → ") { Shuttle.stopName(this, it) }, 12f, Ui.DIM).apply {
+            texts.addView(tv(head, Type.BODY_L, Ui.TEXT, true))
+            texts.addView(tv("→ " + r.stops.drop(dep.idx + 1).joinToString(" → ") { Shuttle.stopName(this, it) }, Type.CAPTION, Ui.DIM).apply {
                 maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
             })
             row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -523,20 +518,20 @@ class ShuttleActivity : BaseActivity() {
             col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         }
         if (Shuttle.homeId(this).isEmpty()) {
-            col.label("Tip: set your home stop in Settings → UM shuttle, and Home shows which bus to take to each class.", 12f, Ui.DIM, 8)
+            col.label("Tip: set your home stop in Settings → UM shuttle, and Home shows which bus to take to each class.", Type.CAPTION, Ui.DIM, 8)
         }
 
         // ---- one route: stops in order with the next trip's time, then today's trips
-        col.label("Routes", 13f, Ui.TEXT, 22).setTypeface(null, Typeface.BOLD)
+        col.sectionHeading("Routes", 22)
         routeIdx = routeIdx.coerceIn(0, (d.routes.size - 1).coerceAtLeast(0))
         if (d.routes.isEmpty()) return
         col.chips(d.routes.map { it.id }, setOf(routeIdx), false) { routeIdx = it.first(); render() }
-        if (d.routes.any { it.frequent }) col.label("AB … 13: UM shuttle · " + d.routes.filter { it.frequent }.joinToString(", ") { it.id } + ": Rapid KL", 11f, Ui.DIM, 4)
+        if (d.routes.any { it.frequent }) col.label("AB … 13: UM shuttle · " + d.routes.filter { it.frequent }.joinToString(", ") { it.id } + ": Rapid KL", Type.CAPTION, Ui.DIM, 4)
         val r = d.routes[routeIdx]
-        col.label("${r.label} · ${r.name}", 15f, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
+        col.label("${r.label} · ${r.name}", Type.BODY_L, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
         // the route on the map, along the roads; your stop in green
         col.addView(map.view, mapLp)
-        col.label("Blue: this route's stops · green: the stop above · orange: faculties. Tap a dot for its next buses.", 11f, Ui.DIM, 4)
+        col.label("Blue: this route's stops · green: the stop above · orange: faculties. Tap a dot for its next buses.", Type.CAPTION, Ui.DIM, 4)
         map.show(d, r, null, d.places[busFrom], null)
         val runs = ShuttleModel.runs(r, today)
         // the trip to show along the stops: the one running now, else the next, else the first of the day
@@ -548,7 +543,7 @@ class ShuttleActivity : BaseActivity() {
                 shown == null -> "No trips today. Stops, with minutes from the start:"
                 now in shown.start..shown.end -> "On the road now (left ${ShuttleModel.fmt(shown.start)}):"
                 else -> "Next trip, ${ShuttleModel.fmt(shown.start)} from ${Shuttle.stopName(this, r.stops[shown.first])}:"
-            }, 12f, Ui.DIM, 4,
+            }, Type.CAPTION, Ui.DIM, 4,
         )
         r.stops.forEachIndexed { i, id ->
             val skipped = shown != null && i < shown.first
@@ -561,35 +556,35 @@ class ShuttleActivity : BaseActivity() {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = dp(36)
+                minimumHeight = dp(Ui.touch(48))
             }
             row.addView(dot(if (passed || skipped) Ui.tint(r.color, 0x66) else r.color), LinearLayout.LayoutParams(dp(12), dp(12)).apply { rightMargin = dp(12) })
-            row.addView(tv(Shuttle.stopName(this, id), 14f, if (passed || skipped) Ui.DIM else Ui.TEXT), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(tv(time, 13f, if (passed || skipped) Ui.DIM else Ui.TEXT, !passed && !skipped))
+            row.addView(tv(Shuttle.stopName(this, id), Type.BODY, if (passed || skipped) Ui.DIM else Ui.TEXT), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(tv(time, Type.LABEL, if (passed || skipped) Ui.DIM else Ui.TEXT, !passed && !skipped))
             row.isClickable = true
-            row.background = rippleBg(Ui.BG, 0, this, 8)
+            row.background = rippleBg(Ui.BG, 0, this, Radius.SM)
             row.setOnClickListener { if (d.places[id]?.isStop == true) { stopId = id; render() } }
             row.contentDescription = "${Shuttle.stopName(this, id)}, $time. Tap for the next buses from here."
             col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
-        if (r.tailEstimated) col.label("The last stops' times are estimated.", 11f, Ui.DIM, 2)
+        if (r.tailEstimated) col.label("The last stops' times are estimated.", Type.CAPTION, Ui.DIM, 2)
         if (shown != null && shown.first > 0) {
-            col.label("Morning trips until ${ShuttleModel.fmt(r.farUntil)} start at ${Shuttle.stopName(this, r.farStop)}.", 11f, Ui.DIM, 2)
+            col.label("Morning trips until ${ShuttleModel.fmt(r.farUntil)} start at ${Shuttle.stopName(this, r.farStop)}.", Type.CAPTION, Ui.DIM, 2)
         }
 
         if (r.frequent) {
-            col.label("How often", 13f, Ui.TEXT, 16).setTypeface(null, Typeface.BOLD)
+            col.sectionHeading("How often", 16)
             val week = r.bands.filter { 1 in it.days }
             val weekend = r.bands.filter { 6 in it.days || 7 in it.days }
             fun bandText(bs: List<ShuttleModel.Band>) = bs.joinToString("\n") { "every ${it.every} min, ${ShuttleModel.fmt(it.from)}–${ShuttleModel.fmt(it.to)}" }
-            if (week.isNotEmpty()) col.label("Weekdays\n" + bandText(week), 13f, Ui.TEXT, 4)
-            if (weekend.isNotEmpty()) col.label("Weekends\n" + bandText(weekend), 13f, Ui.TEXT, 8)
-            col.label("Runs in semester breaks too. Live arrivals: MyRapid PULSE app.", 12f, Ui.DIM, 6)
-            col.addView(chip("Open MyRapid PULSE", false, size = 13f, padH = 12) {
+            if (week.isNotEmpty()) col.label("Weekdays\n" + bandText(week), Type.LABEL, Ui.TEXT, 4)
+            if (weekend.isNotEmpty()) col.label("Weekends\n" + bandText(weekend), Type.LABEL, Ui.TEXT, 8)
+            col.label("Runs in semester breaks too. Live arrivals: MyRapid PULSE app.", Type.CAPTION, Ui.DIM, 6)
+            col.addView(chip("Open MyRapid PULSE", false, size = Type.LABEL, padH = 12) {
                 open("https://play.google.com/store/search?q=MyRapid%20PULSE&c=apps")
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         } else if (runs.isNotEmpty()) {
-            col.label("Today's trips (from the first stop)", 13f, Ui.TEXT, 16).setTypeface(null, Typeface.BOLD)
+            col.sectionHeading("Today's trips (from the first stop)", 16)
             val sb = SpannableStringBuilder()
             for ((k, run) in runs.withIndex()) {
                 if (k > 0) sb.append("   ")
@@ -597,16 +592,16 @@ class ShuttleActivity : BaseActivity() {
                 sb.append(ShuttleModel.fmt(run.start) + if (run.first > 0) "*" else "")
                 if (run.end < now) sb.setSpan(ForegroundColorSpan(Ui.tint(Ui.DIM, 0x88)), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
-            col.addView(tv(sb, 14f, Ui.TEXT).apply { setLineSpacing(dp(4).toFloat(), 1f); setPadding(0, dp(6), 0, 0) })
-            if (runs.any { it.first > 0 }) col.label("* starts at ${Shuttle.stopName(this, r.farStop)}", 11f, Ui.DIM, 4)
+            col.addView(tv(sb, Type.BODY, Ui.TEXT).apply { setLineSpacing(dp(4).toFloat(), 1f); setPadding(0, dp(6), 0, 0) })
+            if (runs.any { it.first > 0 }) col.label("* starts at ${Shuttle.stopName(this, r.farStop)}", Type.CAPTION, Ui.DIM, 4)
         }
 
         // ---- source and contact
-        col.label("About these times", 13f, Ui.TEXT, 24).setTypeface(null, Typeface.BOLD)
-        for (n in d.notes) col.label("• $n", 12f, Ui.DIM, 4)
-        col.label("Source: ${d.source}. Data as of ${d.generatedAt}.", 11f, Ui.DIM, 8)
+        col.sectionHeading("About these times", 24)
+        for (n in d.notes) col.label("• $n", Type.CAPTION, Ui.DIM, 4)
+        col.label("Source: ${d.source}. Data as of ${d.generatedAt}.", Type.CAPTION, Ui.DIM, 8)
         val links = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun linkBtn(label: String, go: () -> Unit) = links.addView(chip(label, false, size = 13f, padH = 12) { go() },
+        fun linkBtn(label: String, go: () -> Unit) = links.addView(chip(label, false, size = Type.LABEL, padH = 12) { go() },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (links.childCount > 0) leftMargin = dp(6) })
         if (d.officialUrl.isNotEmpty()) linkBtn("Official page") { open(d.officialUrl) }
         if (d.phone.isNotEmpty()) linkBtn("Call") { open("tel:" + d.phone.replace(" ", "")) }

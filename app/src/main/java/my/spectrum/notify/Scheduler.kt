@@ -121,7 +121,7 @@ object Scheduler {
         val now = System.currentTimeMillis() / 1000
         val cal = Checker.myCalendar(st, p)
         // holiday mode: skip class reminder alarms outside teaching weeks
-        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now())
+        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now(zone()))
         val codes = LinkedHashSet<Int>()
         for (e in cal) {
             if (!classesActive || !Checker.isAttEvent(e)) continue

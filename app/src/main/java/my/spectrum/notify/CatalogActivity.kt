@@ -35,11 +35,11 @@ class CatalogActivity : BaseActivity() {
         col.label(
             if (cat.isEmpty()) "The UM timetable list could not be loaded."
             else "Semester ${Catalog.semester} · ${cat.size} courses, from UM TimeEdit.$asOf",
-            12f, Ui.DIM, 6,
+            Type.CAPTION, Ui.DIM, 6,
         )
-        col.label("Course code or name", 13f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Course code or name", Type.LABEL, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
         val field = col.field("", "WIX1003")
-        status = col.label("", 12f, Ui.DIM, 6)
+        status = col.label("", Type.CAPTION, Ui.DIM, 6)
         holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(holder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         field.addTextChangedListener(object : TextWatcher {
@@ -74,18 +74,18 @@ class CatalogActivity : BaseActivity() {
         }
         status.text = "Tap a course:"
         holder.chips(found.map { it.code }, emptySet(), false) { sel -> sel.firstOrNull()?.let { pick(found[it].code) } }
-        holder.label(found.joinToString("\n") { "${it.code}  ${it.name}" }, 12f, Ui.DIM, 8)
+        holder.label(found.joinToString("\n") { "${it.code}  ${it.name}" }, Type.CAPTION, Ui.DIM, 8)
     }
 
     private fun buildPickers(c: Catalog.Course) {
         val occs = c.occs()
         if (occs.isEmpty()) {
-            holder.label("No lecture, tutorial or lab slots are listed for ${c.code} this semester.", 13f, Ui.TEXT, 12)
+            holder.label("No lecture, tutorial or lab slots are listed for ${c.code} this semester.", Type.LABEL, Ui.TEXT, 12)
             return
         }
-        holder.label("My Occ", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        holder.label("One Occ per course. It sets your lecture and tutorial together.", 12f, Ui.DIM, 2)
-        val detail = holder.label("", 12f, Ui.TEXT, 8)
+        holder.label("My Occ", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        holder.label("One Occ per course. It sets your lecture and tutorial together.", Type.CAPTION, Ui.DIM, 2)
+        val detail = holder.label("", Type.CAPTION, Ui.TEXT, 8)
         var chosen = occs.indexOf(previousOcc(c.code))   // -1 = none
         val sp = spinner(listOf("Choose your Occ") + occs.map { "Occ $it" }, chosen + 1) { pos ->
             chosen = pos - 1
@@ -141,7 +141,7 @@ class CatalogActivity : BaseActivity() {
             private fun style(v: View, bg: Int): View {
                 (v as TextView).apply {
                     setTextColor(Ui.TEXT)
-                    textSize = 14f * Ui.fontScale
+                    textSize = Type.BODY * Ui.fontScale
                     setPadding(dp(12), dp(12), dp(12), dp(12))
                     setBackgroundColor(bg)
                 }
@@ -149,7 +149,11 @@ class CatalogActivity : BaseActivity() {
             }
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val v = style(super.getView(position, convertView, parent), 0)
-                (v as TextView).text = (getItem(position) ?: "") + "  ▾"
+                (v as TextView).apply {
+                    text = getItem(position) ?: ""
+                    setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_expand_more, 0)
+                    compoundDrawableTintList = android.content.res.ColorStateList.valueOf(Ui.DIM)
+                }
                 return v
             }
             override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View = style(super.getDropDownView(position, convertView, parent), Ui.BAR)

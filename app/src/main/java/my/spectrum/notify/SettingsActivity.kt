@@ -54,7 +54,7 @@ class SettingsActivity : BaseActivity() {
             })
         }
 
-        col.label("Changes are saved as you make them.", 12f, Ui.DIM, 4)
+        col.label("Changes are saved as you make them.", Type.CAPTION, Ui.DIM, 4)
 
         // search: type a keyword, matching sections are listed; tapping one opens it
         var searchBox: EditText? = null
@@ -68,7 +68,7 @@ class SettingsActivity : BaseActivity() {
                 q in s.name.lowercase() || s.contents.any { q in it.lowercase() } || s.key.contains(q)
             }
             if (hits.isEmpty()) {
-                results.label("Nothing matches \"$q\".", 13f, Ui.DIM, 8)
+                results.label("Nothing matches \"$q\".", Type.LABEL, Ui.DIM, 8)
                 return
             }
             for (s in hits) {
@@ -77,7 +77,7 @@ class SettingsActivity : BaseActivity() {
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     minimumHeight = dp(48)
                     isClickable = true
-                    background = rippleBg(Ui.BAR, 0, this@SettingsActivity, 12)
+                    background = rippleBg(Ui.BAR, 0, this@SettingsActivity, Radius.MD)
                 }
                 if (s.icon != 0) {
                     r.addView(ImageView(this).apply {
@@ -87,13 +87,15 @@ class SettingsActivity : BaseActivity() {
                 }
                 r.addView(TextView(this).apply {
                     text = sectionTitle(s.name)
-                    textSize = 14f * Ui.fontScale
+                    textSize = Type.BODY * Ui.fontScale
                     setTextColor(Ui.TEXT)
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 r.addView(TextView(this).apply {
-                    text = "Open ▸"
-                    textSize = 13f * Ui.fontScale
+                    text = "Open"
+                    setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_chevron_right, 0)
+                    compoundDrawableTintList = android.content.res.ColorStateList.valueOf(Ui.CYAN)
+                    textSize = Type.LABEL * Ui.fontScale
                     setTextColor(Ui.CYAN)
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                 })
@@ -102,7 +104,7 @@ class SettingsActivity : BaseActivity() {
                     searchBox?.setText("")
                     // highlight the section briefly so the user can spot where it opened
                     s.body.post {
-                        s.body.background = roundBg(Ui.tint(Ui.CYAN, 30), Ui.CYAN, this@SettingsActivity, 12)
+                        s.body.background = roundBg(Ui.tint(Ui.CYAN, 30), Ui.CYAN, this@SettingsActivity, Radius.MD)
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             s.body.background = null
                         }, 1200)
@@ -112,7 +114,7 @@ class SettingsActivity : BaseActivity() {
             }
         }
 
-        col.label("Search settings", 13f, Ui.TEXT, 12).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Search settings", Type.LABEL, Ui.TEXT, 12).setTypeface(null, android.graphics.Typeface.BOLD)
         searchBox = col.field("", "e.g. quiet, filter, theme, check", kind = 0)
         searchResults = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(searchResults, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -122,10 +124,11 @@ class SettingsActivity : BaseActivity() {
             override fun afterTextChanged(s: android.text.Editable?) { buildSearch() }
         })
 
-        target = accordion(col, "PROFILE", icon = R.drawable.ic_settings,
-            contents = listOf("Site URL", "Log in / log out", "Token"))
-        profileStatus = target.label("", 15f, Ui.TEXT, 8)
-        target.label("Spectrum site URL", 12f, Ui.DIM, 12)
+        target = accordion(col, "PROFILE", icon = R.drawable.ic_account,
+            contents = listOf("Site URL", "Log in / log out", "Token"),
+            summary = if (p.token.isEmpty()) "Not logged in" else "Logged in" + (if (p.userName.isNotEmpty()) " as ${p.userName}" else ""))
+        profileStatus = target.label("", Type.BODY_L, Ui.TEXT, 8)
+        target.label("Spectrum site URL", Type.CAPTION, Ui.DIM, 12)
         siteField = target.field(p.site)
         target.btn("Log in with Spectrum") {
             p.site = siteField.text.toString()
@@ -135,7 +138,7 @@ class SettingsActivity : BaseActivity() {
             p.site = siteField.text.toString()
             Login.start(this)
         }
-        target.label("Or paste a token manually", 13f, Ui.TEXT, 16)
+        target.label("Or paste a token manually", Type.LABEL, Ui.TEXT, 16)
         tokenField = target.field("", "Token", true)
         target.btn("Save token") {
             val t = tokenField.text.toString().trim()
@@ -159,8 +162,8 @@ class SettingsActivity : BaseActivity() {
 
         // pickers, switches and chips save the moment you change them — nothing to type, nothing to get wrong
         fun heading(title: String, help: String) {
-            target.label(title, 15f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
-            target.label(help, 12f, Ui.DIM, 2)
+            target.label(title, Type.BODY_L, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+            target.label(help, Type.CAPTION, Ui.DIM, 2)
         }
         val hours = (0..23).map { h ->
             Timetable.fmtMin(h * 60) + when (h) { 0 -> " (midnight)"; 12 -> " (noon)"; else -> "" }
@@ -176,7 +179,7 @@ class SettingsActivity : BaseActivity() {
             var minutes = parseHm(value.ifEmpty { default })?.let { it.first * 60 + it.second } ?: 0
             val sw = android.widget.Switch(this).apply {
                 text = "Send this message"
-                textSize = 14f * Ui.fontScale
+                textSize = Type.BODY * Ui.fontScale
                 setTextColor(Ui.TEXT)
                 minHeight = dp(Ui.touch(48))
                 isChecked = value.isNotEmpty()
@@ -200,13 +203,15 @@ class SettingsActivity : BaseActivity() {
         target = accordion(col, "QUIET HOURS",
             "During these hours nothing pops up: no checks, class alerts, daily messages or event reminders. " +
                 "Anything that would have alerted you still goes into the Notifications list.",
-            icon = R.drawable.ic_cat_daily, contents = listOf("Quiet from", "Quiet until"))
+            icon = R.drawable.ic_moon, contents = listOf("Quiet from", "Quiet until"),
+            summary = "%02d:00 – %02d:00".format(p.quietStart, p.quietEnd))
         hourPicker("Quiet from", "Start of the quiet period.", p.quietStart) { p.quietStart = it }
         hourPicker("Quiet until", "End of the quiet period. Pick the same hour twice to turn quiet hours off.", p.quietEnd) { p.quietEnd = it }
 
         target = accordion(col, "DAILY MESSAGES",
             "Two short messages each day. Tap a time to change it; switch a message off if you do not want it.",
-            icon = R.drawable.ic_cat_news, contents = listOf("Morning summary", "Afternoon check-in"))
+            icon = R.drawable.ic_cat_news, contents = listOf("Morning summary", "Afternoon check-in"),
+            summary = "Morning " + p.summaryTime.ifEmpty { "off" } + "  ·  Afternoon " + p.afternoonTime.ifEmpty { "off" })
         dailyPicker("Morning summary", "Sent once each morning with today's classes and deadlines.", p.summaryTime, "07:05") { p.summaryTime = it }
         dailyPicker("Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00") { p.afternoonTime = it }
 
@@ -216,7 +221,7 @@ class SettingsActivity : BaseActivity() {
             "Not sent for classes where the lecturer takes attendance in class or attendance is by Teams recording.")
         target.addView(android.widget.Switch(this).apply {
             text = "Remind me when a class starts"
-            textSize = 14f * Ui.fontScale
+            textSize = Type.BODY * Ui.fontScale
             setTextColor(Ui.TEXT)
             minHeight = dp(Ui.touch(48))
             isChecked = p.attStartAlert
@@ -229,7 +234,7 @@ class SettingsActivity : BaseActivity() {
         Courses.all(this).forEach { courses.add(it.code.uppercase()) }
         learned.keys.forEach { courses.add(it.uppercase()) }
         if (courses.isEmpty()) {
-            target.label("Your courses appear here after the first check (or pick one from the UM timetable below).", 13f, Ui.DIM, 8)
+            target.label("Your courses appear here after the first check (or pick one from the UM timetable below).", Type.LABEL, Ui.DIM, 8)
         }
         for (code in courses) {
             val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
@@ -238,7 +243,7 @@ class SettingsActivity : BaseActivity() {
             // show the course name too — users rarely recognise codes alone
             val cname = Courses.all(this).firstOrNull { it.code.equals(code, true) }?.name
                 ?: Catalog.find(this, code)?.name ?: ""
-            target.label(if (cname.isNotEmpty()) "$code · $cname" else code, 14f, Ui.TEXT, 14).setTypeface(null, android.graphics.Typeface.BOLD)
+            target.label(if (cname.isNotEmpty()) "$code · $cname" else code, Type.BODY, Ui.TEXT, 14).setTypeface(null, android.graphics.Typeface.BOLD)
             val names = listOf("Not set") + occs.map { "Occ $it" }
             val sel = occs.indexOf(current) + 1
             val sp = spinner(names, if (sel >= 0) sel else 0) { pos ->
@@ -249,7 +254,7 @@ class SettingsActivity : BaseActivity() {
             }
             target.addView(sp, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
             if (catOccs.isEmpty() && occs.isNotEmpty()) {
-                target.label("Occs learned from Spectrum (course not in the bundled UM list).", 11f, Ui.DIM, 2)
+                target.label("Occs learned from Spectrum (course not in the bundled UM list).", Type.CAPTION, Ui.DIM, 2)
             }
         }
         target.action("Pick a course from the UM timetable", "Adds the class times and sets your Occ here.") {
@@ -269,7 +274,7 @@ class SettingsActivity : BaseActivity() {
             p.manualCourses, "WIA2010",
         )
         // advanced escape hatch
-        target.label("Advanced: raw group text", 13f, Ui.TEXT, 18).setTypeface(null, android.graphics.Typeface.BOLD)
+        target.label("Advanced: raw group text", Type.LABEL, Ui.TEXT, 18).setTypeface(null, android.graphics.Typeface.BOLD)
         add(
             "myGroups", "Raw groups",
             "Format: COURSE:occN, comma separated. Write off to disable the filter.",
@@ -292,7 +297,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         target = accordion(col, "BACKGROUND CHECKS", icon = R.drawable.ic_refresh,
-            contents = listOf("Check every (minutes)"))
+            contents = listOf("Check every (minutes)"), summary = "Every ${p.pollMinutes} min")
         heading("Check Spectrum every",
             "How often the app looks for new materials, announcements and notifications. " +
                 "Below 15 minutes the app uses alarms, so keep the battery setting on Unrestricted (see App & maintenance) or Android may delay checks while the phone sleeps.")
@@ -319,12 +324,12 @@ class SettingsActivity : BaseActivity() {
         target.chips(leadOpts.map { if (it == 0) "Off" else "$it min" }, setOf(leadOpts.indexOf(Shuttle.leadMin(this)).coerceAtLeast(0)), false) { sel ->
             sel.firstOrNull()?.let { Shuttle.setLeadMin(this, leadOpts[it]); Scheduler.scheduleAll(this) }
         }
-        target.label("Which stop each course uses is guessed from its code; change it in the class editor (Timetable → a class → Edit).", 12f, Ui.DIM, 10)
+        target.label("Which stop each course uses is guessed from its code; change it in the class editor (Timetable → a class → Edit).", Type.CAPTION, Ui.DIM, 10)
         target.btn("Open shuttle times") { startActivity(Intent(this, ShuttleActivity::class.java)) }
 
         target = accordion(col, "UM LINKS",
             "Your shortcuts in the toolbox (the Aa button). Pick an icon, rename, change the address, " +
-                "reorder with ▲ ▼, or add a Spectrum course page.",
+                "reorder with the up and down arrows, or add a Spectrum course page.",
             key = "umlinks", icon = R.drawable.lk_link,
             contents = listOf("Shortcuts", "Icons", "Add link", "Reorder", "Course pages", "Reset"))
         linksBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -333,19 +338,21 @@ class SettingsActivity : BaseActivity() {
 
         target = accordion(col, "APPEARANCE & ACCESSIBILITY",
             "Change how the app looks. Tap a chip to apply it right away — the screen redraws with your choice.",
-            icon = R.drawable.ic_settings, contents = listOf("Colour mode", "Text size", "High contrast"), key = "appearance",
+            icon = R.drawable.ic_palette, contents = listOf("Colour mode", "Text size", "High contrast"), key = "appearance",
+            summary = listOf("Phone", "Light", "Dark")[p.themeMode] + " · " + listOf("Normal", "Large", "Extra large")[p.textScale] + " text" +
+                (if (p.highContrast) " · High contrast" else ""),
         )
-        target.label("Colour mode", 15f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+        target.label("Colour mode", Type.BODY_L, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
         target.chips(listOf("Phone", "Light", "Dark"), setOf(p.themeMode), false) { sel ->
             val v = sel.firstOrNull() ?: 0
             if (v != p.themeMode) { p.themeMode = v; recreate() }
         }
-        target.label("Text size", 15f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        target.label("Text size", Type.BODY_L, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         target.chips(listOf("Normal", "Large", "Extra large"), setOf(p.textScale), false) { sel ->
             val v = sel.firstOrNull() ?: 0
             if (v != p.textScale) { p.textScale = v; recreate() }
         }
-        target.label("Easier to see and touch", 15f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        target.label("Easier to see and touch", Type.BODY_L, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         val initial = buildSet {
             if (p.highContrast) add(0)
             if (p.bigTouch) add(1)
@@ -359,9 +366,9 @@ class SettingsActivity : BaseActivity() {
                 recreate()
             }
         }
-        target.label("High contrast uses stronger text colours. Big touch targets make every button and box 56 dp tall.", 12f, Ui.DIM, 8)
+        target.label("High contrast uses stronger text colours. Big touch targets make every button and box 56 dp tall.", Type.CAPTION, Ui.DIM, 8)
         target = accordion(col, "APP & MAINTENANCE", icon = R.drawable.ic_settings,
-            contents = listOf("Check now", "Update", "Test notification", "Alarms", "Battery", "Hidden deadlines"))
+            contents = listOf("Check now", "Update", "Test notification", "Alarms", "Battery", "Hidden deadlines", "Diagnostic lines"))
         target.action("Check now", "Looks at Spectrum right away. A new notification appears in the list if something is new.") {
             save()
             Scheduler.pollNow(this)
@@ -385,6 +392,20 @@ class SettingsActivity : BaseActivity() {
         target.action("Send test notification", "Sends one test message so you can see how notifications look and that tapping opens the app.") {
             Notifier.push(this, "Test", "Notifications are working.\nTap the button below to open Spectrum.", true, listOf(Pair("Open Spectrum", p.site)), ignoreQuiet = true)
         }
+        heading("Diagnostic lines",
+            "Also lists technical lines in Notifications (\"Check OK\", skipped items). Useful when reporting a problem.")
+        target.addView(android.widget.Switch(this).apply {
+            text = "Show diagnostic lines"
+            textSize = Type.BODY * Ui.fontScale
+            setTextColor(Ui.TEXT)
+            minHeight = dp(Ui.touch(48))
+            isChecked = p.debugLog
+            setOnCheckedChangeListener { _, on ->
+                p.debugLog = on
+                // Off is immediate: lines already saved go too, not just new ones
+                if (!on) NotifyLog.purgeDebug(this@SettingsActivity)
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         alarmBtn = target.action("Allow exact alarms", "Needed so class reminders arrive about 10 minutes before the class, on time.") {
             if (Build.VERSION.SDK_INT >= 31) {
                 startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
@@ -397,13 +418,13 @@ class SettingsActivity : BaseActivity() {
         // not logged in yet: open the Profile section so the login buttons are in view
         if (p.token.isEmpty() && sections.isNotEmpty()) {
             sections[0].body.visibility = View.VISIBLE
-            sections[0].arrow.text = "▾"
+            sections[0].arrow.rotation = 90f
         }
         // deep links: open a specific section (toolbox -> appearance, startup -> your classes)
         intent.getStringExtra(EXTRA_OPEN)?.let { key ->
             sections.firstOrNull { it.key == key }?.let {
                 it.body.visibility = View.VISIBLE
-                it.arrow.text = "▾"
+                it.arrow.rotation = 90f
                 // bring the opened section into view (deep links land on sections far down the page)
                 val card = it.body.parent as? View
                 card?.post {
@@ -423,7 +444,7 @@ class SettingsActivity : BaseActivity() {
     /** One settings section: its views plus the metadata the search and headers show. */
     class Section(
         val body: LinearLayout,
-        val arrow: TextView,
+        val arrow: ImageView,
         val name: String,
         val icon: Int,
         val contents: List<String>,
@@ -435,9 +456,9 @@ class SettingsActivity : BaseActivity() {
     /** Opens one section and closes the others (shared by headers and search results). */
     private fun openSection(s: Section, col: LinearLayout) {
         android.transition.TransitionManager.beginDelayedTransition(col, android.transition.AutoTransition().setDuration(160))
-        for (x in sections) { x.body.visibility = View.GONE; x.arrow.text = "▸" }
+        for (x in sections) { x.body.visibility = View.GONE; x.arrow.rotation = 0f }
         s.body.visibility = View.VISIBLE
-        s.arrow.text = "▾"
+        s.arrow.rotation = 90f
     }
 
     /** A tappable section header with icon, name and a one-line contents list; one open at a time. */
@@ -448,20 +469,21 @@ class SettingsActivity : BaseActivity() {
         key: String = "",
         icon: Int = 0,
         contents: List<String> = emptyList(),
+        summary: String = "",
     ): LinearLayout {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = roundBg(Ui.BAR, Ui.BORDER, this@SettingsActivity, 14)
+            background = roundBg(Ui.BAR, Ui.BORDER, this@SettingsActivity, Radius.MD)
         }
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding(dp(14), 0, dp(14), dp(16))
         }
-        val arrow = TextView(this).apply {
-            text = "▸"
-            textSize = 16f * Ui.fontScale
-            setTextColor(Ui.DIM)
+        val arrow = ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            setColorFilter(Ui.DIM)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -469,7 +491,7 @@ class SettingsActivity : BaseActivity() {
             minimumHeight = dp(54)
             setPadding(dp(14), 0, dp(14), 0)
             isClickable = true
-            contentDescription = "$title: ${contents.joinToString(", ")}"
+            contentDescription = "$title: " + summary.ifEmpty { contents.joinToString(", ") }
         }
         if (icon != 0) {
             head.addView(ImageView(this).apply {
@@ -481,32 +503,33 @@ class SettingsActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             addView(TextView(this@SettingsActivity).apply {
                 text = sectionTitle(title)
-                textSize = 15f * Ui.fontScale
+                textSize = Type.BODY_L * Ui.fontScale
                 setTextColor(Ui.TEXT)
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
             })
-            if (contents.isNotEmpty()) addView(TextView(this@SettingsActivity).apply {
-                text = contents.joinToString("  ·  ")
-                textSize = 12f * Ui.fontScale
+            if (summary.isNotEmpty() || contents.isNotEmpty()) addView(TextView(this@SettingsActivity).apply {
+                // the current values when the section has them ("01:00–07:00"), else what is inside
+                text = summary.ifEmpty { contents.joinToString("  ·  ") }
+                textSize = Type.CAPTION * Ui.fontScale
                 setTextColor(Ui.DIM)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(arrow)
+        head.addView(arrow, LinearLayout.LayoutParams(dp(24), dp(24)))
         val s = Section(body, arrow, title, icon, contents, key)
         head.setOnClickListener {
             if (body.visibility == View.VISIBLE) {
                 // tapping the open section closes it again
                 android.transition.TransitionManager.beginDelayedTransition(col, android.transition.AutoTransition().setDuration(160))
                 body.visibility = View.GONE
-                arrow.text = "▸"
+                arrow.rotation = 0f
             } else openSection(s, col)
         }
         card.addView(head)
         card.addView(body)
         col.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
-        if (intro.isNotEmpty()) body.label(intro, 12f, Ui.DIM, 0)
+        if (intro.isNotEmpty()) body.label(intro, Type.CAPTION, Ui.DIM, 0)
         sections.add(s)
         return body
     }
