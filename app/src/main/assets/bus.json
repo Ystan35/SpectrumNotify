@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-29",
+ "generatedAt": "2026-10-29 (2)",
  "source": "JPPHB Shuttle Bus Operation Schedule (Oct 2024), times as in the PDF, confirmed 30 Oct 2026, stops from the UM shuttle app; Rapid KL routes from Prasarana GTFS (api.data.gov.my)",
  "officialUrl": "https://jpphb.um.edu.my/transport",
  "phone": "03-7967 3311",
@@ -14,92 +14,177 @@
   {
    "id": "UMC",
    "name": "UM Central",
-   "stop": true
+   "stop": true,
+   "lat": 3.121085,
+   "lng": 101.653628
   },
   {
    "id": "ZABA",
    "name": "Za'ba RC",
-   "stop": true
+   "stop": true,
+   "lat": 3.126203,
+   "lng": 101.650619,
+   "aka": [
+    "KK7"
+   ]
   },
   {
    "id": "TAZ",
    "name": "Tun Ahmad Zaidi RC",
-   "stop": true
+   "stop": true,
+   "lat": 3.129766,
+   "lng": 101.650071,
+   "aka": [
+    "KK8",
+    "KK10",
+    "Kinabalu",
+    "FSKTM",
+    "FCSIT"
+   ]
   },
   {
    "id": "API",
    "name": "Academy of Islamic Studies (API)",
-   "stop": true
+   "stop": true,
+   "lat": 3.131812,
+   "lng": 101.658669,
+   "aka": [
+    "APIUM"
+   ]
   },
   {
    "id": "UA",
    "name": "Ungku Aziz RC",
-   "stop": true
+   "stop": true,
+   "lat": 3.129076,
+   "lng": 101.660247,
+   "aka": [
+    "KK11"
+   ]
   },
   {
    "id": "RDNS",
    "name": "Raja Dr Nazrin Shah RC",
-   "stop": true
+   "stop": true,
+   "lat": 3.124576,
+   "lng": 101.660281,
+   "aka": [
+    "KK12"
+   ]
   },
   {
    "id": "TAR",
    "name": "Tunku Abdul Rahman RC",
-   "stop": true
+   "stop": true,
+   "lat": 3.118124,
+   "lng": 101.659323,
+   "aka": [
+    "KK1"
+   ]
   },
   {
    "id": "FENG",
    "name": "Faculty of Engineering",
-   "stop": true
+   "stop": true,
+   "lat": 3.119099,
+   "lng": 101.655647,
+   "aka": [
+    "FK",
+    "FOE",
+    "Engineering"
+   ]
   },
   {
    "id": "CFS",
    "name": "Centre for Foundation in Science (PASUM)",
    "stop": true,
    "lat": 3.121738,
-   "lng": 101.658348
+   "lng": 101.658348,
+   "aka": [
+    "PASUM",
+    "Asasi"
+   ]
   },
   {
    "id": "DAYA",
    "name": "Dayasari RC",
-   "stop": true
+   "stop": true,
+   "lat": 3.126749,
+   "lng": 101.659741,
+   "aka": [
+    "KK5"
+   ]
   },
   {
    "id": "APM",
    "name": "Academy of Malay Studies (APM)",
-   "stop": true
+   "stop": true,
+   "lat": 3.126178,
+   "lng": 101.651487,
+   "aka": [
+    "APMUM"
+   ]
   },
   {
    "id": "KBZ",
    "name": "Kurshiah / Bestari / Za'ba RC",
-   "stop": true
+   "stop": true,
+   "lat": 3.124861,
+   "lng": 101.651469,
+   "aka": [
+    "KK3",
+    "KK4",
+    "KK7",
+    "Bestari",
+    "Kurshiah"
+   ]
   },
   {
    "id": "FSCI",
    "name": "Faculty of Science",
-   "stop": true
+   "stop": true,
+   "lat": 3.12196,
+   "lng": 101.653585,
+   "aka": [
+    "FS",
+    "FOS",
+    "Science"
+   ]
   },
   {
    "id": "ANGK",
    "name": "Angkasapuri",
    "stop": true,
-   "q": "Angkasapuri, Kuala Lumpur"
+   "q": "Angkasapuri, Kuala Lumpur",
+   "lat": 3.11133,
+   "lng": 101.671288
   },
   {
    "id": "PP",
    "name": "Pantai Permai",
    "stop": true,
-   "q": "Pangsapuri Pantai Permai, Kuala Lumpur"
+   "q": "Pangsapuri Pantai Permai, Kuala Lumpur",
+   "lat": 3.1045,
+   "lng": 101.6614
   },
   {
    "id": "BSOUTH",
    "name": "Bangsar South",
    "stop": true,
-   "q": "Bangsar South, Kuala Lumpur"
+   "q": "Bangsar South, Kuala Lumpur",
+   "lat": 3.108924,
+   "lng": 101.667999
   },
   {
    "id": "FENGW",
    "name": "Faculty of Engineering (West)",
-   "stop": true
+   "stop": true,
+   "lat": 3.118357,
+   "lng": 101.65435,
+   "aka": [
+    "FK",
+    "Engineering"
+   ]
   },
   {
    "id": "IH",
@@ -140,30 +225,52 @@
    "id": "PS16",
    "name": "Perumahan Seksyen 16",
    "stop": true,
-   "q": "Seksyen 16, Petaling Jaya"
+   "q": "Seksyen 16, Petaling Jaya",
+   "lat": 3.122958,
+   "lng": 101.642434
   },
   {
    "id": "KK13",
    "name": "13th Residential College (KK13)",
-   "stop": true
+   "stop": true,
+   "lat": 3.120347,
+   "lng": 101.640297,
+   "aka": [
+    "KK13"
+   ]
   },
   {
    "id": "TSZ",
    "name": "Tun Syed Zahiruddin RC",
-   "stop": true
+   "stop": true,
+   "lat": 3.12019,
+   "lng": 101.646329,
+   "aka": [
+    "KK9"
+   ]
   },
   {
    "id": "FSKTM",
    "name": "Faculty of Computer Science & IT (FSKTM)",
    "q": "Faculty of Computer Science and Information Technology, Universiti Malaya",
-   "near": "R1109"
+   "near": "TAZ",
+   "lat": 3.127725,
+   "lng": 101.65026,
+   "aka": [
+    "FSKTM",
+    "FCSIT",
+    "Computer Science"
+   ]
   },
   {
    "id": "R1440",
    "name": "LRT Universiti (Timur) (KL1440)",
    "stop": true,
    "lat": 3.114012,
-   "lng": 101.662208
+   "lng": 101.662208,
+   "aka": [
+    "LRT"
+   ]
   },
   {
    "id": "R1102",
@@ -184,7 +291,10 @@
    "name": "Kolej Kediaman Pertama UM (KL1103)",
    "stop": true,
    "lat": 3.118124,
-   "lng": 101.659323
+   "lng": 101.659323,
+   "aka": [
+    "KK1"
+   ]
   },
   {
    "id": "R1104",
@@ -198,14 +308,21 @@
    "name": "Perpustakaan UM (KL1109)",
    "stop": true,
    "lat": 3.12112,
-   "lng": 101.65358
+   "lng": 101.65358,
+   "aka": [
+    "Library",
+    "Main Library"
+   ]
   },
   {
    "id": "R1107",
    "name": "Dewan Tunku Canselor UM (KL1107)",
    "stop": true,
    "lat": 3.121867,
-   "lng": 101.657186
+   "lng": 101.657186,
+   "aka": [
+    "DTC"
+   ]
   },
   {
    "id": "R1397",
@@ -297,6 +414,124 @@
    "stop": true,
    "lat": 3.112272,
    "lng": 101.662094
+  },
+  {
+   "id": "FBE",
+   "name": "Faculty of Business and Economics",
+   "stop": false,
+   "near": "FENGW",
+   "lat": 3.118603,
+   "lng": 101.652755,
+   "aka": [
+    "FBE",
+    "FPE"
+   ]
+  },
+  {
+   "id": "FAB",
+   "name": "Faculty of Built Environment",
+   "stop": false,
+   "near": "FENG",
+   "lat": 3.116326,
+   "lng": 101.655202,
+   "aka": [
+    "FAB",
+    "Alam Bina"
+   ]
+  },
+  {
+   "id": "FEDU",
+   "name": "Faculty of Education",
+   "stop": false,
+   "near": "UMC",
+   "lat": 3.120145,
+   "lng": 101.652388,
+   "aka": [
+    "FEDU"
+   ]
+  },
+  {
+   "id": "FASS",
+   "name": "Faculty of Arts and Social Sciences",
+   "stop": false,
+   "near": "UMC",
+   "lat": 3.121088,
+   "lng": 101.65185,
+   "aka": [
+    "FASS",
+    "FSSS"
+   ]
+  },
+  {
+   "id": "FLL",
+   "name": "Faculty of Languages and Linguistics",
+   "stop": false,
+   "near": "UMC",
+   "lat": 3.122429,
+   "lng": 101.65092,
+   "aka": [
+    "FLL",
+    "FBL"
+   ]
+  },
+  {
+   "id": "FCA",
+   "name": "Faculty of Creative Arts",
+   "stop": false,
+   "near": "R1107",
+   "lat": 3.121061,
+   "lng": 101.656951,
+   "aka": [
+    "FCA"
+   ]
+  },
+  {
+   "id": "LAW",
+   "name": "Faculty of Law",
+   "stop": false,
+   "near": "R2137",
+   "lat": 3.11799,
+   "lng": 101.661219,
+   "aka": [
+    "FOL",
+    "FUU",
+    "Law"
+   ]
+  },
+  {
+   "id": "MED",
+   "name": "Faculty of Medicine",
+   "stop": false,
+   "near": "FENGW",
+   "lat": 3.115191,
+   "lng": 101.652865,
+   "aka": [
+    "FOM",
+    "Medicine"
+   ]
+  },
+  {
+   "id": "PHARM",
+   "name": "Faculty of Pharmacy",
+   "stop": false,
+   "near": "FENGW",
+   "lat": 3.115289,
+   "lng": 101.651872,
+   "aka": [
+    "Pharmacy"
+   ]
+  },
+  {
+   "id": "DENT",
+   "name": "Faculty of Dentistry",
+   "stop": false,
+   "near": "",
+   "lat": 3.111231,
+   "lng": 101.653193,
+   "aka": [
+    "FOD",
+    "Dentistry"
+   ]
   }
  ],
  "faculties": {

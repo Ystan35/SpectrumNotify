@@ -12,8 +12,8 @@ android {
         applicationId = "my.spectrum.notify"
         minSdk = 26
         targetSdk = 34
-        versionCode = 88
-        versionName = "0.27.2"
+        versionCode = 89
+        versionName = "0.28.0"
     }
 
     signingConfigs {
@@ -46,4 +46,6 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.google.firebase:firebase-messaging:24.0.0")
+    // OpenStreetMap map on the Shuttle screen (no API key; tiles from openstreetmap.org)
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 }

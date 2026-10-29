@@ -2,6 +2,14 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.28.0 (versionCode 89)
+- Shuttle screen: plan a trip from any place to any place. Pick From and To (⇅ swaps them), then Leave now, Leave at or Arrive by. Up to three journeys, each with its steps: walk to the stop, the bus, a change (at most one, e.g. BA to the Faculty of Science, 2 min walk to Perpustakaan UM, Rapid T789 to LRT Universiti), the walk at the end. Walking the whole way is offered too, first when it is quicker. The same bus caught at a neighbouring stop shows once (the stop with the least walking).
+- Map (OpenStreetMap, no account or key): every stop as a dot, faculties in orange, From in green and To in red, the chosen journey or route drawn in its colours. Tap a dot to go from or to it, or see its next buses. Pinch to zoom; dimmed greys in the dark theme.
+- Place picker with search, grouped into faculties, residential colleges and bus stops. Short names work: KK1–KK13, FSKTM/FCSIT, FK, FS, FOL, FOM, PASUM, DTC, LRT, Library … Your home stop is listed first.
+- Your last three trips as chips, one tap to plan again.
+- bus.json: coordinates for the UM shuttle stops (41 of 57 places; International House and the five Rapid Stops on route D still have none), ten faculty buildings, and short names per place. FSKTM is now served by its own AB stop (Kinabalu / Tun Ahmad Zaidi RC) rather than the Main Library.
+- Home's bus-or-walk line benefits too: with coordinates, walking times are known for most classes.
+
 ## 0.27.2 (versionCode 88)
 - Rapid KL T789 (LRT Universiti ~ UM via Pantai Hillpark) joins the shuttle planner, from Prasarana's official GTFS data: 22 stops with their positions (KK1, Law, Biomedical Engineering, Main Library, Dewan Tunku Canselor, PASUM, Kerinchi, Bangsar South …), every 15 min on weekdays 5:45 am – 11:30 pm, every 20–30 min at weekends. It has no fixed times, so plans count the longest wait: "Rapid T789 (every ~15 min) from KK1 → Perpustakaan UM · be at the stop by 9:32".
 - FSKTM is reached by T789 to the Main Library stop (Perpustakaan UM, KL1109), then a short walk; change the stop per course in the class editor if you use another one. T815 is no longer in Rapid KL's data.
