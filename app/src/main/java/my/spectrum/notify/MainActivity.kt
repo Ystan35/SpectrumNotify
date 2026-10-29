@@ -258,7 +258,10 @@ class MainActivity : Activity() {
         val flags = getSharedPreferences("health", MODE_PRIVATE)
         val notifOk = Build.VERSION.SDK_INT < 33 ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        val batteryOk = getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        // some phones (Samsung especially) keep reporting "optimised" after you pick Unrestricted on the app's
+        // battery page; after one try you can confirm it yourself instead of being asked forever
+        val batteryAsked = flags.getBoolean("batteryAsked", false)
+        val batteryOk = batteryUnrestricted() || flags.getBoolean("batteryConfirmed", false)
         val checked = p.lastRunTs > 0L
         val occPending = loggedIn && pendingOccAsks().isNotEmpty()
         return listOf(
@@ -271,11 +274,17 @@ class MainActivity : Activity() {
             SetupStep("Allow exact alarms", "So the class reminder arrives about 10 minutes before class, not late.", Scheduler.canExact(this), "Allow") {
                 if (Build.VERSION.SDK_INT >= 31) startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
             },
-            SetupStep("Let checks run in the background",
-                "In the list, find Spectrum Notify and choose Unrestricted (or Not optimised), so Android does not stop the checks.",
-                batteryOk, "Open") {
-                try { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
-                catch (_: Exception) { Toast.makeText(this, "Open Settings → Battery and set Spectrum Notify to Unrestricted", Toast.LENGTH_LONG).show() }
+            if (!batteryAsked || batteryOk) SetupStep("Let checks run in the background",
+                "Allow Spectrum Notify to run in the background (Unrestricted battery), so Android does not stop the checks.",
+                batteryOk, "Allow") {
+                flags.edit().putBoolean("batteryAsked", true).apply()
+                askBatteryUnrestricted()
+            } else SetupStep("Let checks run in the background",
+                "Already set the app's battery to Unrestricted? Some phones don't report it — tap Done. Otherwise tap Allow again.",
+                false, "Done") {
+                flags.edit().putBoolean("batteryConfirmed", true).apply()
+                setupSig = ""
+                render()
             },
             SetupStep("Confirm your Occ",
                 if (!checked) "Your Occ (class group) is detected after the first check." else "Your Occ is your class group, e.g. Occ 2. It decides which links and posts are yours.",
@@ -933,9 +942,12 @@ class MainActivity : Activity() {
                 ).apply { setPadding(0, dp(10), 0, 0) })
             }
             // horizontal scroll so three pills never get squeezed into wrapping vertically
+            // its own padded zone: a sideways drag that starts here scrolls the buttons, never the card (HeroPager)
             val actions = HorizontalScrollView(this).apply {
                 isHorizontalScrollBarEnabled = false
-                setPadding(0, dp(14), 0, 0)
+                tag = HeroPager.NO_SWIPE
+                setPadding(dp(6), dp(6), dp(6), dp(6))
+                background = roundBg(0x1FFFFFFF, 0, this@MainActivity, 26)
             }
             val actionsRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -964,7 +976,7 @@ class MainActivity : Activity() {
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
             actions.addView(actionsRow, lp(WRAP, WRAP))
-            card.addView(actions)
+            card.addView(actions, lp(MATCH, WRAP).apply { topMargin = dp(14) })
             // countdown progress: how far we are into the wait (or the class itself), fills to 100%
             val span = if (live) maxOf(1, c.end - c.start) else maxOf(1, (c.start - now) + (c.end - c.start))
             val done = if (live) now - c.start else (c.start - now).coerceAtLeast(0)
@@ -1344,6 +1356,10 @@ class MainActivity : Activity() {
  * [onCommit] shows the neighbour, or springs back. At the first/last class the card only stretches a little.
  */
 private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
+    companion object {
+        /** Tag a child with this to keep sideways drags that start on it (e.g. the scrolling button row). */
+        const val NO_SWIPE = "heroNoSwipe"
+    }
     var canGo: (Int) -> Boolean = { false }
     var onCommit: (Int) -> Unit = {}
     var onDragState: (Boolean) -> Unit = {}
@@ -1353,7 +1369,19 @@ private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
     private var downX = 0f
     private var downY = 0f
     private var dragging = false
+    /** This gesture started inside a [NO_SWIPE] child: it belongs to that child, not to the card. */
+    private var blocked = false
     private var vt: android.view.VelocityTracker? = null
+
+    private fun inNoSwipe(v: View, rawX: Float, rawY: Float): Boolean {
+        if (v.tag == NO_SWIPE && v.isShown) {
+            val loc = IntArray(2)
+            v.getLocationOnScreen(loc)
+            if (rawX >= loc[0] && rawX < loc[0] + v.width && rawY >= loc[1] && rawY < loc[1] + v.height) return true
+        }
+        if (v is ViewGroup) for (i in 0 until v.childCount) if (inNoSwipe(v.getChildAt(i), rawX, rawY)) return true
+        return false
+    }
 
     private fun card(): View? = if (childCount > 0) getChildAt(0) else null
 
@@ -1373,12 +1401,13 @@ private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = ev.x; downY = ev.y; dragging = false
+                blocked = inNoSwipe(this, ev.rawX, ev.rawY)
                 vt?.recycle(); vt = android.view.VelocityTracker.obtain()
                 vt?.addMovement(ev)
             }
             MotionEvent.ACTION_MOVE -> {
                 vt?.addMovement(ev)
-                if (!dragging && sideways(ev)) startDrag()
+                if (!dragging && !blocked && sideways(ev)) startDrag()
             }
         }
         return dragging

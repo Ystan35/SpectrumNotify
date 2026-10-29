@@ -2,6 +2,10 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.26.1 (versionCode 82)
+- Get set up → "Let checks run in the background" kept asking after the battery was set to Unrestricted (some phones, Samsung especially, do not report it). The step now shows Android's own one-tap "allow in background" prompt, and after one try offers "Done" so you can confirm it yourself. Settings → App & maintenance uses the same prompt.
+- Home card: the button row (Join class · Attendance · Course page) is its own padded zone; a sideways drag that starts on it scrolls the buttons and no longer flips to the next class.
+
 ## 0.26.0 (versionCode 81)
 - Whole 2026/27 academic calendar bundled (UM Lampiran D, amended, Senate 22 Jul 2026): Semester I (exams end 04.02.2027, was 14.02), Semester II (01.03–04.07.2027; mid-break 19–25 Apr; UM iFest 08–11 Jun with no classes) and the Special Semester. The app knows which semester a date is in; revision week, exams and breaks show in the calendar. Settings → semester dates edits the semester you are planning for; corrections are kept per semester.
 - Different subjects each semester: timetable entries belong to a semester. Classes picked from the UM list or added by hand are tagged with the semester being planned (during exams/break that is the next one); learned Spectrum classes with the semester they were seen in. Timetable, Courses and Home show the current semester; the month calendar shows each date's own semester. Existing entries count as Semester I.

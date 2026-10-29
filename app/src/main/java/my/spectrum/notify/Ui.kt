@@ -728,6 +728,23 @@ fun Activity.undoBar(message: String, onUndo: () -> Unit) {
     bar.postDelayed(dismiss, 6000)
 }
 
+/**
+ * Lets background checks run: Android's own one-tap "allow in background" prompt (this is exactly what
+ * [batteryUnrestricted] reads), falling back to the battery list on phones that block the prompt.
+ */
+fun Activity.askBatteryUnrestricted() {
+    try {
+        startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+    } catch (_: Exception) {
+        try { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+        catch (_: Exception) { android.widget.Toast.makeText(this, "Open Settings → Apps → Spectrum Notify → Battery and choose Unrestricted", android.widget.Toast.LENGTH_LONG).show() }
+    }
+}
+
+/** True when Android reports the app as not battery-optimised (Unrestricted). */
+fun Context.batteryUnrestricted(): Boolean =
+    getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
 fun Activity.addNavBar(page: LinearLayout, active: Class<*>) {
     page.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
     page.addView(bottomNav(active), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

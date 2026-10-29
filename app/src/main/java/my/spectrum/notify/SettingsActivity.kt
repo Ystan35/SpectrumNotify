@@ -342,12 +342,8 @@ class SettingsActivity : Activity() {
             }
         }
         alarmHelp = target.getChildAt(target.childCount - 1)
-        target.action("Battery settings", "Open the list, find Spectrum Notify and choose Unrestricted, so Android does not stop the background checks.") {
-            try {
-                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-            } catch (e: Exception) {
-                Toast.makeText(this, "Open battery settings manually", Toast.LENGTH_LONG).show()
-            }
+        target.action("Allow background checks", "Shows Android's prompt to let Spectrum Notify run in the background (Unrestricted battery), so the checks are not stopped.") {
+            askBatteryUnrestricted()
         }
         // not logged in yet: open the Profile section so the login buttons are in view
         if (p.token.isEmpty() && sections.isNotEmpty()) {
