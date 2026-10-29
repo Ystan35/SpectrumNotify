@@ -2,6 +2,14 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.26.2 (versionCode 83)
+- Settings → UM links: the toolbox shortcuts get their own section. Each link has a line icon picked from 19 (school, payment, library, calendar, mail, book, web, document, bus, food, Wi-Fi, person, star, grades, video, link, home, map, help), a name and a web address (https:// added if left out; a mistake keeps the dialog open and says why). Reorder with ▲ ▼, add any of your Spectrum course pages, Reset to UM defaults; removing or resetting offers Undo. Links saved before get an icon guessed from their name. The toolbox shows the icons, and its "Edit UM links" opens this section.
+- Fix: with the app on Light and the phone on Dark (or the reverse), dialogs, time/date pickers and dropdowns followed the phone and drew dark with dark text (the Occ dialog's course codes were unreadable). Every screen now applies the app's Colour mode to Android's own parts too.
+- Fix: the toolbox (Aa) showed no labels — row names and link names had zero width; rows were also needlessly tall.
+- Fix: the Get set up card did not update when a step's text or button changed without it being ticked (after the first check, "Confirm your Occ" kept saying it waits for a check, with no button).
+- Fix: Settings could freeze long enough for "isn't responding" (worst with Extra large text): every course card re-read and re-parsed all saved Spectrum data and rebuilt the timetable. Timetable and course lists are now built once and reused until the data, your timetable settings or the date change (Settings opens in ~1 s).
+- Fix: changing the colour mode or text size redrew the screen twice (2–3 s of frozen frames); semester dates are now read once instead of for every calendar day.
+
 ## 0.26.1 (versionCode 82)
 - Get set up → "Let checks run in the background" kept asking after the battery was set to Unrestricted (some phones, Samsung especially, do not report it). The step now shows Android's own one-tap "allow in background" prompt, and after one try offers "Done" so you can confirm it yourself. Settings → App & maintenance uses the same prompt.
 - Home card: the button row (Join class · Attendance · Course page) is its own padded zone; a sideways drag that starts on it scrolls the buttons and no longer flips to the next class.

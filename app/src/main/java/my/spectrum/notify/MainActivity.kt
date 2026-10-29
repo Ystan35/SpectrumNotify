@@ -45,7 +45,7 @@ import java.util.Locale
  * Bottom bar: courses, timetable, notifications (bell), settings. The notification history is in NotificationsActivity;
  * the profile (login) is a section of Settings.
  */
-class MainActivity : Activity() {
+class MainActivity : BaseActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -207,7 +207,7 @@ class MainActivity : Activity() {
             row.addView(sp, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
             content.addView(row, LinearLayout.LayoutParams(MATCH, WRAP))
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Confirm your Occ")
             .setMessage("Prefilled from your attendance and materials — please confirm each. Unlisted courses keep working without a filter.")
             .setView(box)
@@ -311,7 +311,9 @@ class MainActivity : Activity() {
         }
         val steps = setupSteps(loggedIn)
         val required = steps.filter { !it.optional }
-        val sig = steps.joinToString("") { if (it.done) "1" else "0" } + hidden
+        // done flag, wording and whether there is a button: any of them changing redraws the card
+        // (a check finishing changes the Occ step's text and gives it a button without ticking it)
+        val sig = steps.joinToString("|") { "${it.done}:${it.button}:${it.go != null}:${it.why}" } + hidden
         if (sig == setupSig) return
         setupSig = sig
         setupBox.removeAllViews()

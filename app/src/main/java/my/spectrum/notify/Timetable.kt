@@ -466,6 +466,10 @@ object Timetable {
      * One-offs (date set) are kept from this week on; use [on] for what happens on a given date.
      */
     fun all(ctx: Context, sem: String? = AcademicCalendar.planningLabel(ctx)): List<Slot> {
+        return DataStamp.get("tt:$sem", ctx) { computeAll(ctx, sem) }
+    }
+
+    private fun computeAll(ctx: Context, sem: String?): List<Slot> {
         val p = Prefs(ctx)
         val st = State(ctx)
         val now = System.currentTimeMillis() / 1000

@@ -19,7 +19,7 @@ import java.util.Locale
  *  - Class learned from Spectrum: the time comes from Spectrum so it is shown read-only;
  *    you can change its type and the course colour, or remove it from your timetable.
  */
-class TimetableEditActivity : Activity() {
+class TimetableEditActivity : BaseActivity() {
     companion object {
         const val EXTRA_GRP = "grp"   // id of one of your own entries
         const val EXTRA_KEY = "key"   // key of a class learned from Spectrum
@@ -204,7 +204,7 @@ class TimetableEditActivity : Activity() {
         }
         if (editing) {
             dangerBtn(col, "Delete this class") {
-                android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                android.app.AlertDialog.Builder(this, Ui.dialogTheme)
                     .setTitle("Delete this class?")
                     .setMessage("It will be removed from your timetable. You can add it again, but you will have to re-enter the times.")
                     .setPositiveButton("Delete") { _, _ ->

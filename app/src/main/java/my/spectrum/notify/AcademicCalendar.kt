@@ -100,13 +100,18 @@ object AcademicCalendar {
         ed.apply()
     }
 
+    /** Built once and reused: the month grid asks for every day cell, this used to re-read and re-parse each time. */
+    @Volatile private var cache: List<Dates>? = null
+
     /** Every semester, your corrections applied, in date order. */
     @Synchronized
     fun semesters(ctx: Context): List<Dates> {
+        cache?.let { return it }
         migrateLegacy(ctx)
         val sp = sp(ctx)
         return bundled().map { b -> sp.getString("ov:${b.label}", null)?.let { fromJson(it, b) } ?: b }
             .sortedBy { it.teachStart }
+            .also { cache = it }
     }
 
     /** The semester a date belongs to (teaching start to semester end); the later-starting one wins an overlap. */
@@ -145,6 +150,7 @@ object AcademicCalendar {
         val key = bundledLabelOf(ctx, get(ctx))
         val base = bundled().first { it.label == key }
         sp(ctx).edit().putString("ov:$key", toJson(dt.copy(extraBreaks = dt.extraBreaks.ifEmpty { base.extraBreaks }))).apply()
+        cache = null
     }
 
     private fun within(d: LocalDate, a: LocalDate?, b: LocalDate?): Boolean =

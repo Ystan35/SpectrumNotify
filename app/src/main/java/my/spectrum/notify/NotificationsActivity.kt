@@ -29,7 +29,7 @@ import android.widget.Toast
  * Notification history (the bell in the bottom bar): filter chips, tap to expand, swipe to dismiss.
  * Tapping a phone notification opens this page on that record.
  */
-class NotificationsActivity : Activity() {
+class NotificationsActivity : BaseActivity() {
     companion object {
         const val EXTRA_TS = "record_ts"
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT

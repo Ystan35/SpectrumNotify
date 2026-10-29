@@ -36,6 +36,10 @@ object Courses {
     }
 
     fun all(ctx: Context): List<Course> {
+        return DataStamp.get("courses", ctx) { computeAll(ctx) }
+    }
+
+    private fun computeAll(ctx: Context): List<Course> {
         val p = Prefs(ctx)
         val st = State(ctx)
         val byId = LinkedHashMap<Long, JSONObject>()

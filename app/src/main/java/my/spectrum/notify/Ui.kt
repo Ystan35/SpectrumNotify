@@ -18,6 +18,7 @@ import android.view.ViewGroup
 import android.graphics.drawable.GradientDrawable
 import android.widget.Button
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -49,6 +50,10 @@ object Ui {
     @Volatile var touchDp = 48
     /** Fingerprint of the last applied appearance; activities recreate when it changes. */
     @Volatile var look: String = ""
+
+    /** Alert dialogs in the app's colour mode (the plain Dialog_Alert style is always dark). */
+    val dialogTheme: Int
+        get() = if (dark) android.R.style.Theme_DeviceDefault_Dialog_Alert else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
     /** 1 = dark palette was made with extra contrast. */
     private var contrastDark = -1
 
@@ -105,18 +110,17 @@ object Ui {
     fun tint(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or (alpha shl 24)
 }
 
-/** Applies the appearance settings and colours the system bars to match.
- *  Sets [lookChanged] when the appearance changed while a screen was open, so its
- *  onResume can rebuild with the new look. */
-@Volatile var lookChanged = false
+/** The appearance each open screen was built with, so only screens built with an older look rebuild. */
+private val builtLook = java.util.WeakHashMap<Activity, String>()
 
+/** Applies the appearance settings and colours the system bars to match. */
 fun Activity.applyBars() {
     // every page draws the shared header; hide the system title bar.
     // requestWindowFeature is only legal before setContentView; guard it so
     // recreate() paths (theme toggle, look change) can never crash here.
     try { requestWindowFeature(Window.FEATURE_NO_TITLE) } catch (_: Exception) { }
-    val before = Ui.look
     Ui.setup(this)
+    builtLook[this] = Ui.look
     window.statusBarColor = Ui.BG
     window.navigationBarColor = Ui.BG
     if (!Ui.dark) {
@@ -124,15 +128,17 @@ fun Activity.applyBars() {
         if (Build.VERSION.SDK_INT >= 26) f = f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         window.decorView.systemUiVisibility = f
     }
-    if (before.isNotEmpty() && before != Ui.look) lookChanged = true
 }
 
-/** Call at the top of onResume: rebuilds the screen when the appearance changed while it was open. */
+/**
+ * Call at the top of onResume: rebuilds the screen when the appearance changed while it was in the background.
+ * A screen that just rebuilt itself already has the new look, so it is not rebuilt a second time
+ * (the old global flag made every theme change redraw twice, ~2-3 s of frozen frames).
+ */
 fun Activity.recreateIfLookChanged() {
-    if (lookChanged) {
-        lookChanged = false
-        recreate()
-    }
+    Ui.setup(this)
+    val built = builtLook[this]
+    if (built != null && built != Ui.look) recreate()
 }
 
 fun Context.dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
@@ -791,7 +797,8 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
             isClickable = true
             background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
         }
-        r.addView(TextView(this).apply { text = name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        // weight 1 so the name takes the free width (FrameLayout params here gave it zero width: invisible labels)
+        r.addView(TextView(this).apply { text = name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         r.addView(TextView(this).apply { text = "$value  ▸"; textSize = 13f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD) })
         r.setOnClickListener { onCycle() }
         sheet.addView(r)
@@ -824,11 +831,17 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
         val r = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(44)
+            minimumHeight = dp(Ui.touch(48))
             isClickable = true
             background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+            contentDescription = "Open ${l.name}"
         }
-        r.addView(TextView(this).apply { text = l.name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        r.addView(ImageView(this).apply {
+            setImageResource(Shortcuts.iconRes(l.icon))
+            setColorFilter(Ui.CYAN)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(12) })
+        r.addView(TextView(this).apply { text = l.name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         r.addView(TextView(this).apply { text = "↗"; textSize = 13f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD) })
         r.setOnClickListener {
             closeQuickSheet(root)
@@ -848,7 +861,8 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
     }
     editLinks.setOnClickListener {
         closeQuickSheet(root)
-        LinksEditor.open(this) { }
+        // the editor lives in Settings → UM links (icons, order, course pages)
+        startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_OPEN, "umlinks"))
     }
     sheet.addView(editLinks)
 

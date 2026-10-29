@@ -23,7 +23,7 @@ import java.time.LocalDate
  * Weekly timetable. Day view = the chosen weekday as cards; Week view = a scrollable time grid.
  * One colour per course; the lecture / tutorial / lab tag is text only, so colour always means "which course".
  */
-class TimetableActivity : Activity() {
+class TimetableActivity : BaseActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -307,7 +307,7 @@ class TimetableActivity : Activity() {
             roomField.visibility = if (mode[0] == 1) android.view.View.VISIBLE else android.view.View.GONE
         }
         refresh()
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Location — $course")
             .setMessage(
                 "Online: the app looks for this course's meeting link automatically" +
@@ -349,7 +349,7 @@ class TimetableActivity : Activity() {
             hint = "https://spectrum.um.edu.my/mod/attendance/view.php?id=…"
             setTextIsSelectable(true)
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Attendance links — $course")
             .setMessage("Paste one or more links (one per line). Leave empty to go back to the automatic one.")
             .setView(field)
@@ -574,7 +574,7 @@ class TimetableActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             isClickable = true
         }.also { it.setOnClickListener { openEdit(s) } })
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setView(box)
             .setPositiveButton("Close", null)
             .show()

@@ -158,7 +158,7 @@ object EventsUi {
             }
         }
         if (existing != null) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-            AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            AlertDialog.Builder(activity, Ui.dialogTheme)
                 .setTitle("Delete this event?")
                 .setMessage("“${existing.title}”" + (if (existing.repeat == Events.REPEAT_WEEKLY) " and all its weekly repeats" else "") + " will be removed.")
                 .setPositiveButton("Delete") { _, _ ->

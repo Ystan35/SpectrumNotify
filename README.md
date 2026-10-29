@@ -23,6 +23,7 @@ Android port of spectrum_notify.py. Runs entirely on the phone with your own Spe
 | **Get set up** | Home (new installs) | Checklist card: allow notifications (reason shown first), log in, exact alarms, battery, confirm Occ, check class times, short names (optional). Hide with Undo. |
 | **Undo** | Home, bell, Timetable | Hiding a deadline, swiping away a notification or removing a class shows an Undo bar for 6 s instead of a confirm dialog. |
 | **Semesters** | automatic + calendar | Bundled UM 2026/27 calendar (Sem I, Sem II, Special). Classes hide outside teaching weeks; each timetable entry belongs to one semester, so next semester's subjects start clean. Past courses drop out of Courses and checks. |
+| **UM links** | toolbox (Aa) + Settings → UM links | Shortcuts to UM sites with a line icon each (19 to choose from), reorder, add Spectrum course pages, reset to UM defaults (with Undo). |
 | **Login** | Settings > Profile | In-app WebView sign-in (Microsoft) or browser redirect (`spectrumnotify://`); token in Keystore-encrypted storage. |
 
 ## The app in one line

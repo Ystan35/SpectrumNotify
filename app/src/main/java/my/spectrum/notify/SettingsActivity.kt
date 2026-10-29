@@ -16,7 +16,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 
-class SettingsActivity : Activity() {
+class SettingsActivity : BaseActivity() {
     companion object { const val EXTRA_OPEN = "open_section" }
     private lateinit var p: Prefs
     private val fields = LinkedHashMap<String, EditText>()
@@ -25,6 +25,8 @@ class SettingsActivity : Activity() {
     private lateinit var profileStatus: TextView
     private lateinit var siteField: EditText
     private lateinit var tokenField: EditText
+    /** Settings → UM links list, redrawn when you come back (a course may have been added meanwhile). */
+    private lateinit var linksBox: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,7 +84,7 @@ class SettingsActivity : Activity() {
                     }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(10) })
                 }
                 r.addView(TextView(this).apply {
-                    text = s.name.lowercase().replaceFirstChar { it.uppercase() }
+                    text = sectionTitle(s.name)
                     textSize = 14f * Ui.fontScale
                     setTextColor(Ui.TEXT)
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -282,6 +284,15 @@ class SettingsActivity : Activity() {
             sel.firstOrNull()?.let { p.pollMinutes = pollOpts[it]; Scheduler.ensurePolling(this) }
         }
 
+        target = accordion(col, "UM LINKS",
+            "Your shortcuts in the toolbox (the Aa button). Pick an icon, rename, change the address, " +
+                "reorder with ▲ ▼, or add a Spectrum course page.",
+            key = "umlinks", icon = R.drawable.lk_link,
+            contents = listOf("Shortcuts", "Icons", "Add link", "Reorder", "Course pages", "Reset"))
+        linksBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        target.addView(linksBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        LinksEditor.renderSection(this, linksBox)
+
         target = accordion(col, "APPEARANCE & ACCESSIBILITY",
             "Change how the app looks. Tap a chip to apply it right away — the screen redraws with your choice.",
             icon = R.drawable.ic_settings, contents = listOf("Colour mode", "Text size", "High contrast"), key = "appearance",
@@ -355,9 +366,21 @@ class SettingsActivity : Activity() {
             sections.firstOrNull { it.key == key }?.let {
                 it.body.visibility = View.VISIBLE
                 it.arrow.text = "▾"
+                // bring the opened section into view (deep links land on sections far down the page)
+                val card = it.body.parent as? View
+                card?.post {
+                    var v: View? = card
+                    var y = 0
+                    while (v != null && v !is android.widget.ScrollView) { y += v.top; v = v.parent as? View }
+                    (v as? android.widget.ScrollView)?.smoothScrollTo(0, (y - dp(16)).coerceAtLeast(0))
+                }
             }
         }
     }
+
+    /** "UM LINKS" → "UM links": sentence case for headings, keeping the UM acronym. */
+    private fun sectionTitle(t: String): String =
+        t.lowercase().replaceFirstChar { it.uppercase() }.replace(Regex("""\bUm\b"""), "UM")
 
     /** One settings section: its views plus the metadata the search and headers show. */
     class Section(
@@ -419,7 +442,7 @@ class SettingsActivity : Activity() {
         head.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(TextView(this@SettingsActivity).apply {
-                text = title.lowercase().replaceFirstChar { it.uppercase() }
+                text = sectionTitle(title)
                 textSize = 15f * Ui.fontScale
                 setTextColor(Ui.TEXT)
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -453,6 +476,7 @@ class SettingsActivity : Activity() {
     override fun onResume() {
         super.onResume()
         recreateIfLookChanged()
+        LinksEditor.renderSection(this, linksBox)
         val vis = if (Scheduler.canExact(this)) View.GONE else View.VISIBLE
         alarmBtn.visibility = vis
         alarmHelp?.visibility = vis
