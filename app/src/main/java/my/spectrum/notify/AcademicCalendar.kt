@@ -129,7 +129,7 @@ object AcademicCalendar {
      * The semester you are planning for: the one being taught now, or — during revision, exams or a
      * break — the next one. New timetable entries belong to it, and the Timetable screen shows it.
      */
-    fun planning(ctx: Context, today: LocalDate = LocalDate.now()): Dates {
+    fun planning(ctx: Context, today: LocalDate = LocalDate.now(zone())): Dates {
         val all = semesters(ctx)
         return all.firstOrNull { !today.isAfter(it.teachEnd) } ?: all.last()
     }
@@ -164,7 +164,7 @@ object AcademicCalendar {
     fun inTeaching(ctx: Context, d: LocalDate): Boolean {
         val all = semesters(ctx)
         val last = all.last()
-        if (d.isAfter(last.semEnd)) return LocalDate.now().isAfter(last.semEnd)
+        if (d.isAfter(last.semEnd)) return LocalDate.now(zone()).isAfter(last.semEnd)
         val s = forDate(ctx, d) ?: return false
         return !d.isBefore(s.teachStart) && !d.isAfter(s.teachEnd) && !isBreak(ctx, d)
     }

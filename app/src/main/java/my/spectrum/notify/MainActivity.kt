@@ -191,7 +191,7 @@ class MainActivity : BaseActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, if (i == 0) 0 else dp(8), 0, 0)
             }
-            row.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", 13f, Ui.TEXT, true).apply {
+            row.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", Type.LABEL, Ui.TEXT, true).apply {
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
             }, LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -241,6 +241,8 @@ class MainActivity : BaseActivity() {
     // ------------------------------------------------------------ "Get set up" card
 
     private var setupSig = ""
+    /** Setup guide expanded to every step (collapsed: progress and the next step only). */
+    private var setupOpen = false
 
     /** A setup flag that starts fresh each semester: new subjects mean a new Occ to confirm and new times to check. */
     private fun semFlag(name: String): String {
@@ -322,41 +324,56 @@ class MainActivity : BaseActivity() {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(10))
-            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
         }
-        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(tv("Get set up", 16f, Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
-        head.addView(tv("${required.count { it.done }} of ${required.size} done", 12f, Ui.DIM, true))
-        card.addView(head)
         val next = steps.firstOrNull { !it.done && it.go != null }
+        val doneCount = required.count { it.done }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(Ui.touch(48))
+            isClickable = true
+            contentDescription = "Get set up, $doneCount of ${required.size} done. " +
+                (if (setupOpen) "Tap to show only the next step" else "Tap to show all steps")
+            setOnClickListener { setupOpen = !setupOpen; setupSig = ""; render() }
+        }
+        head.addView(tv("Get set up", Type.BODY_L, Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        head.addView(tv("$doneCount of ${required.size} done", Type.CAPTION, Ui.DIM, true))
+        head.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_expand_more)
+            setColorFilter(Ui.DIM)
+            rotation = if (setupOpen) 180f else 0f
+        }, LinearLayout.LayoutParams(dp(24), dp(24)).apply { leftMargin = dp(6) })
+        card.addView(head)
+        // progress bar: the done share of the required steps
+        val frac = doneCount.toFloat() / maxOf(1, required.size)
+        val bar = LinearLayout(this).apply { background = roundBg(Ui.tint(Ui.DIM, 0x33), 0, this@MainActivity, Radius.SM) }
+        bar.addView(View(this).apply { background = roundBg(Ui.GREEN, 0, this@MainActivity, Radius.SM) }, lp(0, dp(4), frac.coerceAtLeast(0.02f)))
+        bar.addView(View(this), lp(0, dp(4), (1f - frac).coerceAtLeast(0f)))
+        card.addView(bar, lp(MATCH, dp(4)).apply { topMargin = dp(2) })
         for (s in steps) {
+            if (!setupOpen && s !== next) continue
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(10), 0, 0)
             }
-            row.addView(tv(if (s.done) "✓" else "○", 16f, if (s.done) Ui.GREEN else Ui.DIM, true).apply {
+            row.addView(ImageView(this).apply {
+                setImageResource(if (s.done) R.drawable.ic_check else R.drawable.ic_circle)
+                setColorFilter(if (s.done) Ui.GREEN else Ui.DIM)
                 contentDescription = if (s.done) "Done" else "Not done"
-            }, LinearLayout.LayoutParams(dp(26), WRAP))
+            }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { rightMargin = dp(8) })
             val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            text.addView(tv(s.title + if (s.optional) " (optional)" else "", 14f, if (s.done) Ui.DIM else Ui.TEXT, !s.done))
-            if (!s.done) text.addView(tv(s.why, 12f, Ui.DIM))
+            text.addView(tv(s.title + if (s.optional) " (optional)" else "", Type.BODY, if (s.done) Ui.DIM else Ui.TEXT, !s.done))
+            if (!s.done) text.addView(tv(s.why, Type.CAPTION, Ui.DIM))
             row.addView(text, LinearLayout.LayoutParams(0, WRAP, 1f))
             if (!s.done && s.go != null) {
-                val filled = s === next
-                row.addView(tv(s.button, 13f, if (filled) onAccent() else Ui.CYAN, true).apply {
-                    gravity = Gravity.CENTER
-                    minHeight = dp(Ui.touch(48)); minWidth = dp(72)
-                    setPadding(dp(12), 0, dp(12), 0)
-                    isClickable = true
-                    background = if (filled) roundBg(Ui.CYAN, 0, this@MainActivity, 20) else rippleBg(Ui.BAR, Ui.CYAN, this@MainActivity, 20)
+                row.addView(button(s.button, if (s === next) Emphasis.PRIMARY else Emphasis.SECONDARY) { s.go.invoke(); setupSig = "" }.apply {
                     contentDescription = "${s.button}: ${s.title}"
-                    setOnClickListener { s.go.invoke(); setupSig = "" }
                 }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
             }
             card.addView(row)
         }
-        card.addView(tv("Hide this guide", 12f, Ui.DIM, true).apply {
+        if (setupOpen) card.addView(tv("Hide this guide", Type.CAPTION, Ui.DIM, true).apply {
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             minHeight = dp(Ui.touch(48))
             isClickable = true
@@ -367,7 +384,7 @@ class MainActivity : BaseActivity() {
                 undoBar("Setup guide hidden") { flags.edit().putBoolean(semFlag("setupHidden"), false).apply(); setupSig = ""; render() }
             }
         }, LinearLayout.LayoutParams(MATCH, WRAP))
-        setupBox.addView(card, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
+        setupBox.addView(card, lp(MATCH, WRAP))
     }
 
     override fun onPause() {
@@ -377,13 +394,6 @@ class MainActivity : BaseActivity() {
     }
 
     // ------------------------------------------------------------ small helpers
-    private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
-        TextView(this).apply {
-            this.text = text
-            textSize = size * Ui.fontScale
-            setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-        }
 
     private fun lp(w: Int, h: Int, weight: Float = 0f) = LinearLayout.LayoutParams(w, h, weight)
 
@@ -396,7 +406,6 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun onPrimary(): Int = if (Ui.dark) Ui.BG else 0xFFFFFFFF.toInt()
 
     private fun firstName(): String {
         val n = p.userName.trim().split(" ").firstOrNull().orEmpty()
@@ -418,7 +427,7 @@ class MainActivity : BaseActivity() {
         val root = FrameLayout(this).apply { setBackgroundColor(Ui.BG) }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), 0, dp(16), dp(24))
+            setPadding(dp(16), 0, dp(16), dp(80))   // clear of the floating Aa button
         }
         scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
@@ -431,19 +440,20 @@ class MainActivity : BaseActivity() {
 
         // app title row: THE shared header (same implementation as every page)
         themeBtn = (headerRow(homeMode = true).getChildAt(2) as ImageButton)
-        content.addView(themeBtn.parent as View, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
+        // same place as on every other tab (screen() uses 8dp top, 16 left, 12 right; content already pads 16)
+        content.addView(themeBtn.parent as View, lp(MATCH, WRAP).apply { topMargin = dp(8); rightMargin = dp(-4) })
 
         // greeting + refresh sit on their own card so they stand out from the BG
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(14), dp(12), dp(14))
-            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 18)
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.LG)
         }
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        greetTitle = tv("", 26f, Ui.TEXT, true)
-        greetSub = tv("", 14f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) }
-        syncLabel = tv("", 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) }
+        greetTitle = tv("", Type.DISPLAY, Ui.TEXT, true)
+        greetSub = tv("", Type.BODY, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) }
+        syncLabel = tv("", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) }
         texts.addView(greetTitle)
         texts.addView(greetSub)
         texts.addView(syncLabel)
@@ -451,26 +461,26 @@ class MainActivity : BaseActivity() {
         refreshBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_refresh)
             setColorFilter(Ui.CYAN)
-            background = rippleBg(Ui.BG, Ui.BORDER, this@MainActivity, 24)
+            background = rippleBg(Ui.BG, Ui.BORDER, this@MainActivity, Radius.PILL)
             contentDescription = "Check Spectrum now"
             setOnClickListener { startRefresh() }
         }
         header.addView(refreshBtn, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
         content.addView(header, lp(MATCH, WRAP).apply { topMargin = dp(14); bottomMargin = dp(12) })
 
-        setupBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        content.addView(setupBox, lp(MATCH, WRAP))
-
+        // the next class leads; the setup guide comes after it (it used to push the class below the fold)
         heroBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(heroBox, lp(MATCH, WRAP))
+
+        setupBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(setupBox, lp(MATCH, WRAP).apply { topMargin = dp(12) })
 
         // deadlines strip
         dueSection = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
-        dueSection.addView(tv("DUE SOON", 13f, Ui.DIM, true).apply {
-            letterSpacing = 0.08f
+        dueSection.addView(sectionLabel("DUE SOON").apply {
             setPadding(dp(2), dp(26), 0, dp(10))
         })
         dueRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -485,8 +495,7 @@ class MainActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
-        eventsSection.addView(tv("YOUR EVENTS", 13f, Ui.DIM, true).apply {
-            letterSpacing = 0.08f
+        eventsSection.addView(sectionLabel("YOUR EVENTS").apply {
             setPadding(dp(2), dp(26), 0, dp(10))
         })
         eventsList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -611,20 +620,20 @@ class MainActivity : BaseActivity() {
         val ts = p.lastRunTs
         when {
             !loggedIn -> { syncLabel.text = "● Not logged in"; syncLabel.setTextColor(Ui.RED) }
-            p.lastError.isNotEmpty() -> { syncLabel.text = "● Last check failed. Tap ↻ to retry."; syncLabel.setTextColor(Ui.RED) }
-            ts == 0L -> { syncLabel.text = "● Not checked yet. Tap ↻."; syncLabel.setTextColor(Ui.DIM) }
+            p.lastError.isNotEmpty() -> { syncLabel.text = "● Last check failed. Tap refresh to retry."; syncLabel.setTextColor(Ui.RED) }
+            ts == 0L -> { syncLabel.text = "● Not checked yet. Tap refresh."; syncLabel.setTextColor(Ui.DIM) }
             else -> { syncLabel.text = "● Synced ${ago(ts)}"; syncLabel.setTextColor(Ui.GREEN) }
         }
 
     }
 
     private fun pill(label: String, filled: Boolean, onClick: () -> Unit): TextView =
-        tv(label, 14f, if (filled) Ui.HERO_A else 0xFFFFFFFF.toInt(), true).apply {
+        tv(label, Type.BODY, if (filled) Ui.HERO_A else 0xFFFFFFFF.toInt(), true).apply {
             gravity = Gravity.CENTER
             minHeight = dp(44)
             setPadding(dp(18), 0, dp(18), 0)
             background = GradientDrawable().apply {
-                cornerRadius = dp(22).toFloat()
+                cornerRadius = dp(Radius.LG).toFloat()
                 if (filled) setColor(0xFFFFFFFF.toInt()) else { setColor(0x00000000); setStroke(dp(1), 0xB3FFFFFF.toInt()) }
             }
             setOnClickListener { onClick() }
@@ -703,9 +712,9 @@ class MainActivity : BaseActivity() {
                 GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.HERO_A, Ui.HERO_B))
             } else {
                 GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(shiftColour(tint, 0f), shiftColour(tint, -0.1f)))
-            }.apply { cornerRadius = dp(22).toFloat() }
+            }.apply { cornerRadius = dp(Radius.LG).toFloat() }
         }
-        fun label(t: String) = tv(t, 12f, soft, true).apply { letterSpacing = 0.08f }
+        fun label(t: String) = tv(t, Type.CAPTION, soft, true).apply { letterSpacing = 0.08f }
 
         if (slides.isEmpty()) {
             heroBox.removeAllViews()
@@ -716,12 +725,12 @@ class MainActivity : BaseActivity() {
             }
             if (!loggedIn) {
                 card.addView(label("WELCOME"))
-                card.addView(tv("Never miss a class link", 24f, white, true).apply { setPadding(0, dp(6), 0, 0) })
-                card.addView(tv("Log in with your Spectrum account to get class links, deadlines and new materials here.", 14f, soft).apply { setPadding(0, dp(6), 0, dp(14)) })
+                card.addView(tv("Never miss a class link", Type.HEADLINE, white, true).apply { setPadding(0, dp(6), 0, 0) })
+                card.addView(tv("Log in with your Spectrum account to get class links, deadlines and new materials here.", Type.BODY, soft).apply { setPadding(0, dp(6), 0, dp(14)) })
                 card.addView(pill("Log in", true) { startActivity(Intent(this, LoginWebActivity::class.java)) }, lp(WRAP, WRAP))
             } else {
                 val due = ov.due.firstOrNull()
-                val inBreak = !AcademicCalendar.inTeaching(this, java.time.LocalDate.now())
+                val inBreak = !AcademicCalendar.inTeaching(this, java.time.LocalDate.now(zone()))
                 card.addView(label(if (inBreak) "HOLIDAY MODE" else "ALL CLEAR"))
                 card.addView(tv(
                     if (inBreak) "Semester break — classes are hidden until teaching resumes" else "No classes coming up",
@@ -729,7 +738,7 @@ class MainActivity : BaseActivity() {
                 ).apply { setPadding(0, dp(6), 0, 0) })
                 card.addView(tv(
                     if (due != null) "Next deadline: ${due.name} ${relIn(due.ts - now)}." else "Enjoy the free time. New updates will appear below.",
-                    14f, soft,
+                    Type.BODY, soft,
                 ).apply { setPadding(0, dp(6), 0, 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END })
             }
             heroBox.addView(card, lp(MATCH, WRAP))
@@ -754,25 +763,23 @@ class MainActivity : BaseActivity() {
             val live = now >= c.start
             val col = Timetable.colours(this, setOf(c.course))[c.course] ?: white
             card.addView(label(if (live) "HAPPENING NOW" else if (isToday(c.start)) "UP NEXT TODAY" else "NEXT CLASS").apply {
-                paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
-                // small course-colour dot before the label so slides are distinguishable at a glance
             })
-            card.addView(tv(Shorts.display(this, c.course), 28f, white, true).apply { setPadding(0, dp(6), 0, 0) })
-            val sub = if (c.name.isNotEmpty() && !c.name.equals(c.course, true)) c.name else c.full
+            card.addView(tv(Shorts.display(this, c.course), Type.DISPLAY, white, true).apply { setPadding(0, dp(6), 0, 0) })
+            val sub = Timetable.classTitle(c.course, c.full, c.name)
             if (sub.isNotEmpty()) {
-                card.addView(tv(sub, 14f, soft).apply {
+                card.addView(tv(sub, Type.BODY, soft).apply {
                     maxLines = 2
                     ellipsize = TextUtils.TruncateAt.END
                     setPadding(0, dp(2), 0, 0)
                 })
             }
-            card.addView(tv("${dayLabel(c.start)} · ${hhmm(c.start)}–${hhmm(c.end)}", 15f, white, true).apply {
+            card.addView(tv("${dayLabel(c.start)} · ${hhmm(c.start)}–${hhmm(c.end)}", Type.BODY_L, white, true).apply {
                 setPadding(0, dp(12), 0, 0)
             })
             card.addView(
-                tv(if (live) "Ends ${relIn(c.end - now)}" else "Starts ${relIn(c.start - now)}", 13f, white, true).apply {
+                tv(if (live) "Ends ${relIn(c.end - now)}" else "Starts ${relIn(c.start - now)}", Type.LABEL, white, true).apply {
                     setPadding(dp(12), dp(6), dp(12), dp(6))
-                    background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(0x33FFFFFF) }
+                    background = GradientDrawable().apply { cornerRadius = dp(Radius.MD).toFloat(); setColor(0x33FFFFFF) }
                 },
                 lp(WRAP, WRAP).apply { topMargin = dp(8) },
             )
@@ -782,12 +789,13 @@ class MainActivity : BaseActivity() {
                 val trip = try { Shuttle.tripFor(this, c.code.ifEmpty { c.course }, z.toLocalDate(), z.hour * 60 + z.minute) } catch (_: Exception) { null }
                 val line = trip?.let { Shuttle.line(this, it) }
                 if (trip != null && line != null) {
-                    card.addView(tv("$line  ›", 13f, white, true).apply {
+                    val walking = trip.plan is ShuttleModel.Plan.Walk
+                    val lineText = line.removePrefix("🚌 ").removePrefix("🚶 ")
+                    card.addView(iconText(if (walking) R.drawable.ic_walk else R.drawable.lk_bus, lineText, Type.LABEL, white, true, trailing = R.drawable.ic_chevron_right).apply {
                         setPadding(dp(12), dp(8), dp(12), dp(8))
-                        background = rippleBg(0x26FFFFFF, 0, this@MainActivity, 12)
+                        background = rippleBg(0x26FFFFFF, 0, this@MainActivity, Radius.MD)
                         isClickable = true
-                        contentDescription = line.removePrefix("🚌 ").removePrefix("🚶 ") + ". Tap for " +
-                            (if (trip.plan is ShuttleModel.Plan.Walk) "walking directions" else "shuttle times")
+                        contentDescription = lineText + ". Tap for " + (if (walking) "walking directions" else "shuttle times")
                         setOnClickListener {
                             val walk = Shuttle.walkUrl(trip)
                             if (walk != null) openUrl(walk)
@@ -804,17 +812,16 @@ class MainActivity : BaseActivity() {
             if (c.link.isEmpty() || c.manual) {
                 val inPerson = Timetable.inPerson(this, c.code.ifEmpty { c.course })
                 val room = Timetable.locationOf(this, c.code.ifEmpty { c.course }).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
-                card.addView(tv(
-                    if (c.manual) "Attendance for this course is by Teams recording."
-                    else if (inPerson) "📍 In person" + (if (room.isNotEmpty()) " · $room" else "") + ". Online links are ignored for this course."
-                    else "No online link yet. It may be in person, or not posted. The app keeps checking.",
-                    13f, soft,
-                ).apply { setPadding(0, dp(10), 0, 0) })
+                val note = if (c.manual) "Attendance for this course is by Teams recording."
+                    else if (inPerson) "In person" + (if (room.isNotEmpty()) " · $room" else "") + ". Online links are ignored for this course."
+                    else "No online link yet. It may be in person, or not posted. The app keeps checking."
+                card.addView((if (inPerson && !c.manual) iconText(R.drawable.ic_place, note, Type.LABEL, soft) else tv(note, Type.LABEL, soft))
+                    .apply { setPadding(0, dp(10), 0, 0) })
             }
             if (c.hiddenOwn.isNotEmpty()) {
                 card.addView(tv(
                     "Your own ${Shorts.display(this, c.code.ifEmpty { c.course })} entry (${c.hiddenOwn}) is hidden: Spectrum lists this class at the same time.",
-                    12f, soft,
+                    Type.CAPTION, soft,
                 ).apply { setPadding(0, dp(8), 0, 0) })
             }
             // horizontal scroll so three pills never get squeezed into wrapping vertically
@@ -823,7 +830,7 @@ class MainActivity : BaseActivity() {
                 isHorizontalScrollBarEnabled = false
                 tag = HeroPager.NO_SWIPE
                 setPadding(dp(6), dp(6), dp(6), dp(6))
-                background = roundBg(0x1FFFFFFF, 0, this@MainActivity, 26)
+                background = roundBg(0x1FFFFFFF, 0, this@MainActivity, Radius.PILL)
             }
             val actionsRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -893,11 +900,14 @@ class MainActivity : BaseActivity() {
                 }
                 val navStrong = Ui.TEXT
                 val navDim = Ui.DIM
-                fun arrowBtn(arrow: String, desc: String, enabled: Boolean, onClick: () -> Unit): TextView =
-                    tv(arrow, 22f, if (enabled) navStrong else navDim, true).apply {
-                        minHeight = dp(Ui.touch(48)); minWidth = dp(Ui.touch(48))
-                        gravity = Gravity.CENTER
+                fun arrowBtn(icon: Int, desc: String, enabled: Boolean, onClick: () -> Unit): ImageView =
+                    ImageView(this).apply {
+                        setImageResource(icon)
+                        setColorFilter(if (enabled) navStrong else navDim)
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                        setPadding(dp(12), dp(12), dp(12), dp(12))
                         contentDescription = desc
+                        isEnabled = enabled
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
                             setColor(if (enabled) Ui.tint(if (Ui.dark) 0xFFFFFFFF.toInt() else 0xFF26251F.toInt(), 0x14) else 0x00000000)
@@ -905,9 +915,9 @@ class MainActivity : BaseActivity() {
                         }
                         if (enabled) setOnClickListener { onClick() }
                     }
-                nav.addView(arrowBtn("‹", "Previous class", heroPos > 0) { pager.slide(-1) })
-                nav.addView(tv("Class ${heroPos + 1} of ${slides.size}", 13f, Ui.TEXT, true).apply { setPadding(dp(12), 0, dp(12), 0) }, lp(WRAP, WRAP))
-                nav.addView(arrowBtn("›", "Next class", heroPos < slides.size - 1) { pager.slide(1) })
+                nav.addView(arrowBtn(R.drawable.ic_chevron_left, "Previous class", heroPos > 0) { pager.slide(-1) }, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
+                nav.addView(tv("Class ${heroPos + 1} of ${slides.size}", Type.LABEL, Ui.TEXT, true).apply { setPadding(dp(12), 0, dp(12), 0) }, lp(WRAP, WRAP))
+                nav.addView(arrowBtn(R.drawable.ic_chevron_right, "Next class", heroPos < slides.size - 1) { pager.slide(1) }, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
                 navHolder.addView(nav, lp(MATCH, WRAP))
                 val dots = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, dp(4)); clipChildren = false }
                 slides.forEachIndexed { i, sl ->
@@ -945,18 +955,18 @@ class MainActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(20))
             background = GradientDrawable().apply {
-                cornerRadius = dp(22).toFloat()
-                setColor(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt())
-                setStroke(dp(1), if (Ui.dark) 0xFF3A4150.toInt() else 0xFFD8D4CA.toInt())
+                cornerRadius = dp(Radius.LG).toFloat()
+                setColor(Ui.RAISED)
+                setStroke(dp(1), Ui.RAISED_BORDER)
             }
         }
         val tint = Timetable.colours(this, setOf(c.course))[c.course] ?: Ui.CYAN
-        sheet.addView(tv(Shorts.display(this, c.course), 22f, tint, true))
-        val sub = if (c.name.isNotEmpty() && !c.name.equals(c.course, true)) c.name else c.full
-        if (sub.isNotEmpty()) sheet.addView(tv(sub, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        sheet.addView(tv(Shorts.display(this, c.course), Type.HEADLINE, tint, true))
+        val sub = Timetable.classTitle(c.course, c.full, c.name)
+        if (sub.isNotEmpty()) sheet.addView(tv(sub, Type.LABEL, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
         val nowS = System.currentTimeMillis() / 1000
         val status = if (nowS >= c.start) "happening now, ends ${relIn(c.end - nowS)}" else "starts ${relIn(c.start - nowS)}"
-        sheet.addView(tv("${dayLabel(c.start)} · ${hhmm(c.start)}–${hhmm(c.end)} · $status", 13f, Ui.TEXT, true).apply {
+        sheet.addView(tv("${dayLabel(c.start)} · ${hhmm(c.start)}–${hhmm(c.end)} · $status", Type.LABEL, Ui.TEXT, true).apply {
             setPadding(0, dp(6), 0, dp(8))
         })
 
@@ -972,10 +982,10 @@ class MainActivity : BaseActivity() {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
+                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
             }
-            r.addView(tv(title, 15f, Ui.TEXT, true))
-            r.addView(tv(subText, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            r.addView(tv(title, Type.BODY_L, Ui.TEXT, true))
+            r.addView(tv(subText, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
             r.isClickable = true
             r.contentDescription = title
             r.setOnClickListener {
@@ -1013,12 +1023,12 @@ class MainActivity : BaseActivity() {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
+                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
             }
-            r.addView(tv(if (canEdit) "Edit this class" else "Open timetable", 15f, Ui.TEXT, true))
+            r.addView(tv(if (canEdit) "Edit this class" else "Open timetable", Type.BODY_L, Ui.TEXT, true))
             r.addView(tv(
                 if (canEdit) "Times, name, attendance mode, colour" else "This class is not in your timetable yet; find or add it there",
-                12f, Ui.DIM,
+                Type.CAPTION, Ui.DIM,
             ).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
             r.isClickable = true
             r.setOnClickListener {
@@ -1033,10 +1043,10 @@ class MainActivity : BaseActivity() {
                 val r = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(14), dp(12), dp(14), dp(12))
-                    background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
+                    background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
                 }
-                r.addView(tv(title, 15f, Ui.TEXT, true))
-                r.addView(tv(subText, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+                r.addView(tv(title, Type.BODY_L, Ui.TEXT, true))
+                r.addView(tv(subText, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
                 r.isClickable = true
                 r.setOnClickListener { sheetDismiss(); go() }
                 sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
@@ -1048,7 +1058,7 @@ class MainActivity : BaseActivity() {
             }
         }
 
-        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_DayNight)
+        val dialog = android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setView(sheet)
             .create()
         sheetTag = dialog
@@ -1058,6 +1068,7 @@ class MainActivity : BaseActivity() {
             android.view.WindowManager.LayoutParams.WRAP_CONTENT,
         )
         dialog.window?.setGravity(android.view.Gravity.BOTTOM)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
         dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         dialog.window?.setDimAmount(0.55f)
     }
@@ -1071,26 +1082,26 @@ class MainActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(20))
             background = GradientDrawable().apply {
-                cornerRadius = dp(22).toFloat()
-                setColor(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt())
-                setStroke(dp(1), if (Ui.dark) 0xFF3A4150.toInt() else 0xFFD8D4CA.toInt())
+                cornerRadius = dp(Radius.LG).toFloat()
+                setColor(Ui.RAISED)
+                setStroke(dp(1), Ui.RAISED_BORDER)
             }
         }
         val left = d.ts - System.currentTimeMillis() / 1000
         val col = if (left < 86400) Ui.RED else if (left < 3 * 86400) Ui.ORANGE else Ui.GREEN
-        sheet.addView(tv("Due in " + relShort(left) + " · " + dayLabel(d.ts) + ", " + hhmm(d.ts), 13f, col, true))
-        sheet.addView(tv(d.name, 20f, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END })
-        if (d.course.isNotEmpty()) sheet.addView(tv(Shorts.display(this, d.course), 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
-        if (isDone) sheet.addView(tv("✓ marked as done", 12f, Ui.GREEN, true).apply { setPadding(0, dp(8), 0, 0) })
+        sheet.addView(tv("Due in " + relShort(left) + " · " + dayLabel(d.ts) + ", " + hhmm(d.ts), Type.LABEL, col, true))
+        sheet.addView(tv(d.name, Type.HEADLINE, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END })
+        if (d.course.isNotEmpty()) sheet.addView(tv(Shorts.display(this, d.course), Type.LABEL, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        if (isDone) sheet.addView(iconText(R.drawable.ic_check, "Marked as done", Type.CAPTION, Ui.GREEN, true).apply { setPadding(0, dp(8), 0, 0) })
 
         fun row(title: String, subText: String, go: () -> Unit) {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 14)
+                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
             }
-            r.addView(tv(title, 15f, Ui.TEXT, true))
-            r.addView(tv(subText, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            r.addView(tv(title, Type.BODY_L, Ui.TEXT, true))
+            r.addView(tv(subText, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
             r.isClickable = true
             r.setOnClickListener { sheetDismiss(); go() }
             sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
@@ -1115,7 +1126,7 @@ class MainActivity : BaseActivity() {
                 render()
             }
         }
-        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_DayNight)
+        val dialog = android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setView(sheet)
             .create()
         sheetTag = dialog
@@ -1125,13 +1136,14 @@ class MainActivity : BaseActivity() {
             android.view.WindowManager.LayoutParams.WRAP_CONTENT,
         )
         dialog.window?.setGravity(android.view.Gravity.BOTTOM)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
         dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         dialog.window?.setDimAmount(0.55f)
     }
 
     /** Home "YOUR EVENTS": occurrences in the next 7 days, tap to edit. */
     private fun renderEvents() {
-        val today = java.time.LocalDate.now()
+        val today = java.time.LocalDate.now(zone())
         val rows = ArrayList<Triple<Events.Event, java.time.LocalDate, Int>>()
         for (e in Events.all(this)) {
             for ((d, t) in e.upcoming(today, 7)) rows.add(Triple(e, d, t.hour * 60 + t.minute))
@@ -1144,12 +1156,12 @@ class MainActivity : BaseActivity() {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
-                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
+                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
                 isClickable = true
                 setOnClickListener { EventsUi.editor(this@MainActivity, e, { dueSig = ""; render() }) }
             }
-            row.addView(tv(EventsUi.fmtDate(d) + " · " + EventsUi.fmtMin(min), 12f, Ui.CYAN, true))
-            row.addView(tv(e.title, 14f, Ui.TEXT, true).apply {
+            row.addView(tv(EventsUi.fmtDate(d) + " · " + EventsUi.fmtMin(min), Type.CAPTION, Ui.CYAN, true))
+            row.addView(tv(e.title, Type.BODY, Ui.TEXT, true).apply {
                 setPadding(0, dp(4), 0, 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             })
             eventsList.addView(row, lp(MATCH, WRAP).apply { bottomMargin = dp(8) })
@@ -1177,7 +1189,7 @@ class MainActivity : BaseActivity() {
             val c = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
-                background = roundBg(Ui.BAR, if (isDone) Ui.CYAN else Ui.BORDER, this@MainActivity, 16)
+                background = roundBg(Ui.BAR, if (isDone) Ui.CYAN else Ui.BORDER, this@MainActivity, Radius.MD)
                 isClickable = true
                 setOnClickListener { dueSheet(d, doneKey) }
             }
@@ -1185,19 +1197,19 @@ class MainActivity : BaseActivity() {
             c.addView(View(this).apply {
                 background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(col) }
             }, lp(MATCH, dp(4)).apply { bottomMargin = dp(10) })
-            c.addView(tv("Due in ${relShort(left)}", 12f, col, true).apply {
+            c.addView(tv("Due in ${relShort(left)}", Type.CAPTION, col, true).apply {
                 setPadding(dp(10), dp(4), dp(10), dp(4))
-                background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Ui.tint(col, 0x26)) }
+                background = GradientDrawable().apply { cornerRadius = dp(Radius.MD).toFloat(); setColor(Ui.tint(col, 0x26)) }
             }, lp(WRAP, WRAP))
-            c.addView(tv(d.name, 14f, Ui.TEXT, true).apply {
+            c.addView(tv(d.name, Type.BODY, Ui.TEXT, true).apply {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(10), 0, 0)
                 if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
             })
             val shortName = Shorts.display(this, d.course)
-            if (d.course.isNotEmpty()) c.addView(tv(shortName, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
-            if (d.course.isNotEmpty() && !shortName.equals(d.course, true)) c.addView(tv(d.course, 12f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
+            if (d.course.isNotEmpty()) c.addView(tv(shortName, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
+            if (d.course.isNotEmpty() && !shortName.equals(d.course, true)) c.addView(tv(d.course, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
             c.contentDescription = "${d.name}, due in ${relShort(left)}" + (if (isDone) ", marked done" else "")
             dueRow.addView(c, lp(dp(172), WRAP).apply { rightMargin = dp(10) })
         }

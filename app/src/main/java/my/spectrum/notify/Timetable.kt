@@ -59,10 +59,27 @@ object Timetable {
         0xFF5CD6E6.toInt(), 0xFFFFA45C.toInt(), 0xFFF48FB1.toInt(), 0xFFA3E635.toInt(), 0xFF94A3B8.toInt(),
     )
     private val PALETTE_LIGHT = intArrayOf(
-        0xFF2F55E4.toInt(), 0xFF12805A.toInt(), 0xFF9A6700.toInt(), 0xFFC93636.toInt(), 0xFF6B46C8.toInt(),
-        0xFF0A7C8C.toInt(), 0xFFC25E0B.toInt(), 0xFFC2185B.toInt(), 0xFF4D7C0F.toInt(), 0xFF475569.toInt(),
+        // every colour reads at 4.5:1 or more on the light background (course names are drawn in it)
+        0xFF2F55E4.toInt(), 0xFF0E7553.toInt(), 0xFF8A5E00.toInt(), 0xFFC93636.toInt(), 0xFF6B46C8.toInt(),
+        0xFF0A7584.toInt(), 0xFFA85008.toInt(), 0xFFC2185B.toInt(), 0xFF3F6E0B.toInt(), 0xFF475569.toInt(),
     )
     val PALETTE_SIZE: Int get() = PALETTE_DARK.size
+
+    /**
+     * The line under a course code: the course's title ("BASIC ENTREPRENEURSHIP ENCULTURATION"), else the event name
+     * without Spectrum's clutter ("Attendance OCC29 - Audi FSSS (10 - 12pm) (Group GROUP 29 2026/2027_1)" → "OCC29 - Audi FSSS").
+     */
+    fun classTitle(code: String, full: String, eventName: String): String {
+        val title = full.trim().removePrefix(code).trim(' ', '-', '–', ':').takeIf { !it.equals(code, true) }.orEmpty()
+        // course titles are shown in capitals, as UM writes them ("BASIC ENTREPRENEURSHIP ENCULTURATION")
+        if (title.isNotEmpty()) return title.uppercase()
+        if (eventName.equals(code, true)) return ""
+        return eventName
+            .replace(Regex("""^\s*attendance\b\s*[-:]?\s*""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\([^)]*(?:\d{4}/\d{4}|\bgroup\b|\d\s*(?:am|pm))[^)]*\)""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s{2,}"""), " ")
+            .trim(' ', '-', '–', ':')
+    }
 
     fun colorOf(idx: Int): Int {
         val pal = if (Ui.dark) PALETTE_DARK else PALETTE_LIGHT
@@ -279,10 +296,16 @@ object Timetable {
      * Slots use grp "cat-CODE-kind-occ-i" so they are editable/deletable like any manual entry.
      * Also assigns a course colour. Returns true when slots were written (course in catalog).
      */
+    /** Removes the classes added from the UM list for [code] (its Occ was cleared). Your own entries stay. */
+    fun clearCatalog(ctx: Context, code: String) {
+        val c = Catalog.find(ctx, code)?.code ?: code
+        manual(ctx).map { it.grp }.filter { it.startsWith("cat-$c-") }.distinct().forEach { deleteManual(ctx, it) }
+    }
+
     fun autoSetup(ctx: Context, code: String, occ: String): Boolean {
         val course = Catalog.find(ctx, code) ?: return false
-        manual(ctx).map { it.grp }.filter { it.startsWith("cat-${course.code}-") }.distinct()
-            .forEach { deleteManual(ctx, it) }
+        // the previous Occ's classes go first, so changing Occ never leaves two sets
+        clearCatalog(ctx, course.code)
         for ((kind, choice) in course.forOcc(occ)) {
             choice.parts.forEachIndexed { i, p ->
                 saveManual(

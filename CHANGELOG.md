@@ -2,6 +2,28 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.30.0 (versionCode 94)
+Design and accessibility pass across the whole app.
+- **High contrast works.** Settings → Appearance → High contrast (and the Aa toolbox) used to have no effect; it now brightens text and accents and strengthens edges in both colour modes.
+- **Easier to read in light mode.** Orange and yellow text, and the course colours used for course names, now reach 4.5:1 contrast. Text fields, dropdowns and unselected chips have a clearer outline.
+- **Home:** the next class comes first; the setup guide sits below it and shows only the next step (tap it to see every step). The class card shows the course title ("BASIC ENTREPRENEURSHIP ENCULTURATION") instead of Spectrum's raw event name.
+- **Slimmer header** on every screen, in the same place on every tab, so the page title leads.
+- **Aa button** no longer hides the last item on a page; every page scrolls clear of it.
+- **Dialogs** follow the app's colour mode, not the phone's.
+- **Bigger touch targets:** filter chips, card buttons, Attendance/Join, zoom and the toolbox rows are all at least 48 dp (56 with Big touch targets).
+- **Courses page redesigned:** each card leads with the course name in large bold capitals under its code, then the class times (one line each), then one row with a compact Occ dropdown (orange until set, with a one-line reason) and Course page / Notification pages at the bottom. Short names show next to the code; "Set short names" at the top sets them all, and tapping a course's code line changes just that one.
+- **One look for buttons:** a filled main action, outlined secondary actions, plain text for quiet ones. Courses: Refresh my classes and Short forms side by side; Course home page is an outline in the course colour.
+- **Toolbox (Aa)** grouped into Appearance, Go to (UM Shuttle, Academic calendar, Semester dates) and UM links, all rows alike; it scrolls when the list is long, and Edit for the UM links sits in their heading so it is always in view.
+- **Notifications:** the 🐞 debug switch moved to Settings → App & maintenance → Show diagnostic lines; link buttons line up with the text.
+- **Settings:** each section shows its current values ("01:00 – 07:00", "Every 15 min", "Light · Normal text"); Profile, Quiet hours and Appearance have their own icons.
+- **Timetable:** Day / Week / Month is a segmented switch, distinct from the day chips; "+" next to Attendance is now "+ Link"; the online / in person shortcut moved to the end of the page.
+- **Online or in person** (Settings): each course is a card with its tick box, name and a green "In person since …" or blue "Online" pill; ticked cards are highlighted, the count shows above, and Mark in person / Mark online sit side by side.
+- **Academic calendar** (Aa → Go to) opens UM's 2026/2027 Bachelor degree calendar PDF; the old calendar page had moved ("Not Found").
+- **Occ changes are safe:** changing a course's Occ shows Undo (back to the previous Occ and its classes); choosing Not set now removes that Occ's classes too (they used to stay). If Spectrum lists a weekly class the chosen Occ does not have, the course card says the Occ may be wrong.
+- **Times are always Malaysian time**, whatever time zone the phone is set to, so classes from Spectrum and from the UM list line up (on a phone set to another zone the same class used to show twice, hours apart).
+- Icons instead of emoji and arrow characters inside the app (📍 💻 🚌 🚶 ▸ ▾ ‹ › ↑ ✓ ▲ ▼), so they look the same on every phone and TalkBack does not read them aloud.
+- Under the hood: one type scale (7 sizes, nothing below 12 sp), four corner radii, shared text/button/section-heading helpers and colour tokens instead of copies per screen.
+
 ## 0.29.2 (versionCode 93)
 - Shuttle map: stop and place names are written beside the dots (e.g. "Dayasari (KK5)", "API", "Perpustakaan UM"). From and To are in bold; names that would overlap are left out and appear as you zoom in.
 

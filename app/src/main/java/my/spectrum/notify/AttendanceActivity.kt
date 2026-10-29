@@ -27,7 +27,7 @@ class AttendanceActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
         col = screen("Attendance", navTo = AttendanceActivity::class.java)
-        col.label("Every class today that records attendance, with its link. Ended classes fade to the bottom.", 12f, Ui.DIM, 4)
+        col.label("Every class today that records attendance, with its link. Ended classes fade to the bottom.", Type.CAPTION, Ui.DIM, 4)
         col.action("Fix lecture / tutorial labels", "If a class was labelled wrongly (or you were not asked), relabel duplicates here.") { clarifyDuplicates(true) }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -37,13 +37,6 @@ class AttendanceActivity : BaseActivity() {
 
     private fun dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
     private fun lp(w: Int, h: Int) = LinearLayout.LayoutParams(w, h)
-    private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
-        TextView(this).apply {
-            this.text = text
-            textSize = size * Ui.fontScale
-            setTextColor(color)
-            if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }
     private val ticker = object : Runnable {
         override fun run() { render(); handler.postDelayed(this, 30000) }
     }
@@ -120,7 +113,7 @@ class AttendanceActivity : BaseActivity() {
         val todays = Checker.overview(this).classes.filter { isToday(it.start) }
         list.removeAllViews()
         if (todays.isEmpty()) {
-            list.label("No classes today.", 15f, Ui.DIM, 24)
+            list.label("No classes today.", Type.BODY_L, Ui.DIM, 24)
             return
         }
         val dup = duplicates()
@@ -135,19 +128,19 @@ class AttendanceActivity : BaseActivity() {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
-                background = roundBg(Ui.BAR, Ui.BORDER, this@AttendanceActivity, 16)
+                background = roundBg(Ui.BAR, Ui.BORDER, this@AttendanceActivity, Radius.MD)
                 alpha = if (isEnded) 0.35f else 1f
             }
             // course colour chip + time row
             val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             top.addView(View(this).apply {
-                background = GradientDrawable().apply { cornerRadius = dp(4).toFloat(); setColor(col) }
+                background = GradientDrawable().apply { cornerRadius = dp(Radius.SM).toFloat(); setColor(col) }
             }, lp(dp(10), dp(10)).apply { rightMargin = dp(8) })
-            top.addView(tv("${hhmm(c.start)}–${hhmm(c.end)}", 13f, Ui.DIM, true))
-            if (isLive) top.addView(tv("  ·  NOW", 12f, Ui.GREEN, true))
+            top.addView(tv("${hhmm(c.start)}–${hhmm(c.end)}", Type.LABEL, Ui.DIM, true))
+            if (isLive) top.addView(tv("  ·  NOW", Type.CAPTION, Ui.GREEN, true))
             card.addView(top)
-            card.addView(tv(c.course, 17f, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
-            if (c.name.isNotEmpty()) card.addView(tv(c.name, 12f, Ui.DIM).apply {
+            card.addView(tv(c.course, Type.TITLE, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
+            if (c.name.isNotEmpty()) card.addView(tv(c.name, Type.CAPTION, Ui.DIM).apply {
                 maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(2), 0, 0)
             })
             // duplicate label from the user's choice, or a prompt to label it
@@ -160,23 +153,23 @@ class AttendanceActivity : BaseActivity() {
                     else -> lbl.split(",").getOrNull(idx)?.substringAfter("=")?.replace(",", "") ?: ""
                 }
                 if (lbl == null) {
-                    card.addView(tv(text, 12f, Ui.ORANGE, true).apply { setPadding(0, dp(6), 0, 0) })
+                    card.addView(tv(text, Type.CAPTION, Ui.ORANGE, true).apply { setPadding(0, dp(6), 0, 0) })
                     card.setOnClickListener { clarifyDuplicates(false) }
                 } else {
-                    card.addView(tv(text, 12f, col, true).apply { setPadding(0, dp(6), 0, 0) })
+                    card.addView(tv(text, Type.CAPTION, col, true).apply { setPadding(0, dp(6), 0, 0) })
                 }
             }
             val attUrl = Checker.attendanceUrl(this, c.courseId)
             if (attUrl.isNotEmpty()) {
                 val b = TextView(this).apply {
                     text = "Open attendance page"
-                    textSize = 13f * Ui.fontScale
+                    textSize = Type.LABEL * Ui.fontScale
                     setTextColor(Ui.CYAN)
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                     minHeight = dp(44)
                     gravity = Gravity.CENTER_VERTICAL
                     isClickable = true
-                    background = rippleBg(Ui.BAR, 0, this@AttendanceActivity, 12)
+                    background = rippleBg(Ui.BAR, 0, this@AttendanceActivity, Radius.MD)
                 }
                 b.setOnClickListener {
                     try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(attUrl))) }
@@ -187,12 +180,12 @@ class AttendanceActivity : BaseActivity() {
                 // attendance page not found for this course yet — fall back to the class link
                 val b = TextView(this).apply {
                     text = "Open class link (attendance page not found yet)"
-                    textSize = 13f * Ui.fontScale
+                    textSize = Type.LABEL * Ui.fontScale
                     setTextColor(Ui.DIM)
                     minHeight = dp(44)
                     gravity = Gravity.CENTER_VERTICAL
                     isClickable = true
-                    background = rippleBg(Ui.BAR, 0, this@AttendanceActivity, 12)
+                    background = rippleBg(Ui.BAR, 0, this@AttendanceActivity, Radius.MD)
                 }
                 b.setOnClickListener {
                     try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(c.link))) }
@@ -200,9 +193,9 @@ class AttendanceActivity : BaseActivity() {
                 }
                 card.addView(b, lp(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
             } else if (c.manual) {
-                card.addView(tv("Attendance by Teams recording.", 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
+                card.addView(tv("Attendance by Teams recording.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
             } else {
-                card.addView(tv("No link yet.", 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
+                card.addView(tv("No link yet.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
             }
             list.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(10)
@@ -210,7 +203,7 @@ class AttendanceActivity : BaseActivity() {
         }
         // section separators
         if (ended.isNotEmpty() && live.isNotEmpty()) {
-            list.label("Ended today", 12f, Ui.DIM, 16)
+            list.label("Ended today", Type.CAPTION, Ui.DIM, 16)
             // move the ended cards visually below by re-adding a divider view before them is already handled by order
         }
     }

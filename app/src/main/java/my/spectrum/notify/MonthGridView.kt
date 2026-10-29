@@ -41,7 +41,7 @@ object MonthGridView {
 
     /** "Today", "Tomorrow", "In 5 days", "3 days ago" — where a date sits from today. */
     private fun relDay(date: LocalDate): String {
-        val n = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), date)
+        val n = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(zone()), date)
         return when {
             n == 0L -> "Today"
             n == 1L -> "Tomorrow"
@@ -68,9 +68,9 @@ object MonthGridView {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(20))
             background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dp(22).toFloat()
-                setColor(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt())
-                setStroke(dp(1), if (Ui.dark) 0xFF3A4150.toInt() else 0xFFD8D4CA.toInt())
+                cornerRadius = dp(Radius.LG).toFloat()
+                setColor(Ui.RAISED)
+                setStroke(dp(1), Ui.RAISED_BORDER)
             }
         }
         lateinit var dialog: AlertDialog
@@ -79,11 +79,12 @@ object MonthGridView {
         // ---- header: ‹  date (tap = picker)  ›
         fun arrowBtn(arrow: String, desc: String, onClick: () -> Unit): TextView =
             TextView(activity).apply {
-                text = arrow
-                textSize = 22f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                setCompoundDrawablesRelativeWithIntrinsicBounds(if (arrow == "‹") R.drawable.ic_chevron_left else R.drawable.ic_chevron_right, 0, 0, 0)
+                compoundDrawableTintList = android.content.res.ColorStateList.valueOf(Ui.TEXT)
                 gravity = Gravity.CENTER
+                setPadding(dp(12), 0, dp(12), 0)
                 contentDescription = desc
-                background = rippleBg(Ui.BAR, Ui.BORDER, activity, 24)
+                background = rippleBg(Ui.BAR, Ui.BORDER, activity, Radius.PILL)
                 setOnClickListener { onClick() }
             }
         val head = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -91,15 +92,15 @@ object MonthGridView {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             isClickable = true
-            background = rippleBg(if (Ui.dark) 0xFF20242E.toInt() else 0xFFFFFFFF.toInt(), 0, activity, 12)
+            background = rippleBg(Ui.RAISED, 0, activity, Radius.MD)
             setPadding(dp(8), dp(4), dp(8), dp(4))
         }
         val title = TextView(activity).apply {
-            textSize = 19f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+            textSize = Type.TITLE * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         }
         val subTitle = TextView(activity).apply {
-            textSize = 12f * Ui.fontScale; setTextColor(Ui.CYAN); gravity = Gravity.CENTER
+            textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.CYAN); gravity = Gravity.CENTER
         }
         titleBox.addView(title)
         titleBox.addView(subTitle)
@@ -115,12 +116,12 @@ object MonthGridView {
         sheet.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val todayChip = TextView(activity).apply {
             text = "Back to today"
-            textSize = 12f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD)
+            textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             minHeight = dp(Ui.touch(40))
             setPadding(dp(14), 0, dp(14), 0)
-            background = rippleBg(Ui.BAR, Ui.CYAN, activity, 18)
-            setOnClickListener { val t = LocalDate.now(); go(t, t.compareTo(date).coerceIn(-1, 1)) }
+            background = rippleBg(Ui.BAR, Ui.CYAN, activity, Radius.LG)
+            setOnClickListener { val t = LocalDate.now(zone()); go(t, t.compareTo(date).coerceIn(-1, 1)) }
         }
         sheet.addView(todayChip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4)
@@ -134,7 +135,7 @@ object MonthGridView {
 
         fun sectionLabel(t: String) {
             body.addView(TextView(activity).apply {
-                text = t; textSize = 13f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                text = t; textSize = Type.LABEL * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
                 setPadding(dp(4), dp(12), 0, dp(2))
             })
         }
@@ -142,15 +143,15 @@ object MonthGridView {
             val r = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(12))
-                background = if (onClick != null) rippleBg(Ui.BAR, if (stripe != 0) stripe else Ui.BORDER, activity, 12)
-                    else roundBg(Ui.BAR, if (stripe != 0) stripe else Ui.BORDER, activity, 12)
+                background = if (onClick != null) rippleBg(Ui.BAR, if (stripe != 0) stripe else Ui.BORDER, activity, Radius.MD)
+                    else roundBg(Ui.BAR, if (stripe != 0) stripe else Ui.BORDER, activity, Radius.MD)
                 if (onClick != null) {
                     isClickable = true
                     setOnClickListener { dialog.dismiss(); onClick() }
                 }
             }
-            r.addView(TextView(activity).apply { text = rowTitle; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD) })
-            r.addView(TextView(activity).apply { text = sub; textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            r.addView(TextView(activity).apply { text = rowTitle; textSize = Type.BODY * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD) })
+            r.addView(TextView(activity).apply { text = sub; textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0); maxLines = 3 })
             body.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         }
 
@@ -158,13 +159,13 @@ object MonthGridView {
             title.text = date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH))
             subTitle.text = relDay(date) + "  ·  tap to pick a date"
             titleBox.contentDescription = "${date.format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy", Locale.ENGLISH))}, ${relDay(date)}. Tap to pick another date"
-            todayChip.visibility = if (date == LocalDate.now()) View.GONE else View.VISIBLE
+            todayChip.visibility = if (date == LocalDate.now(zone())) View.GONE else View.VISIBLE
             body.removeAllViews()
 
             AcademicCalendar.describe(activity, date)?.let { academic ->
                 body.addView(TextView(activity).apply {
                     text = academic
-                    textSize = 13f * Ui.fontScale; setTextColor(Ui.ORANGE); setTypeface(typeface, Typeface.BOLD)
+                    textSize = Type.LABEL * Ui.fontScale; setTextColor(Ui.ORANGE); setTypeface(typeface, Typeface.BOLD)
                     setPadding(dp(4), dp(8), 0, 0)
                 })
             }
@@ -182,7 +183,7 @@ object MonthGridView {
             if (classList.isEmpty() && events.isEmpty()) {
                 body.addView(TextView(activity).apply {
                     text = if (inTeaching) "Nothing on this day." else "No classes (holiday mode) and no events."
-                    textSize = 13f * Ui.fontScale; setTextColor(Ui.DIM); setPadding(dp(4), dp(12), 0, 0)
+                    textSize = Type.LABEL * Ui.fontScale; setTextColor(Ui.DIM); setPadding(dp(4), dp(12), 0, 0)
                 })
             }
             sectionLabel("")
@@ -206,7 +207,7 @@ object MonthGridView {
         }
         fill()
 
-        dialog = AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_DayNight)
+        dialog = AlertDialog.Builder(activity, Ui.dialogTheme)
             .setView(sheet)
             .create()
         dialog.show()
@@ -215,6 +216,7 @@ object MonthGridView {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         )
         dialog.window?.setGravity(Gravity.BOTTOM)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
         dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         dialog.window?.setDimAmount(0.55f)
     }
@@ -229,8 +231,8 @@ object MonthGridView {
     fun render(activity: Activity, box: LinearLayout, onClass: ((Slot) -> Unit)? = null, onChanged: () -> Unit) {
         val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
         val fresh = System.currentTimeMillis() - keptAt < 30 * 60 * 1000L
-        var month: YearMonth = (if (fresh) keptMonth else null) ?: YearMonth.now()
-        var selected: LocalDate = (if (fresh) keptSel else null) ?: LocalDate.now()
+        var month: YearMonth = (if (fresh) keptMonth else null) ?: YearMonth.now(zone())
+        var selected: LocalDate = (if (fresh) keptSel else null) ?: LocalDate.now(zone())
         fun keep() { keptMonth = month; keptSel = selected; keptAt = System.currentTimeMillis() }
 
         // what each day holds: class days (Mon-Sun during teaching weeks), event days,
@@ -251,7 +253,7 @@ object MonthGridView {
         /** Another month: keep the selected day inside it (today when it is this month). */
         fun showMonth(m: YearMonth) {
             month = m
-            if (YearMonth.from(selected) != m) selected = if (YearMonth.from(LocalDate.now()) == m) LocalDate.now() else m.atDay(1)
+            if (YearMonth.from(selected) != m) selected = if (YearMonth.from(LocalDate.now(zone())) == m) LocalDate.now(zone()) else m.atDay(1)
             redraw()
         }
 
@@ -266,10 +268,12 @@ object MonthGridView {
             }
             fun arrowBtn(arrow: String, desc: String, onClick: () -> Unit): TextView =
                 TextView(activity).apply {
-                    text = arrow
-                    textSize = 20f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                    // "‹" / "›" name the direction; the chevron icon is drawn instead of the character
+                    setCompoundDrawablesRelativeWithIntrinsicBounds(if (arrow == "‹") R.drawable.ic_chevron_left else R.drawable.ic_chevron_right, 0, 0, 0)
+                    compoundDrawableTintList = android.content.res.ColorStateList.valueOf(Ui.TEXT)
                     minHeight = dp(Ui.touch(48)); minWidth = dp(Ui.touch(48))
                     gravity = Gravity.CENTER
+                    setPadding(dp(12), 0, dp(12), 0)
                     contentDescription = desc
                     background = android.graphics.drawable.GradientDrawable().apply {
                         shape = android.graphics.drawable.GradientDrawable.OVAL
@@ -281,11 +285,11 @@ object MonthGridView {
             // center = date picker: jump straight to any month (faster than ‹ › spamming)
             head.addView(TextView(activity).apply {
                 text = month.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-                textSize = 16f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                textSize = Type.BODY_L * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
                 gravity = Gravity.CENTER
                 isClickable = true
                 contentDescription = "Choose month"
-                background = rippleBg(Ui.BAR, 0, activity, 12)
+                background = rippleBg(Ui.BAR, 0, activity, Radius.MD)
                 setPadding(dp(8), dp(4), dp(8), dp(4))
                 setOnClickListener {
                     android.app.DatePickerDialog(activity, { _, y, m, d ->
@@ -310,7 +314,7 @@ object MonthGridView {
             val wd = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
             for (i in 0 until 7) {
                 wk.addView(TextView(activity).apply {
-                    text = wd[i]; textSize = 11f * Ui.fontScale; setTextColor(Ui.DIM); gravity = Gravity.CENTER
+                    text = wd[i]; textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM); gravity = Gravity.CENTER
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             }
             grid.addView(wk, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -326,7 +330,7 @@ object MonthGridView {
                 }
                 val date = month.atDay(dayNum)
                 val isSel = date == selected
-                val isToday = date == LocalDate.now()
+                val isToday = date == LocalDate.now(zone())
                 val hasEvents = eventsOn[date]?.isNotEmpty() == true
                 // class days only count when the day is inside teaching weeks (holiday mode)
                 val hasClasses = AcademicCalendar.inTeaching(activity, date) && classesOn(date).isNotEmpty()
@@ -338,7 +342,7 @@ object MonthGridView {
                     setPadding(dp(2), dp(4), dp(2), dp(4))
                     // ONLY tint cells that hold something; empty/break days stay plain
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(8).toFloat()
+                        cornerRadius = dp(Radius.SM).toFloat()
                         when {
                             isSel -> setColor(Ui.tint(Ui.CYAN, 0x30))
                             hasAnything -> setColor(Ui.tint(Ui.CYAN, 0x14))
@@ -363,8 +367,8 @@ object MonthGridView {
                 }
                 cellBox.addView(TextView(activity).apply {
                     text = dayNum.toString()
-                    textSize = 13f * Ui.fontScale
-                    setTextColor(if (isSel) Ui.TEXT else if (date.isBefore(LocalDate.now())) Ui.DIM else Ui.TEXT)
+                    textSize = Type.LABEL * Ui.fontScale
+                    setTextColor(if (isSel) Ui.TEXT else if (date.isBefore(LocalDate.now(zone()))) Ui.DIM else Ui.TEXT)
                     setTypeface(typeface, if (isToday || isSel) Typeface.BOLD else Typeface.NORMAL)
                     gravity = Gravity.CENTER
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -409,11 +413,11 @@ object MonthGridView {
     ) {
         val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
         // "Thu 7 Jan" already names the month; the year only when it is not this year
-        box.label(EventsUi.fmtDate(date) + (if (date.year != LocalDate.now().year) " ${date.year}" else ""), 15f, Ui.TEXT, 18)
+        box.label(EventsUi.fmtDate(date) + (if (date.year != LocalDate.now(zone()).year) " ${date.year}" else ""), Type.BODY_L, Ui.TEXT, 18)
             .setTypeface(null, Typeface.BOLD)
 
         AcademicCalendar.describe(activity, date)?.let {
-            box.label(it, 13f, Ui.ORANGE, 6).setTypeface(null, Typeface.BOLD)
+            box.label(it, Type.LABEL, Ui.ORANGE, 6).setTypeface(null, Typeface.BOLD)
         }
 
         // classes (only inside teaching weeks: holiday mode) and your events on one timeline
@@ -426,11 +430,11 @@ object MonthGridView {
                 onClass = onClass,
             ), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         } else if (inTeaching) {
-            box.label("Nothing on this day.", 13f, Ui.DIM, 6)
+            box.label("Nothing on this day.", Type.LABEL, Ui.DIM, 6)
         }
 
         if (!inTeaching && events.isEmpty()) {
-            box.label("No classes (holiday mode) and no events on this day.", 13f, Ui.DIM, 6)
+            box.label("No classes (holiday mode) and no events on this day.", Type.LABEL, Ui.DIM, 6)
         }
         box.btn("Add an event on ${EventsUi.fmtDate(date)}") {
             EventsUi.editor(activity, null, onChanged, prefillDate = date)

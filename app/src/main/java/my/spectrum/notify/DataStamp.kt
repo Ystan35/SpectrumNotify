@@ -34,7 +34,7 @@ object DataStamp {
     private fun stamp(ctx: Context): String {
         watch(ctx)
         val f = File(ctx.applicationContext.filesDir, "state.json")
-        return "${f.length()}:${f.lastModified()}:$version:${LocalDate.now()}"
+        return "${f.length()}:${f.lastModified()}:$version:${LocalDate.now(zone())}"
     }
 
     /**

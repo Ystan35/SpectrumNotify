@@ -18,7 +18,7 @@ class PushService : FirebaseMessagingService() {
     override fun onMessageReceived(msg: RemoteMessage) {
         val p = Prefs(this)
         if (!p.cloudPush) return
-        val now = ZonedDateTime.now()
+        val now = ZonedDateTime.now(zone())
         val title = msg.notification?.title ?: msg.data["title"] ?: "Spectrum"
         val body = msg.notification?.body ?: msg.data["body"] ?: ""
         if (Checker.inQuiet(now, p)) {

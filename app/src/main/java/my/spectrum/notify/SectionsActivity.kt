@@ -26,11 +26,11 @@ class SectionsActivity : BaseActivity() {
             finish()
             return
         }
-        col.label(name, 20f, Ui.TEXT, 8).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label(name, Type.HEADLINE, Ui.TEXT, 8).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label(
             "Choose which pages of this course send you notifications about new files and links. " +
                 "A page that is new on Spectrum is switched on automatically.",
-            12f, Ui.DIM, 4,
+            Type.CAPTION, Ui.DIM, 4,
         )
         box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -47,7 +47,7 @@ class SectionsActivity : BaseActivity() {
         // the course announcements are listed first, then the course pages in page order
         val pages = Sections.known(this, cid).sortedBy { if (it.first == Sections.ANN) 0 else 1 }
         if (pages.isEmpty()) {
-            box.label("The pages of this course are not known yet. Run a check first.", 13f, Ui.TEXT, 16)
+            box.label("The pages of this course are not known yet. Run a check first.", Type.LABEL, Ui.TEXT, 16)
             box.btn("Check Spectrum now") {
                 Scheduler.pollNow(this)
                 Toast.makeText(this, "Checking Spectrum... come back in a minute", Toast.LENGTH_SHORT).show()
@@ -58,7 +58,7 @@ class SectionsActivity : BaseActivity() {
             val sw = Switch(this)
             sw.text = title.ifEmpty { "(unnamed page)" }
             sw.setTextColor(Ui.TEXT)
-            sw.textSize = 15f * Ui.fontScale
+            sw.textSize = Type.BODY_L * Ui.fontScale
             sw.isChecked = !Sections.isOff(this, cid, key)
             sw.setPadding(dp(4), dp(12), dp(4), dp(12))
             sw.setOnCheckedChangeListener { _, on -> Sections.setOn(this@SectionsActivity, cid, key, on) }
@@ -66,7 +66,7 @@ class SectionsActivity : BaseActivity() {
         }
         box.btn("Turn all pages on") { setAll(pages, true) }
         box.btn("Turn all pages off") { setAll(pages, false) }
-        box.label("Pages you turn off stay off. New pages added later are still switched on.", 12f, Ui.DIM, 8)
+        box.label("Pages you turn off stay off. New pages added later are still switched on.", Type.CAPTION, Ui.DIM, 8)
     }
 
     private fun setAll(pages: List<Pair<String, String>>, on: Boolean) {

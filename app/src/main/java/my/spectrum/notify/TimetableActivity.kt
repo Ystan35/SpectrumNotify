@@ -54,13 +54,6 @@ class TimetableActivity : BaseActivity() {
         }
     }
 
-    private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
-        TextView(this).apply {
-            this.text = text
-            textSize = size * Ui.fontScale
-            setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-        }
 
     private fun openEdit(s: Slot?, presetDay: Int = 0) {
         val i = Intent(this, TimetableEditActivity::class.java)
@@ -83,38 +76,39 @@ class TimetableActivity : BaseActivity() {
             return
         }
 
-        box.chips(listOf("Day", "Week", "Month"), setOf(mode), false) { mode = it.first(); render() }
-        // shortcut to Settings → Online or in person, with how many courses are in person now
-        val nIn = Courses.all(this).count { Timetable.inPerson(this, it.code) }
-        box.addView(TextView(this).apply {
-            text = (if (nIn > 0) "📍 $nIn course" + (if (nIn > 1) "s" else "") + " in person" else "💻 Classes online or in person") + "  ›"
-            textSize = 13f * Ui.fontScale
-            setTextColor(Ui.CYAN)
-            minHeight = dp(Ui.touch(40))
-            gravity = Gravity.CENTER_VERTICAL
-            isClickable = true
-            contentDescription = "Set which classes are online or in person"
-            setOnClickListener {
-                startActivity(android.content.Intent(this@TimetableActivity, SettingsActivity::class.java)
-                    .putExtra(SettingsActivity.EXTRA_OPEN, "inperson"))
-            }
-        }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(4) })
+        box.segmented(listOf("Day", "Week", "Month"), mode) { mode = it; render() }
         when (mode) {
             0 -> renderDay()
             1 -> renderWeek()
             else -> MonthGridView.render(this, box, onClass = { slotDetail(it) }) { render() }
         }
         if (mode != 2) renderLegend()
+        // shortcut to Settings → Online or in person, with how many courses are in person now (a setting, so it sits last)
+        val nIn = Courses.all(this).count { Timetable.inPerson(this, it.code) }
+        box.addView(iconText(
+            if (nIn > 0) R.drawable.ic_place else R.drawable.ic_laptop,
+            if (nIn > 0) "$nIn course" + (if (nIn > 1) "s" else "") + " in person" else "Classes online or in person",
+            Type.LABEL, Ui.CYAN, true, trailing = R.drawable.ic_chevron_right,
+        ).apply {
+            minHeight = dp(Ui.touch(48))
+            isClickable = true
+            background = rippleBg(Ui.BG, Ui.BG, this@TimetableActivity, Radius.SM)
+            contentDescription = "Set which classes are online or in person"
+            setOnClickListener {
+                startActivity(android.content.Intent(this@TimetableActivity, SettingsActivity::class.java)
+                    .putExtra(SettingsActivity.EXTRA_OPEN, "inperson"))
+            }
+        }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(12) })
     }
 
     private fun renderEmpty() {
         val loggedIn = Prefs(this).token.isNotEmpty()
-        box.label("No classes yet", 20f, Ui.TEXT, 24).setTypeface(null, Typeface.BOLD)
+        box.label("No classes yet", Type.HEADLINE, Ui.TEXT, 24).setTypeface(null, Typeface.BOLD)
         box.label(
             if (loggedIn) "Your timetable fills in by itself from the classes Spectrum lists for you. " +
                 "It usually appears after the next check. You can also add your own classes."
             else "Log in first, then your timetable fills in from Spectrum. You can also add your own classes without logging in.",
-            14f, Ui.DIM, 8,
+            Type.BODY, Ui.DIM, 8,
         )
         if (loggedIn) {
             box.btn("Check Spectrum now") {
@@ -135,10 +129,10 @@ class TimetableActivity : BaseActivity() {
         val list = Timetable.on(slots, Timetable.dateThisWeek(day))
         val heading = (if (day == today) "Today" else Timetable.DAY_FULL[day - 1]) +
             if (list.isEmpty()) "" else "  ·  ${list.size} class" + (if (list.size == 1) "" else "es")
-        box.label(heading, 16f, Ui.TEXT, 20).setTypeface(null, Typeface.BOLD)
+        box.label(heading, Type.BODY_L, Ui.TEXT, 20).setTypeface(null, Typeface.BOLD)
 
         if (list.isEmpty()) {
-            box.label("Nothing scheduled on ${Timetable.DAY_FULL[day - 1]}.", 14f, Ui.DIM, 8)
+            box.label("Nothing scheduled on ${Timetable.DAY_FULL[day - 1]}.", Type.BODY, Ui.DIM, 8)
             box.btn("Add a class on ${Timetable.DAYS[day - 1]}") { openEdit(null, day) }
             return
         }
@@ -160,7 +154,7 @@ class TimetableActivity : BaseActivity() {
         val c = colours[s.course] ?: Ui.CYAN
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = roundBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, 14)
+            background = roundBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, Radius.MD)
             isClickable = true
             setOnClickListener { openEdit(s) }
         }
@@ -180,12 +174,12 @@ class TimetableActivity : BaseActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        top.addView(tv("${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}", 16f, Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        top.addView(tv("${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}", Type.BODY_L, Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
         if (badge.isNotEmpty()) {
-            top.addView(tv(badge, 11f, onAccent(), true).apply {
+            top.addView(tv(badge, Type.CAPTION, onAccent(), true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(10), dp(3), dp(10), dp(3))
-                background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(c) }
+                background = GradientDrawable().apply { cornerRadius = dp(Radius.SM).toFloat(); setColor(c) }
             })
         }
         col.addView(top)
@@ -195,11 +189,11 @@ class TimetableActivity : BaseActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(6), 0, 0)
         }
-        mid.addView(tv(Shorts.display(this, s.course), 15f, c, true))
+        mid.addView(tv(Shorts.display(this, s.course), Type.BODY_L, c, true))
         if (s.kind != SlotKind.CLASS) {
-            mid.addView(tv(s.kind.label, 12f, Ui.TEXT).apply {
+            mid.addView(tv(s.kind.label, Type.CAPTION, Ui.TEXT).apply {
                 setPadding(dp(8), dp(2), dp(8), dp(2))
-                background = roundBg(0, Ui.BORDER, this@TimetableActivity, 8)
+                background = roundBg(0, Ui.BORDER, this@TimetableActivity, Radius.SM)
             }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(10) })
         }
         col.addView(mid)
@@ -215,7 +209,7 @@ class TimetableActivity : BaseActivity() {
         val detail = listOf(s.title, s.note).filter { it.isNotEmpty() }.joinToString("  ·  ")
         val oneOff = if (s.date != null) "This week only" else ""
         val meta = listOf(oneOff, detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  ")
-        col.addView(tv(meta, 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
+        col.addView(tv(meta, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
         // location: user override first; else the auto meeting link (Online) or the catalog room
         val userLoc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
@@ -227,10 +221,10 @@ class TimetableActivity : BaseActivity() {
             room.isNotEmpty() -> "📍 $room"
             else -> "📍 Tap to set location"
         }
-        val loc = tv(locLine, 12f, if (userLoc.isEmpty() && room.isEmpty() && autoMeeting.isEmpty()) Ui.DIM else Ui.TEXT).apply {
+        val loc = tv(locLine, Type.CAPTION, if (userLoc.isEmpty() && room.isEmpty() && autoMeeting.isEmpty()) Ui.DIM else Ui.TEXT).apply {
             setPadding(0, dp(2), 0, 0)
             isClickable = true
-            background = rippleBg(Ui.BAR, 0, this@TimetableActivity, 10)
+            background = rippleBg(Ui.BAR, 0, this@TimetableActivity, Radius.SM)
         }
         loc.setOnClickListener { editLocation(s.course, autoMeeting) }
         col.addView(loc)
@@ -246,35 +240,19 @@ class TimetableActivity : BaseActivity() {
         }
 
         val meeting = autoMeeting
-        fun openBtn(label: String, url: String, filled: Boolean): TextView = TextView(this).apply {
-            text = label
-            textSize = 12f
-            setTextColor(if (filled) onAccent() else c)
-            setTypeface(typeface, Typeface.BOLD)
-            minHeight = dp(40)
-            gravity = Gravity.CENTER
-            setPadding(dp(12), 0, dp(12), 0)
-            isClickable = true
-            background = GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat()
-                if (filled) setColor(c) else { setColor(0x00000000); setStroke(dp(1), c) }
-            }
-            setOnClickListener {
+        fun openBtn(label: String, url: String, filled: Boolean): TextView =
+            button(label, if (filled) Emphasis.PRIMARY else Emphasis.SECONDARY, c) {
                 try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
                 catch (_: Exception) { Toast.makeText(this@TimetableActivity, "Cannot open link", Toast.LENGTH_SHORT).show() }
             }
-        }
         if (link.isNotEmpty()) att.addView(openBtn("Attendance", link, true), LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
         if (meeting.isNotEmpty()) att.addView(openBtn("Join class", meeting, link.isEmpty()), LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(6) })
-        att.addView(tv("+", 14f, Ui.CYAN, true).apply {
-            minHeight = dp(40); minWidth = dp(32)
-            gravity = Gravity.CENTER
-            isClickable = true
-            background = rippleBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, 14)
-            setOnClickListener { pasteAttendance(s.course) }
-        }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(4) })
+        // says what it does: "+" alone read as "add a class"
+        att.addView(button("+ Link", Emphasis.TERTIARY) { pasteAttendance(s.course) }.apply {
+            contentDescription = "Paste an attendance link for ${s.course}"
+        }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(2) })
         if (link.isEmpty() && meeting.isEmpty()) {
-            att.addView(tv("no link yet — tap to paste", 12f, Ui.DIM).apply {
+            att.addView(tv("no link yet — tap to paste", Type.CAPTION, Ui.DIM).apply {
                 setPadding(dp(8), 0, 0, 0)
                 maxLines = 1
             }, LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -297,7 +275,7 @@ class TimetableActivity : BaseActivity() {
     /** Dialog to paste one or more attendance links (one per line). Empty text clears. */
     /** Location editor: Online (auto meeting link if found, else paste) or Physical room. */
     private fun editLocation(course: String, autoMeeting: String) {
-        val names = listOf("💻 Online class", "📍 Physical room", "Clear")
+        val names = listOf("Online class", "Physical room", "Clear")
         val current = Timetable.locationOf(this, course)
         val initial = when {
             current.startsWith("online:") -> 0
@@ -389,14 +367,14 @@ class TimetableActivity : BaseActivity() {
     private fun zoomBar(): View {
         val row = LinearLayout(this).apply { gravity = Gravity.END }
         fun btn(t: String): TextView = TextView(this).apply {
-            text = t; textSize = 18f * Ui.fontScale; setTextColor(Ui.CYAN)
+            text = t; textSize = Type.TITLE * Ui.fontScale; setTextColor(Ui.CYAN)
             setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
-            minHeight = dp(40); minWidth = dp(40)
-            background = rippleBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, 20)
+            minHeight = dp(Ui.touch(48)); minWidth = dp(Ui.touch(48))
+            background = rippleBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, Radius.PILL)
         }
         val minus = btn("−")
         minus.setOnClickListener { zoom = (zoom - 0.15f).coerceAtLeast(0.7f); render() }
-        val label = tv("${(zoom * 100).toInt()}%", 12f, Ui.DIM, true)
+        val label = tv("${(zoom * 100).toInt()}%", Type.CAPTION, Ui.DIM, true)
         label.gravity = Gravity.CENTER; label.minWidth = dp(48)
         val plus = btn("+")
         plus.setOnClickListener { zoom = (zoom + 0.15f).coerceAtMost(2f); render() }
@@ -441,13 +419,13 @@ class TimetableActivity : BaseActivity() {
 
         for (h in minH..maxH) {
             val y = headH + (h - minH) * hourH
-            gutter.addView(tv(String.format(java.util.Locale.ENGLISH, "%02d:00", h), 12f, Ui.DIM),
+            gutter.addView(tv(String.format(java.util.Locale.ENGLISH, "%02d:00", h), Type.CAPTION, Ui.DIM),
                 FrameLayout.LayoutParams(gutterW, WRAP).apply { topMargin = y - dp(8) })
             grid.addView(View(this).apply { setBackgroundColor(Ui.BORDER) },
                 FrameLayout.LayoutParams(gridW, 1).apply { topMargin = y })
         }
         for ((col, d) in days.withIndex()) {
-            grid.addView(tv(Timetable.DAYS[d - 1], 14f, if (d == today) Ui.CYAN else Ui.TEXT, d == today).apply {
+            grid.addView(tv(Timetable.DAYS[d - 1], Type.BODY, if (d == today) Ui.CYAN else Ui.TEXT, d == today).apply {
                 gravity = Gravity.CENTER
             }, FrameLayout.LayoutParams(colW, headH).apply { leftMargin = col * colW })
         }
@@ -498,16 +476,16 @@ class TimetableActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(6), dp(4), dp(4), dp(2))
             background = GradientDrawable().apply {
-                cornerRadius = dp(8).toFloat()
+                cornerRadius = dp(Radius.SM).toFloat()
                 setColor(Ui.tint(c, 0x40))
                 setStroke(dp(1), c)
             }
             isClickable = true
             setOnClickListener { slotDetail(s) }   // tap anywhere: full detail popup
         }
-        b.addView(tv(Shorts.display(this, s.course), 13f, Ui.TEXT, true).apply { maxLines = 1 })
+        b.addView(tv(Shorts.display(this, s.course), Type.LABEL, Ui.TEXT, true).apply { maxLines = 1 })
         val sub = if (narrow) s.kind.tag else listOf(s.kind.tag, Timetable.fmtMin(s.start)).filter { it.isNotEmpty() }.joinToString(" · ")
-        if (sub.isNotEmpty()) b.addView(tv(sub, 12f, Ui.DIM).apply { maxLines = 1 })
+        if (sub.isNotEmpty()) b.addView(tv(sub, Type.CAPTION, Ui.DIM).apply { maxLines = 1 })
         // location line when there is room for it (not the narrow multi-lane blocks)
         if (!narrow) {
             val loc = Timetable.locationOf(this, s.course)
@@ -516,7 +494,7 @@ class TimetableActivity : BaseActivity() {
                 loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
                 else -> ""
             }
-            if (line.isNotEmpty()) b.addView(tv(line, 12f, Ui.DIM).apply { maxLines = 1 })
+            if (line.isNotEmpty()) b.addView(tv(line, Type.CAPTION, Ui.DIM).apply { maxLines = 1 })
         }
         b.contentDescription = "${Shorts.display(this, s.course)} ${s.kind.label}, ${Timetable.DAY_FULL[s.day - 1]} " +
             "${Timetable.fmtMin(s.start)} to ${Timetable.fmtMin(s.end)}. Tap for details."
@@ -539,9 +517,9 @@ class TimetableActivity : BaseActivity() {
     private fun slotDetail(s: Slot) {
         val c = colours[s.course] ?: Ui.CYAN
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(12), dp(24), 0) }
-        box.addView(tv(Shorts.display(this, s.course), 20f, c, true))
-        box.addView(tv("${Timetable.DAY_FULL[s.day - 1]} · ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}", 14f, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
-        if (s.kind != SlotKind.CLASS) box.addView(tv(s.kind.label, 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        box.addView(tv(Shorts.display(this, s.course), Type.HEADLINE, c, true))
+        box.addView(tv("${Timetable.DAY_FULL[s.day - 1]} · ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}", Type.BODY, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
+        if (s.kind != SlotKind.CLASS) box.addView(tv(s.kind.label, Type.LABEL, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
         val loc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
         val attUrl = userAttLink(s.course).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
@@ -556,21 +534,21 @@ class TimetableActivity : BaseActivity() {
             ch.occ == occOf(s) || ch.parts.any { it.day == s.day && it.start == s.start }
         }
         val catRoom = choice?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ") ?: ""
-        if (locLine.isNotEmpty()) box.addView(tv(locLine, 13f, Ui.TEXT).apply { setPadding(0, dp(10), 0, 0) })
-        else if (catRoom.isNotEmpty()) box.addView(tv("📍 $catRoom", 13f, Ui.TEXT).apply { setPadding(0, dp(10), 0, 0) })
+        if (locLine.isNotEmpty()) box.addView(tv(locLine, Type.LABEL, Ui.TEXT).apply { setPadding(0, dp(10), 0, 0) })
+        else if (catRoom.isNotEmpty()) box.addView(tv("📍 $catRoom", Type.LABEL, Ui.TEXT).apply { setPadding(0, dp(10), 0, 0) })
         val lecturer = choice?.detail() ?: ""
-        if (lecturer.isNotEmpty()) box.addView(tv("👤 $lecturer", 13f, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
-        if (s.note.isNotEmpty()) box.addView(tv(s.note, 12f, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
+        if (lecturer.isNotEmpty()) box.addView(tv("👤 $lecturer", Type.LABEL, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        if (s.note.isNotEmpty()) box.addView(tv(s.note, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
         // action buttons: attendance page (primary), meeting link, course page — whichever exist
         fun pillBtn(label: String, url: String, filled: Boolean): TextView = TextView(this).apply {
             text = label
-            textSize = 13f
+            textSize = Type.LABEL * Ui.fontScale
             setTextColor(if (filled) onAccent() else c)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             minHeight = dp(44)
             background = GradientDrawable().apply {
-                cornerRadius = dp(22).toFloat()
+                cornerRadius = dp(Radius.LG).toFloat()
                 if (filled) setColor(c) else { setColor(0x00000000); setStroke(dp(1), c) }
             }
             setOnClickListener {
@@ -585,9 +563,9 @@ class TimetableActivity : BaseActivity() {
         val courseUrl = Prefs(this).site.let { if (it.isNotEmpty()) "$it/course/view.php?id=${courseIdOf(s.course)}" else "" }
         if (courseUrl.isNotEmpty()) btnRow.addView(pillBtn("Course page", courseUrl, attUrl.isEmpty() && meeting.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f))
         if (btnRow.childCount > 0) box.addView(btnRow, LinearLayout.LayoutParams(MATCH, WRAP))
-        box.addView(tv("Edit class", 13f, Ui.CYAN, true).apply {
+        box.addView(tv("Edit class", Type.LABEL, Ui.CYAN, true).apply {
             setPadding(0, dp(14), 0, 0)
-            minHeight = dp(40)
+            minHeight = dp(Ui.touch(48))
             gravity = Gravity.CENTER_VERTICAL
             isClickable = true
         }.also { it.setOnClickListener { openEdit(s) } })
@@ -600,7 +578,7 @@ class TimetableActivity : BaseActivity() {
     // ------------------------------------------------------------ legend + hidden classes
     private fun renderLegend() {
         val courses = slots.map { it.course }.toSortedSet()
-        box.label("Courses", 13f, Ui.CYAN, 28).setTypeface(null, Typeface.BOLD)
+        box.addView(sectionLabel("Courses").apply { setPadding(0, dp(28), 0, 0) })
         val sc = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         for (c in courses) {
@@ -608,17 +586,17 @@ class TimetableActivity : BaseActivity() {
             text.setSpan(ForegroundColorSpan(colours[c] ?: Ui.CYAN), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             row.addView(TextView(this).apply {
                 this.text = text
-                textSize = 14f * Ui.fontScale
+                textSize = Type.BODY * Ui.fontScale
                 setTextColor(Ui.TEXT)
                 gravity = Gravity.CENTER
-                minHeight = dp(40)
+                minHeight = dp(Ui.touch(48))
                 setPadding(dp(14), 0, dp(14), 0)
-                background = roundBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, 20)
+                background = roundBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, Radius.PILL)
             }, LinearLayout.LayoutParams(WRAP, WRAP).apply { rightMargin = dp(8) })
         }
         sc.addView(row)
         box.addView(sc, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
-        box.label("Tap any class to change its type or colour, or to remove it.", 12f, Ui.DIM, 8)
+        box.label("Tap any class to change its type or colour, or to remove it.", Type.CAPTION, Ui.DIM, 8)
 
         val hidden = Timetable.hiddenCount(this)
         if (hidden > 0) {
@@ -633,7 +611,7 @@ class TimetableActivity : BaseActivity() {
     /** "+" opens a choice: a class (existing editor) or a calendar event. */
     private fun showAddChoice() {
         val names = arrayOf("Add a class", "Add an event")
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_DayNight)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("What do you want to add?")
             .setItems(names) { _, which ->
                 if (which == 0) openEdit(null) else EventsUi.editor(this, null, { render() })

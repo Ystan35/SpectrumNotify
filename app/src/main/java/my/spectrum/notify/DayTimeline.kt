@@ -106,7 +106,7 @@ object DayTimeline {
         if (items.isEmpty()) return col
         val colours = Timetable.colours(activity, slots.map { it.course }.toSet())
         val courses = Courses.all(activity)
-        val nowMin = if (date == LocalDate.now()) LocalTime.now().let { it.hour * 60 + it.minute } else -1
+        val nowMin = if (date == LocalDate.now(zone())) LocalTime.now(zone()).let { it.hour * 60 + it.minute } else -1
         val predicted = Groups.predictedOcc(activity)
         // while a class or event is on, its card says "Ongoing" and no separate "now" line is drawn
         val anyLive = nowMin >= 0 && items.any { nowMin in it.start until it.end }
@@ -116,10 +116,10 @@ object DayTimeline {
             val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             val times = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; setPadding(0, dp(4), dp(6), 0) }
             if (timeTop.isNotEmpty()) times.addView(TextView(activity).apply {
-                text = timeTop; textSize = 13f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                text = timeTop; textSize = Type.LABEL * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
             })
             if (timeBottom.isNotEmpty()) times.addView(TextView(activity).apply {
-                text = timeBottom; textSize = 11f * Ui.fontScale; setTextColor(Ui.DIM)
+                text = timeBottom; textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM)
             })
             row.addView(times, LinearLayout.LayoutParams(dp((52 * Ui.fontScale).toInt()), WRAP))
             row.addView(rail, LinearLayout.LayoutParams(dp(20), MATCH))
@@ -134,7 +134,7 @@ object DayTimeline {
                 gravity = Gravity.CENTER_VERTICAL
                 contentDescription = "Now, ${Timetable.fmtMin(nowMin)}"
                 addView(TextView(activity).apply {
-                    text = "now ${Timetable.fmtMin(nowMin)}"; textSize = 11f * Ui.fontScale; setTextColor(Ui.RED); setTypeface(typeface, Typeface.BOLD)
+                    text = "now ${Timetable.fmtMin(nowMin)}"; textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.RED); setTypeface(typeface, Typeface.BOLD)
                     gravity = Gravity.END
                 }, LinearLayout.LayoutParams(dp((52 * Ui.fontScale).toInt() + 14), WRAP).apply { rightMargin = dp(6) })
                 addView(View(activity).apply { setBackgroundColor(Ui.RED) }, LinearLayout.LayoutParams(0, dp(2), 1f))
@@ -148,7 +148,7 @@ object DayTimeline {
                 if (!nowDrawn && nowMin < it.start && nowMin >= lastEnd) nowLine()
                 col.addView(railRow("", "", Rail(activity, 0, false, false, false, true), TextView(activity).apply {
                     text = "Free ${Timetable.fmtMin(lastEnd)}–${Timetable.fmtMin(it.start)}"
-                    textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(6), 0, dp(10))
+                    textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(6), 0, dp(10))
                 }))
             }
             if (!nowDrawn && nowMin < it.start) nowLine()
@@ -162,13 +162,13 @@ object DayTimeline {
             val s = it.slot
             val ev = it.event
             val tint = if (s != null) colours[s.course] ?: Ui.CYAN else Ui.PURPLE
-            card.background = rippleBg(if (live) Ui.tint(tint, 0x22) else Ui.BAR, if (live) tint else Ui.BORDER, activity, 12)
+            card.background = rippleBg(if (live) Ui.tint(tint, 0x22) else Ui.BAR, if (live) tint else Ui.BORDER, activity, Radius.MD)
             card.isClickable = true
             if (live) card.addView(TextView(activity).apply {
-                text = "ONGOING"; textSize = 11f * Ui.fontScale; letterSpacing = 0.08f
+                text = "ONGOING"; textSize = Type.CAPTION * Ui.fontScale; letterSpacing = 0.08f
                 setTextColor(onAccent()); setTypeface(typeface, Typeface.BOLD)
                 setPadding(dp(10), dp(2), dp(10), dp(2))
-                background = roundBg(tint, 0, activity, 10)
+                background = roundBg(tint, 0, activity, Radius.SM)
             }, LinearLayout.LayoutParams(WRAP, WRAP).apply { bottomMargin = dp(4) })
 
             if (s != null) {
@@ -182,7 +182,7 @@ object DayTimeline {
                 )
                 card.addView(TextView(activity).apply {
                     text = s.course.uppercase(Locale.ROOT) + if (name.isNotEmpty() && !name.equals(s.course, true)) " · $name" else ""
-                    textSize = 15f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                    textSize = Type.BODY_L * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
                     maxLines = 2; ellipsize = TextUtils.TruncateAt.END
                 })
                 val second = listOf(
@@ -192,18 +192,18 @@ object DayTimeline {
                     if (s.date != null) "this date only" else "",
                 ).filter { t -> t.isNotEmpty() }.joinToString("  ·  ")
                 if (second.isNotEmpty()) card.addView(TextView(activity).apply {
-                    text = second; textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0)
+                    text = second; textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0)
                     maxLines = 2; ellipsize = TextUtils.TruncateAt.END
                 })
 
                 // tap: Join class / Attendance / Course page / Details, right on the card
                 val actions = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(0, dp(8), 0, 0) }
                 fun pill(label: String, filled: Boolean, go: () -> Unit) = TextView(activity).apply {
-                    text = label; textSize = 13f * Ui.fontScale; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
+                    text = label; textSize = Type.LABEL * Ui.fontScale; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
                     setTextColor(if (filled) onAccent() else tint)
                     minHeight = dp(Ui.touch(44)); setPadding(dp(14), 0, dp(14), 0)
                     maxLines = 1; ellipsize = TextUtils.TruncateAt.END
-                    background = if (filled) roundBg(tint, 0, activity, 22) else rippleBg(Ui.BAR, tint, activity, 22)
+                    background = if (filled) roundBg(tint, 0, activity, Radius.LG) else rippleBg(Ui.BAR, tint, activity, Radius.LG)
                     setOnClickListener { go() }
                 }
                 fun open(url: String) = try {
@@ -224,7 +224,7 @@ object DayTimeline {
                     actions.addView(line, LinearLayout.LayoutParams(MATCH, WRAP))
                 }
                 if (pills.isEmpty()) actions.addView(TextView(activity).apply {
-                    text = "No links found for this class yet."; textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM)
+                    text = "No links found for this class yet."; textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM)
                 })
                 card.addView(actions, LinearLayout.LayoutParams(MATCH, WRAP))
                 card.contentDescription = (if (live) "Ongoing. " else "") + "${s.course} $name, ${Timetable.fmtMin(s.start)} to ${Timetable.fmtMin(s.end)}. $second. Tap for links."
@@ -233,12 +233,12 @@ object DayTimeline {
                 }
             } else if (ev != null) {
                 card.addView(TextView(activity).apply {
-                    text = ev.title; textSize = 15f * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
+                    text = ev.title; textSize = Type.BODY_L * Ui.fontScale; setTextColor(Ui.TEXT); setTypeface(typeface, Typeface.BOLD)
                     maxLines = 2; ellipsize = TextUtils.TruncateAt.END
                 })
                 card.addView(TextView(activity).apply {
                     text = listOf("Your event", ev.note).filter { t -> t.isNotEmpty() }.joinToString("  ·  ")
-                    textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0); maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+                    textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM); setPadding(0, dp(2), 0, 0); maxLines = 2; ellipsize = TextUtils.TruncateAt.END
                 })
                 card.contentDescription = (if (live) "Ongoing. " else "") + "Event ${ev.title}, ${Timetable.fmtMin(ev.startTime)} to ${Timetable.fmtMin(ev.endTime)}. Tap to edit."
                 card.setOnClickListener { onEvent(ev) }

@@ -269,7 +269,7 @@ object Checker {
         val cal = myCalendar(st, p)
         val links = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
         // holiday mode: outside teaching weeks the hero/widget suppress class entries
-        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now())
+        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now(zone()))
         val classes = if (!classesActive) emptyList() else cal.filter { isAttEvent(it) }.map { e ->
             val c = e.optJSONObject("course")
             val short = c?.str("shortname") ?: ""
