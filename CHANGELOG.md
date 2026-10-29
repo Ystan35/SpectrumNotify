@@ -2,6 +2,13 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.27.2 (versionCode 88)
+- Rapid KL T789 (LRT Universiti ~ UM via Pantai Hillpark) joins the shuttle planner, from Prasarana's official GTFS data: 22 stops with their positions (KK1, Law, Biomedical Engineering, Main Library, Dewan Tunku Canselor, PASUM, Kerinchi, Bangsar South …), every 15 min on weekdays 5:45 am – 11:30 pm, every 20–30 min at weekends. It has no fixed times, so plans count the longest wait: "Rapid T789 (every ~15 min) from KK1 → Perpustakaan UM · be at the stop by 9:32".
+- FSKTM is reached by T789 to the Main Library stop (Perpustakaan UM, KL1109), then a short walk; change the stop per course in the class editor if you use another one. T815 is no longer in Rapid KL's data.
+- PASUM is one place on both networks, so stops on T789 also have real coordinates (walking minutes work between them).
+- Shuttle screen: Rapid routes show how often they run (weekdays / weekends) and a link to the MyRapid PULSE app for live arrivals.
+- tools/gtfs_to_bus.py adds or refreshes Rapid routes in bus.json from the GTFS feed.
+
 ## 0.27.1 (versionCode 87)
 - UM shuttle times as in JPPHB's schedule: every 30 min 7:30 am–4:30 pm, then 5:10, 5:40 and 6:00 pm, then 7, 8, 9 and 10 pm (routes C, D and 13 have no 6:00 pm trip). 0.27.0 wrongly ran every 30 min until 6:00 pm.
 

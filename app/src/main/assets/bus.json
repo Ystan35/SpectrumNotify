@@ -1,90 +1,637 @@
 {
-  "generatedAt": "2026-10-30",
-  "source": "JPPHB Shuttle Bus Operation Schedule (Oct 2024), times as in the PDF, confirmed 30 Oct 2026, stops from the UM shuttle app",
-  "officialUrl": "https://jpphb.um.edu.my/transport",
-  "phone": "03-7967 3311",
-  "email": "kenderaanjpphb@um.edu.my",
-  "notes": [
-    "Monday to Friday only. No buses at weekends, on public holidays, in the mid-semester break, the semester break or study week.",
-    "Fridays: no trips 12:30 pm to 2:30 pm (Friday prayer).",
-    "Times depend on traffic. Times at stops after the first are the shuttle app's estimates."
-  ],
-  "places": [
-    { "id": "UMC", "name": "UM Central", "stop": true },
-    { "id": "ZABA", "name": "Za'ba RC", "stop": true },
-    { "id": "TAZ", "name": "Tun Ahmad Zaidi RC", "stop": true },
-    { "id": "API", "name": "Academy of Islamic Studies (API)", "stop": true },
-    { "id": "UA", "name": "Ungku Aziz RC", "stop": true },
-    { "id": "RDNS", "name": "Raja Dr Nazrin Shah RC", "stop": true },
-    { "id": "TAR", "name": "Tunku Abdul Rahman RC", "stop": true },
-    { "id": "FENG", "name": "Faculty of Engineering", "stop": true },
-    { "id": "CFS", "name": "Centre for Foundation in Science (PASUM)", "stop": true },
-    { "id": "DAYA", "name": "Dayasari RC", "stop": true },
-    { "id": "APM", "name": "Academy of Malay Studies (APM)", "stop": true },
-    { "id": "KBZ", "name": "Kurshiah / Bestari / Za'ba RC", "stop": true },
-    { "id": "FSCI", "name": "Faculty of Science", "stop": true },
-    { "id": "ANGK", "name": "Angkasapuri", "stop": true, "q": "Angkasapuri, Kuala Lumpur" },
-    { "id": "PP", "name": "Pantai Permai", "stop": true, "q": "Pangsapuri Pantai Permai, Kuala Lumpur" },
-    { "id": "BSOUTH", "name": "Bangsar South", "stop": true, "q": "Bangsar South, Kuala Lumpur" },
-    { "id": "FENGW", "name": "Faculty of Engineering (West)", "stop": true },
-    { "id": "IH", "name": "International House", "stop": true },
-    { "id": "RS1", "name": "Rapid Stop 1 · Flat SS17", "stop": true, "q": "Flat SS17, Petaling Jaya" },
-    { "id": "RS2", "name": "Rapid Stop 2 · S.K. Sri Damai", "stop": true, "q": "Sekolah Kebangsaan Sri Damai, Petaling Jaya" },
-    { "id": "RS3", "name": "Rapid Stop 3 · PJ219", "stop": true, "q": "PJ219 bus stop, Petaling Jaya" },
-    { "id": "RS4", "name": "Rapid Stop 4 · PJ220", "stop": true, "q": "PJ220 bus stop, Petaling Jaya" },
-    { "id": "RS5", "name": "Rapid Stop 5 · PJ233 Shell 17/22", "stop": true, "q": "Shell Jalan 17/22, Petaling Jaya" },
-    { "id": "PS16", "name": "Perumahan Seksyen 16", "stop": true, "q": "Seksyen 16, Petaling Jaya" },
-    { "id": "KK13", "name": "13th Residential College (KK13)", "stop": true },
-    { "id": "TSZ", "name": "Tun Syed Zahiruddin RC", "stop": true },
-    { "id": "FSKTM", "name": "Faculty of Computer Science & IT (FSKTM)", "q": "Faculty of Computer Science and Information Technology, Universiti Malaya" }
-  ],
-  "faculties": {
-    "WI": "FSKTM",
-    "KI": "FENG"
+ "generatedAt": "2026-10-29",
+ "source": "JPPHB Shuttle Bus Operation Schedule (Oct 2024), times as in the PDF, confirmed 30 Oct 2026, stops from the UM shuttle app; Rapid KL routes from Prasarana GTFS (api.data.gov.my)",
+ "officialUrl": "https://jpphb.um.edu.my/transport",
+ "phone": "03-7967 3311",
+ "email": "kenderaanjpphb@um.edu.my",
+ "notes": [
+  "Monday to Friday only. No buses at weekends, on public holidays, in the mid-semester break, the semester break or study week.",
+  "Fridays: no trips 12:30 pm to 2:30 pm (Friday prayer).",
+  "Times depend on traffic. Times at stops after the first are the shuttle app's estimates.",
+  "Rapid KL T789 (LRT Universiti ~ UM via Pantai Hillpark): every 15 min on weekdays 5:45 am – 11:30 pm, every 20–30 min at weekends; it runs in semester breaks too. Times are Rapid KL's planned frequencies (GTFS), live times in the MyRapid PULSE app."
+ ],
+ "places": [
+  {
+   "id": "UMC",
+   "name": "UM Central",
+   "stop": true
   },
-  "routes": [
-    {
-      "id": "AB", "name": "UM Central – API – KK12 – UM Central", "color": "#C8364F", "loop": true,
-      "stops":   ["UMC", "ZABA", "TAZ", "API", "UA", "RDNS", "TAR", "FENG", "UMC"],
-      "offsets": [0, 1, 2, 5, 7, 8, 11, 14, 18]
-    },
-    {
-      "id": "BA", "name": "UM Central – PASUM – API – KK3/4/7 – UM Central", "color": "#2F8FD8", "loop": true,
-      "stops":   ["UMC", "CFS", "DAYA", "API", "TAZ", "APM", "KBZ", "FSCI", "UMC"],
-      "offsets": [0, 3, 7, 9, 12, 13, 14, 15, 18],
-      "tailEstimated": true
-    },
-    {
-      "id": "C", "name": "UM Central – Pantai Dalam", "color": "#8D6E63", "loop": true,
-      "stops":   ["UMC", "CFS", "ANGK", "PP", "BSOUTH", "FENG", "UMC"],
-      "offsets": [0, 3, 10, 12, 16, 23, 26],
-      "schedule": { "every": 30, "from": "07:30", "to": "16:30", "then": ["17:10", "17:40", "19:00", "20:00", "21:00", "22:00"] },
-      "farStop": "PP", "farUntil": "09:30"
-    },
-    {
-      "id": "D", "name": "UM Central – International House – Seksyen 16 – KK13", "color": "#43A047", "loop": true,
-      "stops":   ["UMC", "FENGW", "IH", "RS1", "RS2", "RS3", "RS4", "RS5", "PS16", "KK13", "UMC"],
-      "offsets": [0, 0, 6, 7, 8, 9, 10, 11, 13, 17, 21],
-      "schedule": { "every": 30, "from": "07:30", "to": "16:30", "then": ["17:10", "17:40", "19:00", "20:00", "21:00", "22:00"] },
-      "farStop": "IH", "farUntil": "09:30"
-    },
-    {
-      "id": "E", "name": "UM Central – KK9", "color": "#F4511E", "loop": false,
-      "stops":   ["UMC", "TSZ", "FSCI"],
-      "offsets": [0, 3, 6]
-    },
-    {
-      "id": "13", "name": "UM Central – KK13", "color": "#8E24AA", "loop": true,
-      "stops":   ["UMC", "KK13", "UMC"],
-      "offsets": [0, 3, 7],
-      "schedule": { "every": 30, "from": "07:30", "to": "16:30", "then": ["17:10", "17:40", "19:00", "20:00", "21:00", "22:00"] },
-      "farStop": "KK13", "farUntil": "09:30"
-    }
-  ],
-  "schedule": {
-    "days": [1, 2, 3, 4, 5],
-    "every": 30, "from": "07:30", "to": "16:30",
-    "then": ["17:10", "17:40", "18:00", "19:00", "20:00", "21:00", "22:00"],
-    "fridayBreak": ["12:30", "14:30"]
+  {
+   "id": "ZABA",
+   "name": "Za'ba RC",
+   "stop": true
+  },
+  {
+   "id": "TAZ",
+   "name": "Tun Ahmad Zaidi RC",
+   "stop": true
+  },
+  {
+   "id": "API",
+   "name": "Academy of Islamic Studies (API)",
+   "stop": true
+  },
+  {
+   "id": "UA",
+   "name": "Ungku Aziz RC",
+   "stop": true
+  },
+  {
+   "id": "RDNS",
+   "name": "Raja Dr Nazrin Shah RC",
+   "stop": true
+  },
+  {
+   "id": "TAR",
+   "name": "Tunku Abdul Rahman RC",
+   "stop": true
+  },
+  {
+   "id": "FENG",
+   "name": "Faculty of Engineering",
+   "stop": true
+  },
+  {
+   "id": "CFS",
+   "name": "Centre for Foundation in Science (PASUM)",
+   "stop": true,
+   "lat": 3.121738,
+   "lng": 101.658348
+  },
+  {
+   "id": "DAYA",
+   "name": "Dayasari RC",
+   "stop": true
+  },
+  {
+   "id": "APM",
+   "name": "Academy of Malay Studies (APM)",
+   "stop": true
+  },
+  {
+   "id": "KBZ",
+   "name": "Kurshiah / Bestari / Za'ba RC",
+   "stop": true
+  },
+  {
+   "id": "FSCI",
+   "name": "Faculty of Science",
+   "stop": true
+  },
+  {
+   "id": "ANGK",
+   "name": "Angkasapuri",
+   "stop": true,
+   "q": "Angkasapuri, Kuala Lumpur"
+  },
+  {
+   "id": "PP",
+   "name": "Pantai Permai",
+   "stop": true,
+   "q": "Pangsapuri Pantai Permai, Kuala Lumpur"
+  },
+  {
+   "id": "BSOUTH",
+   "name": "Bangsar South",
+   "stop": true,
+   "q": "Bangsar South, Kuala Lumpur"
+  },
+  {
+   "id": "FENGW",
+   "name": "Faculty of Engineering (West)",
+   "stop": true
+  },
+  {
+   "id": "IH",
+   "name": "International House",
+   "stop": true
+  },
+  {
+   "id": "RS1",
+   "name": "Rapid Stop 1 · Flat SS17",
+   "stop": true,
+   "q": "Flat SS17, Petaling Jaya"
+  },
+  {
+   "id": "RS2",
+   "name": "Rapid Stop 2 · S.K. Sri Damai",
+   "stop": true,
+   "q": "Sekolah Kebangsaan Sri Damai, Petaling Jaya"
+  },
+  {
+   "id": "RS3",
+   "name": "Rapid Stop 3 · PJ219",
+   "stop": true,
+   "q": "PJ219 bus stop, Petaling Jaya"
+  },
+  {
+   "id": "RS4",
+   "name": "Rapid Stop 4 · PJ220",
+   "stop": true,
+   "q": "PJ220 bus stop, Petaling Jaya"
+  },
+  {
+   "id": "RS5",
+   "name": "Rapid Stop 5 · PJ233 Shell 17/22",
+   "stop": true,
+   "q": "Shell Jalan 17/22, Petaling Jaya"
+  },
+  {
+   "id": "PS16",
+   "name": "Perumahan Seksyen 16",
+   "stop": true,
+   "q": "Seksyen 16, Petaling Jaya"
+  },
+  {
+   "id": "KK13",
+   "name": "13th Residential College (KK13)",
+   "stop": true
+  },
+  {
+   "id": "TSZ",
+   "name": "Tun Syed Zahiruddin RC",
+   "stop": true
+  },
+  {
+   "id": "FSKTM",
+   "name": "Faculty of Computer Science & IT (FSKTM)",
+   "q": "Faculty of Computer Science and Information Technology, Universiti Malaya",
+   "near": "R1109"
+  },
+  {
+   "id": "R1440",
+   "name": "LRT Universiti (Timur) (KL1440)",
+   "stop": true,
+   "lat": 3.114012,
+   "lng": 101.662208
+  },
+  {
+   "id": "R1102",
+   "name": "Masjid Ar-Rahman UM (KL1102)",
+   "stop": true,
+   "lat": 3.117132,
+   "lng": 101.662619
+  },
+  {
+   "id": "R2137",
+   "name": "Fakulti Undang-Undang UM (KL2137)",
+   "stop": true,
+   "lat": 3.118674,
+   "lng": 101.661071
+  },
+  {
+   "id": "R1103",
+   "name": "Kolej Kediaman Pertama UM (KL1103)",
+   "stop": true,
+   "lat": 3.118124,
+   "lng": 101.659323
+  },
+  {
+   "id": "R1104",
+   "name": "Jabatan Bioperubatan UM (KL1104)",
+   "stop": true,
+   "lat": 3.119083,
+   "lng": 101.655587
+  },
+  {
+   "id": "R1109",
+   "name": "Perpustakaan UM (KL1109)",
+   "stop": true,
+   "lat": 3.12112,
+   "lng": 101.65358
+  },
+  {
+   "id": "R1107",
+   "name": "Dewan Tunku Canselor UM (KL1107)",
+   "stop": true,
+   "lat": 3.121867,
+   "lng": 101.657186
+  },
+  {
+   "id": "R1397",
+   "name": "Flat PKNS Kerinchi/KL Gateway (KL1397)",
+   "stop": true,
+   "lat": 3.113292,
+   "lng": 101.662546
+  },
+  {
+   "id": "R1399",
+   "name": "The Vertical (KL1399)",
+   "stop": true,
+   "lat": 3.110191,
+   "lng": 101.666002
+  },
+  {
+   "id": "R1400",
+   "name": "Flat Sri Angkasa (KL1400)",
+   "stop": true,
+   "lat": 3.109576,
+   "lng": 101.668172
+  },
+  {
+   "id": "R1008483",
+   "name": "Centrio Pantai Hillpark",
+   "stop": true,
+   "lat": 3.108325,
+   "lng": 101.665709
+  },
+  {
+   "id": "R1008484",
+   "name": "Condominium Andalusia",
+   "stop": true,
+   "lat": 3.107632,
+   "lng": 101.662365
+  },
+  {
+   "id": "R1008485",
+   "name": "Pantai Hillpark Phase 5",
+   "stop": true,
+   "lat": 3.106502,
+   "lng": 101.661532
+  },
+  {
+   "id": "R1008486",
+   "name": "Pusat Komuniti Lembah Pantai",
+   "stop": true,
+   "lat": 3.103629,
+   "lng": 101.661219
+  },
+  {
+   "id": "R1008487",
+   "name": "Inwood Residences",
+   "stop": true,
+   "lat": 3.102553,
+   "lng": 101.663576
+  },
+  {
+   "id": "R1402",
+   "name": "Pantai Murni (KL1402)",
+   "stop": true,
+   "lat": 3.104087,
+   "lng": 101.666116
+  },
+  {
+   "id": "R1414",
+   "name": "Centrio Pantai Hillpark (KL1414)",
+   "stop": true,
+   "lat": 3.106853,
+   "lng": 101.666039
+  },
+  {
+   "id": "R1438",
+   "name": "Bangsar South (KL1438)",
+   "stop": true,
+   "lat": 3.108924,
+   "lng": 101.667999
+  },
+  {
+   "id": "R1439",
+   "name": "Nexus Bangsar South (KL1439)",
+   "stop": true,
+   "lat": 3.109894,
+   "lng": 101.666089
+  },
+  {
+   "id": "R2134",
+   "name": "Flat PKNS Kerinchi (KL2134)",
+   "stop": true,
+   "lat": 3.112272,
+   "lng": 101.662094
   }
+ ],
+ "faculties": {
+  "WI": "FSKTM",
+  "KI": "FENG"
+ },
+ "routes": [
+  {
+   "id": "AB",
+   "name": "UM Central – API – KK12 – UM Central",
+   "color": "#C8364F",
+   "loop": true,
+   "stops": [
+    "UMC",
+    "ZABA",
+    "TAZ",
+    "API",
+    "UA",
+    "RDNS",
+    "TAR",
+    "FENG",
+    "UMC"
+   ],
+   "offsets": [
+    0,
+    1,
+    2,
+    5,
+    7,
+    8,
+    11,
+    14,
+    18
+   ]
+  },
+  {
+   "id": "BA",
+   "name": "UM Central – PASUM – API – KK3/4/7 – UM Central",
+   "color": "#2F8FD8",
+   "loop": true,
+   "stops": [
+    "UMC",
+    "CFS",
+    "DAYA",
+    "API",
+    "TAZ",
+    "APM",
+    "KBZ",
+    "FSCI",
+    "UMC"
+   ],
+   "offsets": [
+    0,
+    3,
+    7,
+    9,
+    12,
+    13,
+    14,
+    15,
+    18
+   ],
+   "tailEstimated": true
+  },
+  {
+   "id": "C",
+   "name": "UM Central – Pantai Dalam",
+   "color": "#8D6E63",
+   "loop": true,
+   "stops": [
+    "UMC",
+    "CFS",
+    "ANGK",
+    "PP",
+    "BSOUTH",
+    "FENG",
+    "UMC"
+   ],
+   "offsets": [
+    0,
+    3,
+    10,
+    12,
+    16,
+    23,
+    26
+   ],
+   "schedule": {
+    "every": 30,
+    "from": "07:30",
+    "to": "16:30",
+    "then": [
+     "17:10",
+     "17:40",
+     "19:00",
+     "20:00",
+     "21:00",
+     "22:00"
+    ]
+   },
+   "farStop": "PP",
+   "farUntil": "09:30"
+  },
+  {
+   "id": "D",
+   "name": "UM Central – International House – Seksyen 16 – KK13",
+   "color": "#43A047",
+   "loop": true,
+   "stops": [
+    "UMC",
+    "FENGW",
+    "IH",
+    "RS1",
+    "RS2",
+    "RS3",
+    "RS4",
+    "RS5",
+    "PS16",
+    "KK13",
+    "UMC"
+   ],
+   "offsets": [
+    0,
+    0,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    13,
+    17,
+    21
+   ],
+   "schedule": {
+    "every": 30,
+    "from": "07:30",
+    "to": "16:30",
+    "then": [
+     "17:10",
+     "17:40",
+     "19:00",
+     "20:00",
+     "21:00",
+     "22:00"
+    ]
+   },
+   "farStop": "IH",
+   "farUntil": "09:30"
+  },
+  {
+   "id": "E",
+   "name": "UM Central – KK9",
+   "color": "#F4511E",
+   "loop": false,
+   "stops": [
+    "UMC",
+    "TSZ",
+    "FSCI"
+   ],
+   "offsets": [
+    0,
+    3,
+    6
+   ]
+  },
+  {
+   "id": "13",
+   "name": "UM Central – KK13",
+   "color": "#8E24AA",
+   "loop": true,
+   "stops": [
+    "UMC",
+    "KK13",
+    "UMC"
+   ],
+   "offsets": [
+    0,
+    3,
+    7
+   ],
+   "schedule": {
+    "every": 30,
+    "from": "07:30",
+    "to": "16:30",
+    "then": [
+     "17:10",
+     "17:40",
+     "19:00",
+     "20:00",
+     "21:00",
+     "22:00"
+    ]
+   },
+   "farStop": "KK13",
+   "farUntil": "09:30"
+  },
+  {
+   "id": "T789",
+   "operator": "rapid",
+   "name": "Stesen LRT Universiti ~ Universiti Malaya via Pantai Hillpark",
+   "color": "#008716",
+   "loop": true,
+   "stops": [
+    "R1440",
+    "R1102",
+    "R2137",
+    "R1103",
+    "R1104",
+    "R1109",
+    "R1107",
+    "CFS",
+    "R1397",
+    "R1399",
+    "R1400",
+    "R1008483",
+    "R1008484",
+    "R1008485",
+    "R1008486",
+    "R1008487",
+    "R1402",
+    "R1414",
+    "R1438",
+    "R1439",
+    "R2134",
+    "R1440"
+   ],
+   "offsets": [
+    0,
+    1,
+    2,
+    2,
+    3,
+    5,
+    7,
+    7,
+    10,
+    12,
+    12,
+    13,
+    14,
+    15,
+    15,
+    16,
+    17,
+    18,
+    18,
+    19,
+    19,
+    20
+   ],
+   "bands": [
+    {
+     "days": [
+      1,
+      2,
+      3,
+      4,
+      5
+     ],
+     "from": "05:45",
+     "to": "23:30",
+     "every": 15
+    },
+    {
+     "days": [
+      6,
+      7
+     ],
+     "from": "06:00",
+     "to": "10:00",
+     "every": 20
+    },
+    {
+     "days": [
+      6,
+      7
+     ],
+     "from": "10:25",
+     "to": "15:00",
+     "every": 25
+    },
+    {
+     "days": [
+      6,
+      7
+     ],
+     "from": "15:20",
+     "to": "20:00",
+     "every": 20
+    },
+    {
+     "days": [
+      6,
+      7
+     ],
+     "from": "20:25",
+     "to": "22:30",
+     "every": 25
+    },
+    {
+     "days": [
+      6,
+      7
+     ],
+     "from": "23:00",
+     "to": "23:30",
+     "every": 30
+    }
+   ]
+  }
+ ],
+ "schedule": {
+  "days": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "every": 30,
+  "from": "07:30",
+  "to": "16:30",
+  "then": [
+   "17:10",
+   "17:40",
+   "18:00",
+   "19:00",
+   "20:00",
+   "21:00",
+   "22:00"
+  ],
+  "fridayBreak": [
+   "12:30",
+   "14:30"
+  ]
+ }
 }

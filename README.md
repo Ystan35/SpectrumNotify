@@ -45,6 +45,8 @@ See `tools/collect_timetable.js` and `tools/update_catalog.ps1` headers for deta
 
 `app/src/main/assets/bus.json` holds the stops (`places`), each route's stops with minutes from its first stop, and the trip times (`schedule`: every N minutes from/to plus extra `then` times, Friday-prayer gap). To change times or stops, edit it, bump `generatedAt` and push: phones download the newer copy on their next background check, no new APK needed. Optional per place: `lat`/`lng` (enables walking minutes), `near` (the stop a building uses), `q` (what Google Maps searches for). `faculties` maps a course-code prefix (e.g. `WI`) to a place.
 
+Rapid KL routes come from Prasarana's GTFS feed: `curl -L -o rapid.zip "https://api.data.gov.my/gtfs-static/prasarana?category=rapid-bus-kl"` then `python3 tools/gtfs_to_bus.py rapid.zip T789` (more route numbers can follow). It writes the stops (with coordinates), minutes between them and the "every N min" bands into `bus.json`.
+
 ## Build
 
 - **CI (easiest):** push to GitHub → Actions > Build APK → download `SpectrumNotify-debug-apk`
@@ -68,6 +70,7 @@ Allow "install unknown apps" for your file manager/browser, open the APK, then i
 | `app/src/main/assets/bus.json` | UM shuttle routes, stops and times (edit by hand; see above) |
 | `tools/collect_timetable.js` | Browser-console script: fetches TimeEdit lecturer + course data in one paste |
 | `tools/update_catalog.bat` / `.ps1` | One-click: newest raw JSONs → cleaner → catalog → commit → push |
+| `tools/gtfs_to_bus.py` | Adds/refreshes Rapid KL routes in `bus.json` from Prasarana's GTFS feed |
 | `tools/make_catalog.js` | Converts `timetable_data.json` into the bundled `catalog.json` |
 | `tools/cleaner.js` | Patched copy of the SDK's cleaner (tolerates reservations with missing details) |
 | `CHANGELOG.md` | Version history and known limitations |
