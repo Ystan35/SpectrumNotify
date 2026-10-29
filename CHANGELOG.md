@@ -2,6 +2,9 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.26.4 (versionCode 85)
+- Fix: the "sign your attendance" alert at class start was usually cancelled before it could fire. Any check in the last 10 minutes before class (the 10-minute reminder itself, or a background check) re-planned the alarms, skipped the class because its 10-minute reminder had passed, and then cleared the start alarm as stale. The start alarm is now kept until the class has started.
+
 ## 0.26.3 (versionCode 84)
 - Timetable: the "Events" tab is now "Month".
 - Month → a day (below the grid and in the day pop-up): classes and your events on one vertical timeline. Start and end time on the left, a rail with a dot per class in the course colour (◆ for events), and a card per item: "WIX1003 · Computer Systems and Organization" (Spectrum's code prefix and capitals cleaned up), then "Tutorial · Online · Occ 2". Gaps of 30 min or more read "Free 11:00–13:00"; on today a red "now" line, or ONGOING on the item happening right now. Tap a class for Join class / Attendance / Course page / Details right on the card; tap an event to edit it.

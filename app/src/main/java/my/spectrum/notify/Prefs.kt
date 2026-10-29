@@ -145,11 +145,11 @@ class Prefs(ctx: Context) {
     var textScale: Int
         get() = sp.getInt("textScale", 0)
         set(v) { sp.edit().putInt("textScale", v).apply() }
-    /** Higher-contrast text (darker greys / brighter accents). */
     /** A second alert when a class starts, reminding you to sign attendance (Settings → Your classes). */
     var attStartAlert: Boolean
         get() = sp.getBoolean("attStartAlert", true)
         set(v) { sp.edit().putBoolean("attStartAlert", v).apply() }
+    /** Higher-contrast text (darker greys / brighter accents). */
     var highContrast: Boolean
         get() = sp.getBoolean("highContrast", false)
         set(v) { sp.edit().putBoolean("highContrast", v).apply() }
