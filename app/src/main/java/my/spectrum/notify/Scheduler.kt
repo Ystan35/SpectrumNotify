@@ -127,12 +127,16 @@ object Scheduler {
             if (!classesActive || !Checker.isAttEvent(e)) continue
             val start = Checker.classTimes(ctx, e).first   // honours your Time Override
             val at = start - 590  // fires just inside the 10-minute window
-            if (at <= now || at > now + 3 * 86400) continue
+            if (start + 20 <= now || at > now + 3 * 86400) continue
             val code = (e.optLong("id") * 31 + start).hashCode()
-            setAlarm(ctx, at * 1000, code)
-            codes.add(code)
-            // second alarm at the start itself: "sign your attendance" (Checker.checkAttendanceStart)
-            if (p.attStartAlert && start + 20 > now) {
+            if (at > now) {
+                setAlarm(ctx, at * 1000, code)
+                codes.add(code)
+            }
+            // second alarm at the start itself: "sign your attendance" (Checker.checkAttendanceStart).
+            // Armed on its own: a re-run inside the last 10 minutes (every check, and the 10-minute alarm
+            // itself) must keep it, or the clean-up below cancels it
+            if (p.attStartAlert) {
                 val code2 = code xor 0x2A2A2A
                 setAlarm(ctx, (start + 20) * 1000, code2)
                 codes.add(code2)
