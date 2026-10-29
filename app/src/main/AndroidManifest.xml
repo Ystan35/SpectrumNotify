@@ -48,6 +48,7 @@
         <activity android:name=".SectionsActivity" android:exported="false" />
         <activity android:name=".AccountActivity" android:exported="false" />
         <activity android:name=".LoginWebActivity" android:exported="false" />
+        <activity android:name=".ShuttleActivity" android:exported="false" />
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
 

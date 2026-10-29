@@ -921,6 +921,29 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
     }
     sheet.addView(cal)
 
+    val shuttle = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(44)
+        isClickable = true
+        background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+        contentDescription = "UM Shuttle: next buses and routes"
+    }
+    shuttle.addView(ImageView(this).apply {
+        setImageResource(R.drawable.lk_bus)
+        setColorFilter(Ui.CYAN)
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(12) })
+    shuttle.addView(TextView(this).apply {
+        text = "UM Shuttle"
+        textSize = 13f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD)
+    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    shuttle.setOnClickListener {
+        closeQuickSheet(root)
+        startActivity(Intent(this, ShuttleActivity::class.java))
+    }
+    sheet.addView(shuttle)
+
     val semDates = TextView(this).apply {
         text = "Semester dates"
         textSize = 12f * Ui.fontScale; setTextColor(Ui.DIM)

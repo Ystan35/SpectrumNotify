@@ -776,6 +776,31 @@ class MainActivity : BaseActivity() {
                 },
                 lp(WRAP, WRAP).apply { topMargin = dp(8) },
             )
+            // getting there: the shuttle to catch, or the walk (tap: the Shuttle screen, or walking directions)
+            if (!live) {
+                val z = localDt(c.start)
+                val trip = try { Shuttle.tripFor(this, c.code.ifEmpty { c.course }, z.toLocalDate(), z.hour * 60 + z.minute) } catch (_: Exception) { null }
+                val line = trip?.let { Shuttle.line(this, it) }
+                if (trip != null && line != null) {
+                    card.addView(tv("$line  ›", 13f, white, true).apply {
+                        setPadding(dp(12), dp(8), dp(12), dp(8))
+                        background = rippleBg(0x26FFFFFF, 0, this@MainActivity, 12)
+                        isClickable = true
+                        contentDescription = line.removePrefix("🚌 ").removePrefix("🚶 ") + ". Tap for " +
+                            (if (trip.plan is ShuttleModel.Plan.Walk) "walking directions" else "shuttle times")
+                        setOnClickListener {
+                            val walk = Shuttle.walkUrl(trip)
+                            if (walk != null) openUrl(walk)
+                            else {
+                                val ride = (trip.plan as? ShuttleModel.Plan.Bus)?.ride
+                                startActivity(Intent(this@MainActivity, ShuttleActivity::class.java)
+                                    .putExtra(ShuttleActivity.EXTRA_ROUTE, ride?.route?.id)
+                                    .putExtra(ShuttleActivity.EXTRA_FROM, ride?.let { r -> r.route.stops[r.fromIdx] }))
+                            }
+                        }
+                    }, lp(MATCH, WRAP).apply { topMargin = dp(8) })
+                }
+            }
             if (c.link.isEmpty() || c.manual) {
                 card.addView(tv(
                     if (c.manual) "Attendance for this course is by Teams recording." else "No online link yet. It may be in person, or not posted. The app keeps checking.",

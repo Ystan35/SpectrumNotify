@@ -340,6 +340,14 @@ object Timetable {
     // ---------------------------------------------------------- location per course
     // "online:<link>" = online class with a meeting link; "room:<text>" = physical room; "" = not set.
 
+    /** The shuttle place (bus.json id) you chose for a course's classes; "" = use the guess from its code. */
+    fun busStop(ctx: Context, course: String): String =
+        sp(ctx).getString("busstop:" + course.uppercase(Locale.ROOT), "") ?: ""
+
+    fun setBusStop(ctx: Context, course: String, id: String) {
+        sp(ctx).edit().putString("busstop:" + course.uppercase(Locale.ROOT), id).apply()
+    }
+
     /** The location line shown for a course: user-set first, else the catalog room. */
     fun locationOf(ctx: Context, course: String): String =
         sp(ctx).getString("loc:$course", "") ?: ""
