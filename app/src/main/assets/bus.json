@@ -1,0 +1,87 @@
+{
+  "generatedAt": "2026-10-29",
+  "source": "JPPHB Shuttle Bus Operation Schedule (Oct 2024), current times as checked 29 Oct 2026, stops from the UM shuttle app",
+  "officialUrl": "https://jpphb.um.edu.my/transport",
+  "phone": "03-7967 3311",
+  "email": "kenderaanjpphb@um.edu.my",
+  "notes": [
+    "Monday to Friday only. No buses at weekends, on public holidays, in the mid-semester break, the semester break or study week.",
+    "Fridays: no trips 12:30 pm to 2:30 pm (Friday prayer).",
+    "Times depend on traffic. Times at stops after the first are the shuttle app's estimates."
+  ],
+  "places": [
+    { "id": "UMC", "name": "UM Central", "stop": true },
+    { "id": "ZABA", "name": "Za'ba RC", "stop": true },
+    { "id": "TAZ", "name": "Tun Ahmad Zaidi RC", "stop": true },
+    { "id": "API", "name": "Academy of Islamic Studies (API)", "stop": true },
+    { "id": "UA", "name": "Ungku Aziz RC", "stop": true },
+    { "id": "RDNS", "name": "Raja Dr Nazrin Shah RC", "stop": true },
+    { "id": "TAR", "name": "Tunku Abdul Rahman RC", "stop": true },
+    { "id": "FENG", "name": "Faculty of Engineering", "stop": true },
+    { "id": "CFS", "name": "Centre for Foundation in Science (PASUM)", "stop": true },
+    { "id": "DAYA", "name": "Dayasari RC", "stop": true },
+    { "id": "APM", "name": "Academy of Malay Studies (APM)", "stop": true },
+    { "id": "KBZ", "name": "Kurshiah / Bestari / Za'ba RC", "stop": true },
+    { "id": "FSCI", "name": "Faculty of Science", "stop": true },
+    { "id": "ANGK", "name": "Angkasapuri", "stop": true, "q": "Angkasapuri, Kuala Lumpur" },
+    { "id": "PP", "name": "Pantai Permai", "stop": true, "q": "Pangsapuri Pantai Permai, Kuala Lumpur" },
+    { "id": "BSOUTH", "name": "Bangsar South", "stop": true, "q": "Bangsar South, Kuala Lumpur" },
+    { "id": "FENGW", "name": "Faculty of Engineering (West)", "stop": true },
+    { "id": "IH", "name": "International House", "stop": true },
+    { "id": "RS1", "name": "Rapid Stop 1 · Flat SS17", "stop": true, "q": "Flat SS17, Petaling Jaya" },
+    { "id": "RS2", "name": "Rapid Stop 2 · S.K. Sri Damai", "stop": true, "q": "Sekolah Kebangsaan Sri Damai, Petaling Jaya" },
+    { "id": "RS3", "name": "Rapid Stop 3 · PJ219", "stop": true, "q": "PJ219 bus stop, Petaling Jaya" },
+    { "id": "RS4", "name": "Rapid Stop 4 · PJ220", "stop": true, "q": "PJ220 bus stop, Petaling Jaya" },
+    { "id": "RS5", "name": "Rapid Stop 5 · PJ233 Shell 17/22", "stop": true, "q": "Shell Jalan 17/22, Petaling Jaya" },
+    { "id": "PS16", "name": "Perumahan Seksyen 16", "stop": true, "q": "Seksyen 16, Petaling Jaya" },
+    { "id": "KK13", "name": "13th Residential College (KK13)", "stop": true },
+    { "id": "TSZ", "name": "Tun Syed Zahiruddin RC", "stop": true },
+    { "id": "FSKTM", "name": "Faculty of Computer Science & IT (FSKTM)", "q": "Faculty of Computer Science and Information Technology, Universiti Malaya" }
+  ],
+  "faculties": {
+    "WI": "FSKTM",
+    "KI": "FENG"
+  },
+  "routes": [
+    {
+      "id": "AB", "name": "UM Central – API – KK12 – UM Central", "color": "#C8364F", "loop": true,
+      "stops":   ["UMC", "ZABA", "TAZ", "API", "UA", "RDNS", "TAR", "FENG", "UMC"],
+      "offsets": [0, 1, 2, 5, 7, 8, 11, 14, 18]
+    },
+    {
+      "id": "BA", "name": "UM Central – PASUM – API – KK3/4/7 – UM Central", "color": "#2F8FD8", "loop": true,
+      "stops":   ["UMC", "CFS", "DAYA", "API", "TAZ", "APM", "KBZ", "FSCI", "UMC"],
+      "offsets": [0, 3, 7, 9, 12, 13, 14, 15, 18],
+      "tailEstimated": true
+    },
+    {
+      "id": "C", "name": "UM Central – Pantai Dalam", "color": "#8D6E63", "loop": true,
+      "stops":   ["UMC", "CFS", "ANGK", "PP", "BSOUTH", "FENG", "UMC"],
+      "offsets": [0, 3, 10, 12, 16, 23, 26],
+      "farStop": "PP", "farUntil": "09:30"
+    },
+    {
+      "id": "D", "name": "UM Central – International House – Seksyen 16 – KK13", "color": "#43A047", "loop": true,
+      "stops":   ["UMC", "FENGW", "IH", "RS1", "RS2", "RS3", "RS4", "RS5", "PS16", "KK13", "UMC"],
+      "offsets": [0, 0, 6, 7, 8, 9, 10, 11, 13, 17, 21],
+      "farStop": "IH", "farUntil": "09:30"
+    },
+    {
+      "id": "E", "name": "UM Central – KK9", "color": "#F4511E", "loop": false,
+      "stops":   ["UMC", "TSZ", "FSCI"],
+      "offsets": [0, 3, 6]
+    },
+    {
+      "id": "13", "name": "UM Central – KK13", "color": "#8E24AA", "loop": true,
+      "stops":   ["UMC", "KK13", "UMC"],
+      "offsets": [0, 3, 7],
+      "farStop": "KK13", "farUntil": "09:30"
+    }
+  ],
+  "schedule": {
+    "days": [1, 2, 3, 4, 5],
+    "every": 30, "from": "07:30", "to": "18:00",
+    "then": ["19:00", "20:00", "21:00", "22:00"],
+    "fridayBreak": ["12:30", "14:30"]
+  }
+}

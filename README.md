@@ -23,6 +23,7 @@ Android port of spectrum_notify.py. Runs entirely on the phone with your own Spe
 | **Get set up** | Home (new installs) | Checklist card: allow notifications (reason shown first), log in, exact alarms, battery, confirm Occ, check class times, short names (optional). Hide with Undo. |
 | **Undo** | Home, bell, Timetable | Hiding a deadline, swiping away a notification or removing a class shows an Undo bar for 6 s instead of a confirm dialog. |
 | **Semesters** | automatic + calendar | Bundled UM 2026/27 calendar (Sem I, Sem II, Special). Classes hide outside teaching weeks; each timetable entry belongs to one semester, so next semester's subjects start clean. Past courses drop out of Courses and checks. |
+| **UM shuttle** | toolbox (Aa), Home card, Settings → UM shuttle | Routes AB, BA, C, D, E and 13 (stops and times in `assets/bus.json`). The Shuttle screen shows the next buses from a stop and each route's stops with today's times. Home's class card says which bus to take from your home stop or previous class, or to walk when that is quicker or no bus fits (tap for Google Maps walking directions); a leave-by alert comes 5–15 min before you must set off. Stops per course are guessed from the course code and can be changed in the class editor. |
 | **UM links** | toolbox (Aa) + Settings → UM links | Shortcuts to UM sites with a line icon each (19 to choose from), reorder, add Spectrum course pages, reset to UM defaults (with Undo). |
 | **Login** | Settings > Profile | In-app WebView sign-in (Microsoft) or browser redirect (`spectrumnotify://`); token in Keystore-encrypted storage. |
 
@@ -39,6 +40,10 @@ The catalog is a snapshot of UM TimeEdit for one semester; lecturers/rooms can c
 4. Phones pick it up on their next background check — no new APK needed
 
 See `tools/collect_timetable.js` and `tools/update_catalog.ps1` headers for details.
+
+## Update the shuttle timetable (bus.json)
+
+`app/src/main/assets/bus.json` holds the stops (`places`), each route's stops with minutes from its first stop, and the trip times (`schedule`: every N minutes from/to plus extra `then` times, Friday-prayer gap). To change times or stops, edit it, bump `generatedAt` and push: phones download the newer copy on their next background check, no new APK needed. Optional per place: `lat`/`lng` (enables walking minutes), `near` (the stop a building uses), `q` (what Google Maps searches for). `faculties` maps a course-code prefix (e.g. `WI`) to a place.
 
 ## Build
 
@@ -60,6 +65,7 @@ Allow "install unknown apps" for your file manager/browser, open the APK, then i
 |---|---|
 | `app/src/main/java/my/spectrum/notify/` | All app code (Kotlin, procedural views, no Compose) |
 | `app/src/main/assets/catalog.json` | Bundled UM course catalog (generated, do not edit by hand) |
+| `app/src/main/assets/bus.json` | UM shuttle routes, stops and times (edit by hand; see above) |
 | `tools/collect_timetable.js` | Browser-console script: fetches TimeEdit lecturer + course data in one paste |
 | `tools/update_catalog.bat` / `.ps1` | One-click: newest raw JSONs → cleaner → catalog → commit → push |
 | `tools/make_catalog.js` | Converts `timetable_data.json` into the bundled `catalog.json` |

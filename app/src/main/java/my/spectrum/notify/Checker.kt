@@ -658,6 +658,48 @@ object Checker {
     }
 
     /**
+     * When to set off for a class event (epoch seconds) and how: by shuttle or on foot (Shuttle.tripFor), from
+     * your corrected class time. Null when there is nothing to plan or a walk's length is not known.
+     */
+    fun leaveBy(ctx: Context, e: JSONObject): Pair<Long, Shuttle.TripInfo>? {
+        val start = classTimes(ctx, e).first
+        val z = localDt(start)
+        val t = Shuttle.tripFor(ctx, Timetable.courseCode(e.optJSONObject("course")), z.toLocalDate(), z.hour * 60 + z.minute)
+            ?: return null
+        val leave = t.leaveAt ?: return null
+        val midnight = z.toLocalDate().atStartOfDay(z.zone).toEpochSecond()
+        return Pair(midnight + leave * 60L, t)
+    }
+
+    /**
+     * Leave-by alert, [Shuttle.leadMin] minutes before you must set off for a class: "Leave by 9:31 for WIX1003",
+     * with the bus or the walk. Off when the lead is 0 (Settings → UM shuttle).
+     */
+    private fun checkLeaveBy(ctx: Context, st: State, cal: List<JSONObject>, now: Long) {
+        val lead = Shuttle.leadMin(ctx)
+        if (lead <= 0) return
+        val sent = st.strings("leaveby_sent")
+        for (e in cal) {
+            if (!isAttEvent(e)) continue
+            val (leave, t) = leaveBy(ctx, e) ?: continue
+            // the alarm can fire a little early; never after the moment to leave
+            if (now < leave - lead * 60L - 60 || now > leave) continue
+            val key = "leaveby:${e.optLong("id")}:$leave"
+            if (key in sent) continue
+            val code = Timetable.courseCode(e.optJSONObject("course"))
+            val buttons = ArrayList<Pair<String, String>>()
+            Shuttle.walkUrl(t)?.let { buttons.add(Pair("Walking route", it)) }
+            Notifier.push(
+                ctx, "Leave by ${hhmm(leave)} for $code",
+                (Shuttle.line(ctx, t) ?: "") + "\nClass starts ${ShuttleModel.fmt(t.arriveBy)}.",
+                true, buttons,
+            )
+            sent.add(key)
+        }
+        st.putStrings("leaveby_sent", sent.toList().takeLast(200))
+    }
+
+    /**
      * When a class starts (your corrected time), one alert so you do not forget to sign attendance:
      * Attendance and Join class buttons. Skipped for courses where the lecturer takes attendance in class or
      * attendance is by Teams recording, and when turned off in Settings → Your classes.
@@ -896,6 +938,7 @@ object Checker {
         try { sendMorningSummary(ctx, st, p, cal, dl, now) } catch (e: Exception) { Log.w(TAG, "summary: $e") }
         try { sendAfternoon(ctx, st, p, cal, now) } catch (e: Exception) { Log.w(TAG, "afternoon: $e") }
         try { checkAttendanceStart(ctx, st, p, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "attendance start: $e") }
+        try { checkLeaveBy(ctx, st, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "leave by: $e") }
     }
 
     /** Called by the alarm receiver: act on cached data, no network. */
@@ -972,6 +1015,7 @@ object Checker {
         ctx.getSharedPreferences("health", Context.MODE_PRIVATE).edit()
             .putLong("lastAttemptMs", System.currentTimeMillis()).apply()
         try { Catalog.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "catalog: $e") }
+        try { Shuttle.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "shuttle: $e") }
         try { NextClassWidget.updateAll(ctx) } catch (e: Exception) { Log.w(TAG, "widget: $e") }
         Scheduler.scheduleAll(ctx)
     }

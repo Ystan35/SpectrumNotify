@@ -141,6 +141,22 @@ object Scheduler {
                 setAlarm(ctx, (start + 20) * 1000, code2)
                 codes.add(code2)
             }
+            // third: the leave-by alert for the shuttle or the walk (Checker.checkLeaveBy), also armed on its own
+            val lead = Shuttle.leadMin(ctx)
+            if (lead > 0) {
+                try {
+                    Checker.leaveBy(ctx, e)?.let { (leave, _) ->
+                        val alertAt = leave - lead * 60L
+                        // inside the window already: fire soon, unless this alert was sent
+                        val sent = "leaveby:${e.optLong("id")}:$leave" in st.strings("leaveby_sent")
+                        if (leave > now && (alertAt > now || !sent)) {
+                            val code3 = code xor 0x5B5B5B
+                            setAlarm(ctx, maxOf(alertAt, now + 5) * 1000, code3)
+                            codes.add(code3)
+                        }
+                    }
+                } catch (_: Exception) { }
+            }
         }
         parseHm(p.summaryTime)?.let { setAlarm(ctx, nextDaily(it), 1); codes.add(1) }
         parseHm(p.afternoonTime)?.let { setAlarm(ctx, nextDaily(it), 2); codes.add(2) }

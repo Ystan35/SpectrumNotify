@@ -176,6 +176,8 @@ class TimetableEditActivity : BaseActivity() {
         col.label("Spectrum link = the app finds the attendance page automatically, and you can paste extra links. " +
             "Manual by lecturer = the lecturer marks attendance in person, so no link is needed.", 12f, Ui.DIM, 6)
 
+        val stopPicked = busStopPicker(col, course)
+
         col.label("Colour", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label("One colour per course, so every class of the same course looks the same.", 12f, Ui.DIM, 2)
         setSwatch = col.swatches(colourIdx) { colourIdx = it; colourTouched = true }
@@ -194,6 +196,7 @@ class TimetableEditActivity : BaseActivity() {
                     Timetable.setAttMode(this, code, modeKeys[attMode])
                     // pasted links feed the same resolver as the Attendance buttons everywhere
                     if (attMode == 0) Timetable.setAttendanceLink(this, code, attLinksField.text.toString().trim())
+                    Timetable.setBusStop(this, code, stopPicked())
 
                     if (colourTouched || Timetable.colourIndexOrNull(this, code) == null) {
                         Timetable.setColourIndex(this, code, colourIdx)
@@ -277,6 +280,8 @@ class TimetableEditActivity : BaseActivity() {
         )
         col.chips(kindLabels, setOf(kindIdx), false) { kindIdx = it.first() }
 
+        val stopPicked = busStopPicker(col, s.course)
+
         col.label("Colour", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label("Applies to every ${s.course} class.", 12f, Ui.DIM, 2)
         col.swatches(colourIdx) { colourIdx = it }
@@ -288,6 +293,7 @@ class TimetableEditActivity : BaseActivity() {
             }
             Timetable.setKind(this, s.key, kinds[kindIdx])
             Timetable.setColourIndex(this, s.course, colourIdx)
+            Timetable.setBusStop(this, s.course, stopPicked())
             // write overrides only when they differ from Spectrum's values
             val hasChanged = newStart != specStart || newEnd != specEnd
             if (hasChanged) Timetable.setTimeOverride(this, s.key, newStart, newEnd)
@@ -323,6 +329,23 @@ class TimetableEditActivity : BaseActivity() {
     }
 
     // ------------------------------------------------------------ helpers
+    /**
+     * "Nearest bus stop" for the UM shuttle (Home's bus line and the leave-by alert): Auto = the guess from the
+     * course code. Returns a getter for the chosen place id ("" = Auto), read when saving.
+     */
+    private fun busStopPicker(col: LinearLayout, course: String): () -> String {
+        val places = Shuttle.placesForPicker(this)
+        val guess = ShuttleModel.guessPlace(Shuttle.data(this), course)
+        col.label("Nearest bus stop", 13f, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Where this course's classes are, for the UM shuttle on Home and the leave-by alert. Applies to every class of the course.", 12f, Ui.DIM, 2)
+        var picked = if (course.isNotEmpty()) Timetable.busStop(this, course) else ""
+        val names = listOf("Auto" + (guess?.let { " (${it.name})" } ?: " (not known)")) + places.map { it.name }
+        val sel = places.indexOfFirst { it.id == picked } + 1
+        col.addView(spinner(names, sel) { i -> picked = if (i == 0) "" else places[i - 1].id },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+        return { picked }
+    }
+
     private fun normCourse(s: String) = s.trim().uppercase(Locale.ROOT)
 
     private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_SHORT).show()

@@ -294,6 +294,26 @@ class SettingsActivity : BaseActivity() {
             sel.firstOrNull()?.let { p.pollMinutes = pollOpts[it]; Scheduler.ensurePolling(this) }
         }
 
+        target = accordion(col, "UM SHUTTLE",
+            "Home shows which shuttle to take to your next class, or when walking is quicker, and an alert tells you when to leave.",
+            key = "shuttle", icon = R.drawable.lk_bus,
+            contents = listOf("Home stop", "Leave-by alert", "Shuttle times"))
+        val shPlaces = Shuttle.placesForPicker(this).filter { it.isStop }
+        heading("Home stop", "Where your day starts, usually your residential college. Your first class of the day is planned from here; " +
+            "later classes from the class before.")
+        val homeIdx = shPlaces.indexOfFirst { it.id == Shuttle.homeId(this) } + 1
+        target.addView(spinner(listOf("Not set") + shPlaces.map { it.name }, homeIdx) { i ->
+            Shuttle.setHomeId(this, if (i == 0) "" else shPlaces[i - 1].id)
+            Scheduler.scheduleAll(this)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        heading("Leave-by alert", "How long before you must set off (for the bus, or on foot) the alert comes.")
+        val leadOpts = listOf(0, 5, 10, 15)
+        target.chips(leadOpts.map { if (it == 0) "Off" else "$it min" }, setOf(leadOpts.indexOf(Shuttle.leadMin(this)).coerceAtLeast(0)), false) { sel ->
+            sel.firstOrNull()?.let { Shuttle.setLeadMin(this, leadOpts[it]); Scheduler.scheduleAll(this) }
+        }
+        target.label("Which stop each course uses is guessed from its code; change it in the class editor (Timetable → a class → Edit).", 12f, Ui.DIM, 10)
+        target.btn("Open shuttle times") { startActivity(Intent(this, ShuttleActivity::class.java)) }
+
         target = accordion(col, "UM LINKS",
             "Your shortcuts in the toolbox (the Aa button). Pick an icon, rename, change the address, " +
                 "reorder with ▲ ▼, or add a Spectrum course page.",
