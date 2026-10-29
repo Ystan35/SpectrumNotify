@@ -2,6 +2,12 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.28.1 (versionCode 90)
+- Shuttle screen in two tabs: **Navigate** (plan a trip, with its map) and **Explore** (next buses from any stop, every route's stops and times, with the route on its own map). Home's bus line opens Explore on that route.
+- Trip planner: choose the day (Today, Tomorrow, or any day from the calendar), so tonight you can see which bus to take tomorrow morning. Another day starts at "Leave at 8:00"; Leave now goes back to today. It warns when the UM shuttle does not run that day (weekends, outside teaching weeks, Friday prayer break).
+- 📍 next to From: plan from where you are. Location permission is asked only when you tap it; the start is a blue dot on the map, and the nearest stop is used to board.
+- Bus lines on the maps follow the roads (OpenStreetMap routing, one-way streets respected) instead of straight lines between stops. tools/route_shapes.py refreshes them in bus.json; segments to stops without coordinates are not drawn.
+
 ## 0.28.0 (versionCode 89)
 - Shuttle screen: plan a trip from any place to any place. Pick From and To (⇅ swaps them), then Leave now, Leave at or Arrive by. Up to three journeys, each with its steps: walk to the stop, the bus, a change (at most one, e.g. BA to the Faculty of Science, 2 min walk to Perpustakaan UM, Rapid T789 to LRT Universiti), the walk at the end. Walking the whole way is offered too, first when it is quicker. The same bus caught at a neighbouring stop shows once (the stop with the least walking).
 - Map (OpenStreetMap, no account or key): every stop as a dot, faculties in orange, From in green and To in red, the chosen journey or route drawn in its colours. Tap a dot to go from or to it, or see its next buses. Pinch to zoom; dimmed greys in the dark theme.

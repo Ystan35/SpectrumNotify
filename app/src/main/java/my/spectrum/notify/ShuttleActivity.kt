@@ -31,19 +31,31 @@ class ShuttleActivity : BaseActivity() {
     companion object {
         const val EXTRA_ROUTE = "route"
         const val EXTRA_FROM = "from"
+        /** fromId / toId of your current location (not a place in bus.json). */
+        const val ME = "@me"
+        private const val REQ_LOCATION = 41
     }
 
     private lateinit var planBox: LinearLayout
     private lateinit var restBox: LinearLayout
     private lateinit var map: ShuttleMap
     private var fromId = ""
+    /** Where you are, after "Use my location": a place of its own, its nearest stop as [ShuttleModel.Place.near]. */
+    private var me: ShuttleModel.Place? = null
     private var toId = ""
     /** 0 = leave now, 1 = leave at [atMin], 2 = arrive by [atMin]. */
     private var mode = 0
     private var atMin = LocalTime.now(zone()).let { it.hour * 60 + it.minute }
-    /** The journey drawn on the map; -1 = show the chosen route instead. */
+    /** The day the trip is planned for (null = today), so tonight you can plan tomorrow morning. */
+    private var planDay: LocalDate? = null
+    /** Navigate: the journey drawn on the map (index in the list shown). */
     private var chosenJ = 0
     private var routeIdx = 0
+    /** 0 = Navigate (plan a trip), 1 = Explore (next buses from a stop, routes and their times). */
+    private var tab = 0
+    /** Explore: the stop whose next buses are listed. */
+    private var stopId = ""
+    private lateinit var tabBox: LinearLayout
     private val handler = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() { render(); handler.postDelayed(this, 60_000) }
@@ -65,14 +77,82 @@ class ShuttleActivity : BaseActivity() {
             ?: Shuttle.homeId(this).takeIf { id -> id in d.places }
             ?: "UMC"
         routeIdx = d.routes.indexOfFirst { it.id == intent.getStringExtra(EXTRA_ROUTE) }.coerceAtLeast(0)
-        if (intent.hasExtra(EXTRA_ROUTE)) chosenJ = -1
+        // from Home's bus line: Explore, on that route and stop
+        if (intent.hasExtra(EXTRA_ROUTE)) tab = 1
+        stopId = intent.getStringExtra(EXTRA_FROM)?.takeIf { d.places[it]?.isStop == true }
+            ?: Shuttle.homeId(this).takeIf { d.places[it]?.isStop == true } ?: "UMC"
+        tabBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         planBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         restBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         map = ShuttleMap(this) { p -> pickOnMap(p) }
+        col.addView(tabBox)
         col.addView(planBox)
-        col.addView(map.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(320)).apply { topMargin = dp(12) })
-        col.label("Green: from · red: to · orange: faculties. Tap a dot to choose it. Pinch to zoom.", 11f, Ui.DIM, 4)
         col.addView(restBox)
+    }
+
+    private fun placeOf(d: ShuttleModel.Data, id: String): ShuttleModel.Place? = if (id == ME) me else d.places[id]
+
+    /** "📍": asks for location permission the first time, then plans from where you are. */
+    private fun useMyLocation() {
+        val fine = android.Manifest.permission.ACCESS_FINE_LOCATION
+        val coarse = android.Manifest.permission.ACCESS_COARSE_LOCATION
+        if (checkSelfPermission(fine) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            checkSelfPermission(coarse) == android.content.pm.PackageManager.PERMISSION_GRANTED) locate()
+        else requestPermissions(arrayOf(fine, coarse), REQ_LOCATION)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_LOCATION) return
+        if (grantResults.any { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) locate()
+        else Toast.makeText(this, "Without location, pick where you are from the list or tap a dot on the map.", Toast.LENGTH_LONG).show()
+    }
+
+    /** A fresh fix (or one from the last 2 minutes), then From = your location. */
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun locate() {
+        val lm = getSystemService(LOCATION_SERVICE) as android.location.LocationManager
+        val provider = listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER)
+            .firstOrNull { try { lm.isProviderEnabled(it) } catch (_: Exception) { false } }
+        if (provider == null) {
+            Toast.makeText(this, "Location is off. Turn it on in quick settings, then tap 📍 again.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val recent = listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER)
+            .mapNotNull { try { lm.getLastKnownLocation(it) } catch (_: Exception) { null } }
+            .filter { System.currentTimeMillis() - it.time < 2 * 60_000 }
+            .minByOrNull { it.accuracy }
+        if (recent != null) { gotLocation(recent); return }
+        Toast.makeText(this, "Finding where you are…", Toast.LENGTH_SHORT).show()
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            lm.getCurrentLocation(provider, null, mainExecutor) { loc ->
+                if (loc != null) gotLocation(loc)
+                else Toast.makeText(this, "Could not find your location. Try again outdoors, or pick a place.", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            lm.requestSingleUpdate(provider, object : android.location.LocationListener {
+                override fun onLocationChanged(loc: android.location.Location) = gotLocation(loc)
+                @Deprecated("Deprecated in Java")
+                override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
+                override fun onProviderEnabled(p: String) {}
+                override fun onProviderDisabled(p: String) {}
+            }, Looper.getMainLooper())
+        }
+    }
+
+    private fun gotLocation(loc: android.location.Location) {
+        if (isFinishing) return
+        val d = Shuttle.data(this)
+        val here = ShuttleModel.Place(ME, "Your location", false, "", "${loc.latitude},${loc.longitude}", loc.latitude, loc.longitude)
+        // the nearest stop, for "Next buses from" and for a start too far from any stop to walk to
+        val nearest = d.places.values.filter { it.isStop }.mapNotNull { s -> ShuttleModel.meters(here, s)?.let { Pair(s, it) } }.minByOrNull { it.second }
+        me = ShuttleModel.Place(ME, "Your location", false, nearest?.first?.id ?: "", here.query, loc.latitude, loc.longitude)
+        if (nearest != null && nearest.second > 3000) {
+            Toast.makeText(this, "You are ${"%.1f".format(nearest.second / 1000.0)} km from the nearest stop (${nearest.first.name}).", Toast.LENGTH_LONG).show()
+        }
+        setTrip(ME, toId.takeIf { it != ME } ?: "")
     }
 
     /** A dot on the map was tapped: use it as From or To, or see the next buses there. */
@@ -85,7 +165,7 @@ class ShuttleActivity : BaseActivity() {
                 when (which) {
                     0 -> setTrip(p.id, toId.takeIf { it != p.id } ?: "")
                     1 -> setTrip(fromId.takeIf { it != p.id } ?: fromId, p.id)
-                    else -> { fromId = p.id; render() }
+                    else -> { stopId = p.id; tab = 1; render() }
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -111,6 +191,11 @@ class ShuttleActivity : BaseActivity() {
         super.onPause()
         map.onPause()
         handler.removeCallbacks(tick)
+    }
+
+    override fun onDestroy() {
+        map.onDestroy()
+        super.onDestroy()
     }
 
     private fun open(url: String) = try {
@@ -225,11 +310,16 @@ class ShuttleActivity : BaseActivity() {
         val lp = { LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) } }
         box.label("Plan a trip", 13f, Ui.TEXT, 8).setTypeface(null, Typeface.BOLD)
         box.label("From", 12f, Ui.DIM, 6)
-        box.addView(pickerField(d.places[fromId]?.name ?: "Choose where you start", "From") { id ->
+        val fromRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        fromRow.addView(pickerField(placeOf(d, fromId)?.name ?: "Choose where you start", "From") { id ->
             if (id != fromId) setTrip(id, toId.takeIf { it != id } ?: "")
-        }, lp())
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        fromRow.addView(chip("📍", fromId == ME, size = 16f, padH = 10) { useMyLocation() }.apply {
+            contentDescription = "Use my location as the start"
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(6) })
+        box.addView(fromRow, lp())
         val toRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        toRow.addView(pickerField(d.places[toId]?.name ?: "Choose where to go", "To") { id ->
+        toRow.addView(pickerField(placeOf(d, toId)?.name ?: "Choose where to go", "To") { id ->
             if (id != toId) setTrip(fromId, id.takeIf { it != fromId } ?: "")
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         toRow.addView(chip("⇅", false, size = 16f, padH = 10) {
@@ -252,21 +342,57 @@ class ShuttleActivity : BaseActivity() {
             box.addView(android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(row) }, lp())
         }
 
-        box.chips(listOf("Leave now", "Leave at", "Arrive by"), setOf(mode), false) { mode = it.first(); chosenJ = 0; render() }
+        // which day: today, tomorrow, or any day from the calendar (another day has no "now": it is Leave at)
+        val day = planDay?.takeIf { it.isAfter(today) } ?: today.also { planDay = null }
+        fun setDay(dd: LocalDate) {
+            planDay = dd.takeIf { it.isAfter(today) }
+            if (planDay != null && mode == 0) { mode = 1; atMin = 8 * 60 }
+            chosenJ = 0
+            render()
+        }
+        val dayFmt = DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)
+        val picked = day.isAfter(today.plusDays(1))
+        box.chips(listOf("Today", "Tomorrow", if (picked) day.format(dayFmt) else "Pick a day"),
+            setOf(if (day == today) 0 else if (day == today.plusDays(1)) 1 else 2), false) { sel ->
+            when (sel.first()) {
+                0 -> setDay(today)
+                1 -> setDay(today.plusDays(1))
+                else -> android.app.DatePickerDialog(this, { _, y, m, dd -> setDay(LocalDate.of(y, m + 1, dd)) },
+                    day.year, day.monthValue - 1, day.dayOfMonth).apply {
+                    datePicker.minDate = System.currentTimeMillis() - 1000
+                    show()
+                }
+            }
+        }
+        box.chips(listOf("Leave now", "Leave at", "Arrive by"), setOf(mode), false) {
+            mode = it.first()
+            if (mode == 0) planDay = null   // "now" is today
+            chosenJ = 0
+            render()
+        }
         if (mode != 0) box.addView(timeField(atMin) { atMin = it; chosenJ = 0; render() }.view, lp())
 
-        val from = d.places[fromId]
-        val to = d.places[toId]
+        val from = placeOf(d, fromId)
+        val to = placeOf(d, toId)
         if (from == null || to == null) {
             box.label("Pick where you want to go, or tap a dot on the map.", 12f, Ui.DIM, 8)
             return null
         }
         val time = if (mode == 0) now else atMin
-        val list = ShuttleModel.journeys(d, from, to, today, time, mode == 2, max = 3)
+        val dayWord = when (day) { today -> "today"; today.plusDays(1) -> "tomorrow"; else -> "on " + day.format(dayFmt) }
+        // a day the UM shuttle does not run, or outside teaching weeks: say so before the trips
+        val umRuns = d.routes.any { !it.frequent && ShuttleModel.runs(it, day).isNotEmpty() }
+        when {
+            !umRuns -> box.label("No UM shuttle $dayWord (it runs Monday to Friday). Rapid KL buses still run.", 12f, Ui.ORANGE, 8)
+            !AcademicCalendar.inTeaching(this, day) -> box.label("${dayWord.replaceFirstChar { it.uppercase() }} is outside teaching weeks: the UM shuttle may not run.", 12f, Ui.ORANGE, 8)
+            day.dayOfWeek == DayOfWeek.FRIDAY -> box.label("Friday: no UM shuttle 12:30 pm – 2:30 pm.", 12f, Ui.DIM, 8)
+        }
+        val list = ShuttleModel.journeys(d, from, to, day, time, mode == 2, max = 3)
         if (list.isEmpty()) {
-            box.label(if (mode == 2) "No bus gets there by ${ShuttleModel.fmt(time)} today." else "No more buses for this trip today.", 13f, Ui.ORANGE, 8)
+            box.label(if (mode == 2) "No bus gets there by ${ShuttleModel.fmt(time)} $dayWord." else "No more buses for this trip $dayWord.", 13f, Ui.ORANGE, 8)
             return null
         }
+        if (day != today) box.label("Trips for ${day.format(dayFmt)}:", 12f, Ui.CYAN, 8).setTypeface(null, Typeface.BOLD)
         if (chosenJ >= list.size) chosenJ = 0
         list.forEachIndexed { i, j ->
             val on = i == chosenJ
@@ -292,7 +418,7 @@ class ShuttleActivity : BaseActivity() {
             box.addView(card, lp())
         }
         if (list.any { j -> j.buses.any { it.ride.route.frequent } }) box.label("Rapid KL times count the longest wait.", 11f, Ui.DIM, 4)
-        return if (chosenJ >= 0) list[chosenJ] else null
+        return list.getOrNull(chosenJ)
     }
 
     private fun render() {
@@ -301,9 +427,20 @@ class ShuttleActivity : BaseActivity() {
         val now = LocalTime.now(zone()).let { it.hour * 60 + it.minute }
         planBox.removeAllViews()
         restBox.removeAllViews()
-        val shownJourney = renderPlanner(d, today, now)
-        map.show(d, d.routes.getOrNull(routeIdx.coerceIn(0, (d.routes.size - 1).coerceAtLeast(0))), shownJourney,
-            d.places[fromId], d.places[toId])
+        tabBox.removeAllViews()
+        tabBox.chips(listOf("Navigate", "Explore"), setOf(tab), false) { tab = it.first(); render() }
+        (map.view.parent as? ViewGroup)?.removeView(map.view)
+        val mapLp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(320)).apply { topMargin = dp(12) }
+        planBox.visibility = if (tab == 0) View.VISIBLE else View.GONE
+        restBox.visibility = if (tab == 1) View.VISIBLE else View.GONE
+        if (tab == 0) {
+            val shownJourney = renderPlanner(d, today, now)
+            planBox.addView(map.view, mapLp)
+            planBox.label("Green: from · red: to · blue: you · orange: faculties. Tap a dot to choose it. Pinch to zoom.", 11f, Ui.DIM, 4)
+            map.show(d, null, shownJourney,
+                placeOf(d, fromId), placeOf(d, toId))
+            return
+        }
         val col = restBox
 
         // ---- does it run today?
@@ -321,10 +458,10 @@ class ShuttleActivity : BaseActivity() {
         col.label("Next buses from", 13f, Ui.TEXT, 16).setTypeface(null, Typeface.BOLD)
         val stops = d.places.values.filter { it.isStop }.sortedBy { it.name.lowercase(Locale.ROOT) }
         // a building has no buses of its own: its stop's
-        val busFrom = d.places[fromId]?.let { ShuttleModel.stopOf(d, it) }?.takeIf { it.isNotEmpty() } ?: "UMC"
+        val busFrom = stopId.takeIf { d.places[it]?.isStop == true } ?: "UMC"
         val sel = stops.indexOfFirst { it.id == busFrom }.coerceAtLeast(0)
         col.addView(spinner(stops.map { it.name }, sel) { i ->
-            if (stops[i].id != busFrom) { fromId = stops[i].id; render() }
+            if (stops[i].id != busFrom) { stopId = stops[i].id; render() }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         val all = ShuttleModel.departures(d, busFrom, today, now)
         // a Rapid route shows once ("every 15 min"); UM shuttle trips by time
@@ -350,7 +487,7 @@ class ShuttleActivity : BaseActivity() {
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 background = rippleBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, 12)
                 isClickable = true
-                setOnClickListener { routeIdx = d.routes.indexOf(r); chosenJ = -1; render() }
+                setOnClickListener { routeIdx = d.routes.indexOf(r); render() }
             }
             row.addView(tv(r.id, 14f, onAccent(), true).apply {
                 gravity = Gravity.CENTER
@@ -377,10 +514,14 @@ class ShuttleActivity : BaseActivity() {
         col.label("Routes", 13f, Ui.TEXT, 22).setTypeface(null, Typeface.BOLD)
         routeIdx = routeIdx.coerceIn(0, (d.routes.size - 1).coerceAtLeast(0))
         if (d.routes.isEmpty()) return
-        col.chips(d.routes.map { it.id }, setOf(routeIdx), false) { routeIdx = it.first(); chosenJ = -1; render() }
+        col.chips(d.routes.map { it.id }, setOf(routeIdx), false) { routeIdx = it.first(); render() }
         if (d.routes.any { it.frequent }) col.label("AB … 13: UM shuttle · " + d.routes.filter { it.frequent }.joinToString(", ") { it.id } + ": Rapid KL", 11f, Ui.DIM, 4)
         val r = d.routes[routeIdx]
         col.label("${r.label} · ${r.name}", 15f, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
+        // the route on the map, along the roads; your stop in green
+        col.addView(map.view, mapLp)
+        col.label("Blue: this route's stops · green: the stop above · orange: faculties. Tap a dot for its next buses.", 11f, Ui.DIM, 4)
+        map.show(d, r, null, d.places[busFrom], null)
         val runs = ShuttleModel.runs(r, today)
         // the trip to show along the stops: the one running now, else the next, else the first of the day
         // (a Rapid route has no fixed trips: its stops show minutes from the start instead)
@@ -411,7 +552,7 @@ class ShuttleActivity : BaseActivity() {
             row.addView(tv(time, 13f, if (passed || skipped) Ui.DIM else Ui.TEXT, !passed && !skipped))
             row.isClickable = true
             row.background = rippleBg(Ui.BG, 0, this, 8)
-            row.setOnClickListener { if (d.places[id]?.isStop == true) { fromId = id; render() } }
+            row.setOnClickListener { if (d.places[id]?.isStop == true) { stopId = id; render() } }
             row.contentDescription = "${Shuttle.stopName(this, id)}, $time. Tap for the next buses from here."
             col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
