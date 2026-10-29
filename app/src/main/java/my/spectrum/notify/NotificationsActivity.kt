@@ -29,7 +29,7 @@ import android.widget.Toast
  * Notification history (the bell in the bottom bar): filter chips, tap to expand, swipe to dismiss.
  * Tapping a phone notification opens this page on that record.
  */
-class NotificationsActivity : Activity() {
+class NotificationsActivity : BaseActivity() {
     companion object {
         const val EXTRA_TS = "record_ts"
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
@@ -310,11 +310,17 @@ class NotificationsActivity : Activity() {
             Regex("""https?://[^\s"'<>)]+""").findAll(e.body).map { Pair("Open link", it.value) }.distinct().take(3).toList()
 
         val card = SwipeCard(this) {
-            NotifyLog.remove(this, e.ts)
+            // hidden rather than deleted, so Undo can bring it straight back
+            NotifyLog.hide(this, e.ts)
             logStamp = -1L
             recSig = ""
             render()
-            Toast.makeText(this, "Removed", Toast.LENGTH_SHORT).show()
+            undoBar("Notification removed") {
+                NotifyLog.unhide(this, e.ts)
+                logStamp = -1L
+                recSig = ""
+                render()
+            }
         }
         card.orientation = LinearLayout.VERTICAL
         card.setPadding(dp(14), dp(14), dp(14), dp(14))
@@ -394,27 +400,28 @@ class NotificationsActivity : Activity() {
                 }
             })
             extraChips.add(Pair("Hide this (wrong?)") {
-                AlertDialog.Builder(this)
-                    .setTitle("Hide this deadline?")
-                    .setMessage("It disappears from Home and Notifications, and Spectrum's reminder for it is silenced. Undo any time: Settings → APP & MAINTENANCE → \"Restore hidden deadlines\".")
-                    .setPositiveButton("Hide it") { _, _ ->
-                        val sp = getSharedPreferences("health", MODE_PRIVATE)
-                        for (m in sp.getStringSet("dlTitleMap", emptySet()) ?: emptySet()) {
-                            val parts = m.split(":", limit = 2)
-                            if (parts.size == 2 && parts[0] == e.title.hashCode().toString()) {
-                                val ev = parts[1].split(":")
-                                if (ev.size >= 2) NotifyLog.hideEvent(this, ev[0] + ":" + ev[1])
-                                if (ev.size >= 3) NotifyLog.hideEvent(this, ev[0] + ":" + ev[1] + ":" + ev[2])
-                            }
-                        }
-                        NotifyLog.remove(this, e.ts)
-                        logStamp = -1L
-                        recSig = ""
-                        render()
-                        Toast.makeText(this, "Hidden. Restore: Settings → APP & MAINTENANCE → \"Restore hidden deadlines\".", Toast.LENGTH_LONG).show()
+                val sp = getSharedPreferences("health", MODE_PRIVATE)
+                val keys = ArrayList<String>()
+                for (m in sp.getStringSet("dlTitleMap", emptySet()) ?: emptySet()) {
+                    val parts = m.split(":", limit = 2)
+                    if (parts.size == 2 && parts[0] == e.title.hashCode().toString()) {
+                        val ev = parts[1].split(":")
+                        if (ev.size >= 2) keys.add(ev[0] + ":" + ev[1])
+                        if (ev.size >= 3) keys.add(ev[0] + ":" + ev[1] + ":" + ev[2])
                     }
-                    .setNegativeButton("Keep it", null)
-                    .show()
+                }
+                keys.forEach { NotifyLog.hideEvent(this, it) }
+                NotifyLog.hide(this, e.ts)
+                logStamp = -1L
+                recSig = ""
+                render()
+                undoBar("Deadline hidden") {
+                    keys.forEach { NotifyLog.unhideEvent(this, it) }
+                    NotifyLog.unhide(this, e.ts)
+                    logStamp = -1L
+                    recSig = ""
+                    render()
+                }
             })
         }
         if (btns.isNotEmpty() || extraChips.isNotEmpty()) {

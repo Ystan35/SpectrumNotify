@@ -5,7 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 
 /** The account page moved into Settings (PROFILE section). Anything that still opens it is sent there. */
-class AccountActivity : Activity() {
+class AccountActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         recreateIfLookChanged()

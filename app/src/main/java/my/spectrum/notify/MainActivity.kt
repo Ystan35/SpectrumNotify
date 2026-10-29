@@ -45,7 +45,7 @@ import java.util.Locale
  * Bottom bar: courses, timetable, notifications (bell), settings. The notification history is in NotificationsActivity;
  * the profile (login) is a section of Settings.
  */
-class MainActivity : Activity() {
+class MainActivity : BaseActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -58,6 +58,7 @@ class MainActivity : Activity() {
     private lateinit var greetSub: TextView
     private lateinit var syncLabel: TextView
     private lateinit var refreshBtn: ImageButton
+    private lateinit var setupBox: LinearLayout
     private lateinit var heroBox: LinearLayout
     private lateinit var dueSection: LinearLayout
     private lateinit var dueRow: LinearLayout
@@ -103,11 +104,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
         applyBars()
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
-        }
+        // the notification permission is asked from the "Get set up" card, with the reason shown first
         buildUi()
         handleIntent(intent)
         Scheduler.startupCheck(this)   // auto-detect courses + Occ on open when data is stale
@@ -129,21 +126,23 @@ class MainActivity : Activity() {
         confirmOccDialog()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        setupSig = ""
+        render()
+    }
+
     private var occDialogShown = false
 
-    /**
-     * After the auto-detection finds courses with visible Occ pages, ask the user to confirm
-     * each one (the detection is a good guess, but only the user knows their real Occ).
-     * One dialog per course; "Skip" leaves it unconfirmed and it is asked again next launch.
-     */
-    private fun confirmOccDialog() {
-        if (occDialogShown) return
+    private data class OccAsk(val code: String, val cname: String, val occs: List<String>, val predicted: String?)
+
+    /** Courses whose Occ the user has not confirmed yet (detected from visible Occ pages). */
+    private fun pendingOccAsks(): List<OccAsk> {
         val st = State(this)
-        val seen = st.j.optJSONObject("occ_seen") ?: return
+        val seen = st.j.optJSONObject("occ_seen") ?: return emptyList()
         val names = st.j.optJSONObject("occ_courses") ?: JSONObject()
         val codes = Courses.all(this).associate { it.id to it.code.uppercase() }
-        data class Ask(val code: String, val cname: String, val occs: List<String>, val predicted: String?)
-        val asks = ArrayList<Ask>()
+        val asks = ArrayList<OccAsk>()
         for (cidS in seen.keys()) {
             val code = codes[cidS.toLongOrNull() ?: -1L] ?: continue
             if (Prefs(this).occConfirmed(code)) continue
@@ -157,10 +156,25 @@ class MainActivity : Activity() {
                         .mapNotNull { Regex("occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
                 }
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
-            asks.add(Ask(code, names.optString(cidS, code), occs, predictedNum))
+            asks.add(OccAsk(code, names.optString(cidS, code), occs, predictedNum))
         }
+        return asks
+    }
+
+    /**
+     * After the auto-detection finds courses with visible Occ pages, ask the user to confirm
+     * each one (the detection is a good guess, but only the user knows their real Occ).
+     * Opens by itself once; after that only from the "Get set up" card ([manual]).
+     * A course left on "?" stays unconfirmed and is asked again.
+     */
+    private fun confirmOccDialog(manual: Boolean = false) {
+        if (occDialogShown) return
+        val flags = getSharedPreferences("health", MODE_PRIVATE)
+        if (!manual && flags.getBoolean(semFlag("occAutoAsked"), false)) return
+        val asks = pendingOccAsks()
         if (asks.isEmpty()) return
         occDialogShown = true
+        flags.edit().putBoolean(semFlag("occAutoAsked"), true).apply()
 
         // one dialog with the My-classes layout: scrollable content (last courses reachable),
         // sized below the app header
@@ -193,15 +207,16 @@ class MainActivity : Activity() {
             row.addView(sp, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
             content.addView(row, LinearLayout.LayoutParams(MATCH, WRAP))
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Confirm your Occ")
             .setMessage("Prefilled from your attendance and materials — please confirm each. Unlisted courses keep working without a filter.")
             .setView(box)
             .setPositiveButton("Save all") { _, _ ->
                 val notInCatalog = ArrayList<String>()
                 asks.forEachIndexed { i, a ->
-                    Prefs(this).setOccConfirmed(a.code)
                     val v = choices[i]
+                    // "?" is not an answer: that course stays unconfirmed and is asked again
+                    if (v >= 0 || a.occs.isEmpty()) Prefs(this).setOccConfirmed(a.code)
                     if (v >= 0 && a.occs.isNotEmpty()) {
                         val keep = p.myGroups.split(",").map { it.trim() }
                             .filter { it.isNotEmpty() && !it.startsWith("${a.code}:", true) }
@@ -216,38 +231,143 @@ class MainActivity : Activity() {
                         Toast.LENGTH_LONG).show()
                 }
                 ovAt = 0L
-                askShortNames { askReviewTimetable() }
             }
             .setNegativeButton("Later", null)
+            // the next steps (check times, short names) are on the "Get set up" card, not more dialogs
+            .setOnDismissListener { occDialogShown = false; setupSig = ""; render() }
             .show()
     }
 
-    /** After the first Occ save: offer to give courses short names. Once per install. */
-    private fun askShortNames(next: () -> Unit) {
-        val sp = getSharedPreferences("health", MODE_PRIVATE)
-        if (sp.getBoolean("askedShortNames", false)) { next(); return }
-        sp.edit().putBoolean("askedShortNames", true).apply()
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Name your courses?")
-            .setMessage("Course codes like WIA2010 are hard to remember. You can give each course a short name you recognise (for example \"HCI\" or \"cm\") — it shows next to the code everywhere.")
-            .setPositiveButton("Yes, set names") { _, _ ->
-                startActivity(Intent(this, CoursesActivity::class.java))
-            }
-            .setNegativeButton("Later") { _, _ -> next() }
-            .setOnCancelListener { next() }
-            .show()
+    // ------------------------------------------------------------ "Get set up" card
+
+    private var setupSig = ""
+
+    /** A setup flag that starts fresh each semester: new subjects mean a new Occ to confirm and new times to check. */
+    private fun semFlag(name: String): String {
+        val flags = getSharedPreferences("health", MODE_PRIVATE)
+        val key = name + ":" + AcademicCalendar.planningLabel(this)
+        // v0.25.1 kept these once per install: count them for the semester you are in now
+        if (!flags.contains(key) && flags.getBoolean(name, false)) flags.edit().putBoolean(key, true).remove(name).apply()
+        return key
     }
 
-    /** After saving Occs: remind the user to eyeball the timetable once. */
-    private fun askReviewTimetable() {
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Check your class times")
-            .setMessage("Your timetable was built from the attendance data and the UM list, and the times can be out of date. Take a minute: open the Timetable, switch between the days, and tap any class whose time looks wrong to fix it.")
-            .setPositiveButton("Review now") { _, _ ->
+    private class SetupStep(val title: String, val why: String, val done: Boolean, val button: String, val optional: Boolean = false, val go: (() -> Unit)?)
+
+    /** Every step a new install needs, in order; a step's button does that step (or opens the screen for it). */
+    private fun setupSteps(loggedIn: Boolean): List<SetupStep> {
+        val flags = getSharedPreferences("health", MODE_PRIVATE)
+        val notifOk = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        // some phones (Samsung especially) keep reporting "optimised" after you pick Unrestricted on the app's
+        // battery page; after one try you can confirm it yourself instead of being asked forever
+        val batteryAsked = flags.getBoolean("batteryAsked", false)
+        val batteryOk = batteryUnrestricted() || flags.getBoolean("batteryConfirmed", false)
+        val checked = p.lastRunTs > 0L
+        val occPending = loggedIn && pendingOccAsks().isNotEmpty()
+        return listOf(
+            SetupStep("Allow notifications", "Class links, deadlines and new materials arrive as notifications.", notifOk, "Allow") {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            },
+            SetupStep("Log in to Spectrum", "Uses your normal UM sign-in. Your login stays on this phone.", loggedIn, "Log in") {
+                startActivity(Intent(this, LoginWebActivity::class.java))
+            },
+            SetupStep("Allow exact alarms", "So the class reminder arrives about 10 minutes before class, not late.", Scheduler.canExact(this), "Allow") {
+                if (Build.VERSION.SDK_INT >= 31) startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+            },
+            if (!batteryAsked || batteryOk) SetupStep("Let checks run in the background",
+                "Allow Spectrum Notify to run in the background (Unrestricted battery), so Android does not stop the checks.",
+                batteryOk, "Allow") {
+                flags.edit().putBoolean("batteryAsked", true).apply()
+                askBatteryUnrestricted()
+            } else SetupStep("Let checks run in the background",
+                "Already set the app's battery to Unrestricted? Some phones don't report it — tap Done. Otherwise tap Allow again.",
+                false, "Done") {
+                flags.edit().putBoolean("batteryConfirmed", true).apply()
+                setupSig = ""
+                render()
+            },
+            SetupStep("Confirm your Occ",
+                if (!checked) "Your Occ (class group) is detected after the first check." else "Your Occ is your class group, e.g. Occ 2. It decides which links and posts are yours.",
+                loggedIn && checked && !occPending, "Confirm", go = if (occPending) ({ confirmOccDialog(manual = true) }) else null),
+            SetupStep("Check your class times", "Open the timetable once and tap any class whose time looks wrong to fix it.",
+                flags.getBoolean(semFlag("setupReviewed"), false), "Open") {
+                flags.edit().putBoolean(semFlag("setupReviewed"), true).apply()
                 startActivity(Intent(this, TimetableActivity::class.java))
+            },
+            SetupStep("Give courses short names", "Optional: \"HCI\" is easier to spot than WIA2010.",
+                flags.getBoolean("setupNamed", false), "Open", optional = true) {
+                flags.edit().putBoolean("setupNamed", true).apply()
+                startActivity(Intent(this, CoursesActivity::class.java))
+            },
+        )
+    }
+
+    private fun renderSetup(loggedIn: Boolean) {
+        val flags = getSharedPreferences("health", MODE_PRIVATE)
+        val hidden = flags.getBoolean(semFlag("setupHidden"), false)
+        if (hidden) {
+            if (setupSig != "hidden") { setupSig = "hidden"; setupBox.removeAllViews() }
+            return
+        }
+        val steps = setupSteps(loggedIn)
+        val required = steps.filter { !it.optional }
+        // done flag, wording and whether there is a button: any of them changing redraws the card
+        // (a check finishing changes the Occ step's text and gives it a button without ticking it)
+        val sig = steps.joinToString("|") { "${it.done}:${it.button}:${it.go != null}:${it.why}" } + hidden
+        if (sig == setupSig) return
+        setupSig = sig
+        setupBox.removeAllViews()
+        if (hidden || steps.all { it.done }) return
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(10))
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
+        }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(tv("Get set up", 16f, Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        head.addView(tv("${required.count { it.done }} of ${required.size} done", 12f, Ui.DIM, true))
+        card.addView(head)
+        val next = steps.firstOrNull { !it.done && it.go != null }
+        for (s in steps) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(10), 0, 0)
             }
-            .setNegativeButton("Later", null)
-            .show()
+            row.addView(tv(if (s.done) "✓" else "○", 16f, if (s.done) Ui.GREEN else Ui.DIM, true).apply {
+                contentDescription = if (s.done) "Done" else "Not done"
+            }, LinearLayout.LayoutParams(dp(26), WRAP))
+            val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            text.addView(tv(s.title + if (s.optional) " (optional)" else "", 14f, if (s.done) Ui.DIM else Ui.TEXT, !s.done))
+            if (!s.done) text.addView(tv(s.why, 12f, Ui.DIM))
+            row.addView(text, LinearLayout.LayoutParams(0, WRAP, 1f))
+            if (!s.done && s.go != null) {
+                val filled = s === next
+                row.addView(tv(s.button, 13f, if (filled) onAccent() else Ui.CYAN, true).apply {
+                    gravity = Gravity.CENTER
+                    minHeight = dp(Ui.touch(48)); minWidth = dp(72)
+                    setPadding(dp(12), 0, dp(12), 0)
+                    isClickable = true
+                    background = if (filled) roundBg(Ui.CYAN, 0, this@MainActivity, 20) else rippleBg(Ui.BAR, Ui.CYAN, this@MainActivity, 20)
+                    contentDescription = "${s.button}: ${s.title}"
+                    setOnClickListener { s.go.invoke(); setupSig = "" }
+                }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
+            }
+            card.addView(row)
+        }
+        card.addView(tv("Hide this guide", 12f, Ui.DIM, true).apply {
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            minHeight = dp(Ui.touch(48))
+            isClickable = true
+            setOnClickListener {
+                flags.edit().putBoolean(semFlag("setupHidden"), true).apply()
+                setupSig = ""
+                render()
+                undoBar("Setup guide hidden") { flags.edit().putBoolean(semFlag("setupHidden"), false).apply(); setupSig = ""; render() }
+            }
+        }, LinearLayout.LayoutParams(MATCH, WRAP))
+        setupBox.addView(card, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
     }
 
     override fun onPause() {
@@ -338,6 +458,9 @@ class MainActivity : Activity() {
         header.addView(refreshBtn, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
         content.addView(header, lp(MATCH, WRAP).apply { topMargin = dp(14); bottomMargin = dp(12) })
 
+        setupBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(setupBox, lp(MATCH, WRAP))
+
         heroBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(heroBox, lp(MATCH, WRAP))
 
@@ -377,170 +500,9 @@ class MainActivity : Activity() {
         page.addView(navBar, lp(MATCH, WRAP))
         root.addView(page, FrameLayout.LayoutParams(MATCH, MATCH))
 
-        // floating toolbox: tap opens a quick appearance sheet; hold and drag to move the button.
-        val fab = TextView(this).apply {
-            text = "Aa"
-            textSize = 17f * Ui.fontScale
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setTextColor(Ui.CYAN)
-            background = rippleBg(Ui.BAR, Ui.CYAN, this@MainActivity, 26)
-            contentDescription = "Appearance settings. Tap to open, hold and drag to move."
-            elevation = dp(6).toFloat()
-        }
-        val fabLp = FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48)), Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = dp(14); bottomMargin = dp(78)
-        }
-        root.addView(fab, fabLp)
-        setupFabDrag(fab, fabLp, root) { showQuickSheet(root, fabLp) }
-        attachToolbox(root)
+        // floating toolbox group (Aa + back to top); Home used to add a second, older Aa on top of it
+        attachToolbox(root, scroll)
         setContentView(root)
-    }
-
-    /** Small sheet above the FAB: theme / text size / contrast toggles, one tap each. */
-    private fun showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) {
-        if (root.findViewWithTag<View>("quicksheet") != null) return
-        val p = Prefs(this)
-
-        val sheet = LinearLayout(this).apply {
-            tag = "quicksheet"
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(14))
-            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
-            elevation = dp(8).toFloat()
-        }
-        fun row(name: String, value: String, onCycle: () -> Unit) {
-            val r = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = dp(48)
-                isClickable = true
-                background = rippleBg(Ui.BAR, 0, this@MainActivity, 12)
-            }
-            r.addView(tv(name, 14f, Ui.TEXT), lp(0, WRAP, 1f))
-            r.addView(tv("$value  ▸", 13f, Ui.CYAN, true))
-            r.setOnClickListener { onCycle() }
-            sheet.addView(r)
-        }
-        val themeNames = listOf("Phone", "Light", "Dark")
-        row("Colour mode", themeNames[p.themeMode]) {
-            p.themeMode = (p.themeMode + 1) % 3
-            recreate()
-        }
-        val sizeNames = listOf("Normal", "Large", "Extra large")
-        row("Text size", sizeNames[p.textScale]) {
-            p.textScale = (p.textScale + 1) % 3
-            recreate()
-        }
-        val conNames = listOf("Off", "On")
-        row("High contrast", conNames[if (p.highContrast) 1 else 0]) {
-            p.highContrast = !p.highContrast
-            recreate()
-        }
-        sheet.addView(View(this), lp(MATCH, dp(6)))
-        val more = TextView(this).apply {
-            text = "More appearance settings"
-            textSize = 13f * Ui.fontScale
-            setTextColor(Ui.CYAN)
-            minHeight = dp(44)
-            gravity = Gravity.CENTER_VERTICAL
-            isClickable = true
-            background = rippleBg(Ui.BAR, 0, this@MainActivity, 12)
-        }
-        more.setOnClickListener {
-            closeQuickSheet(root)
-            startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_OPEN, "appearance"))
-        }
-        sheet.addView(more)
-
-        val dim = View(this).apply {
-            tag = "quicksheetdim"
-            setBackgroundColor(0x66000000)
-            elevation = dp(7).toFloat()
-        }
-        dim.setOnClickListener { closeQuickSheet(root) }
-        root.addView(dim, FrameLayout.LayoutParams(MATCH, MATCH))
-        // Anchor the sheet to the toolbox wherever it was dragged: horizontal edge with more
-        // room wins (sheet is 230dp wide), and it opens above the button unless the button is
-        // near the top, in which case it opens below.
-        val sheetW = dp(230)
-        val sheetHGuess = dp(260)
-        val spaceRight = root.width - fabLp.rightMargin - fabLp.width
-        val spaceLeft = fabLp.rightMargin
-        val onRight = spaceRight >= sheetW || spaceRight >= spaceLeft
-        val fabTopY = root.height - fabLp.bottomMargin - fabLp.height
-        val openBelow = fabTopY < sheetHGuess
-        val lp = FrameLayout.LayoutParams(sheetW, WRAP).apply {
-            if (onRight) {
-                gravity = Gravity.END
-                rightMargin = dp(14)
-            } else {
-                gravity = Gravity.START
-                leftMargin = dp(14)
-            }
-            if (openBelow) {
-                gravity = gravity or Gravity.TOP
-                topMargin = fabTopY + fabLp.height + dp(10)
-            } else {
-                gravity = gravity or Gravity.BOTTOM
-                bottomMargin = fabLp.bottomMargin + fabLp.height + dp(10)
-            }
-        }
-        root.addView(sheet, lp)
-    }
-
-    private fun closeQuickSheet(root: FrameLayout) {
-        root.findViewWithTag<View>("quicksheet")?.let { root.removeView(it) }
-        root.findViewWithTag<View>("quicksheetdim")?.let { root.removeView(it) }
-    }
-
-    /** Tap opens the quick sheet; holding still and dragging moves the button and snaps it to the nearest edge. */
-    private fun setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onTap: () -> Unit) {
-        var downX = 0f
-        var downY = 0f
-        var startX = 0
-        var startY = 0
-        var moved = false
-        var dragging = false
-        var pressTime = 0L
-        fab.setOnTouchListener { v, ev ->
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = ev.rawX; downY = ev.rawY
-                    startX = fabLp.rightMargin; startY = fabLp.bottomMargin
-                    moved = false; dragging = false; pressTime = System.currentTimeMillis()
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = (ev.rawX - downX).toInt()
-                    val dy = (ev.rawY - downY).toInt()
-                    if (!dragging && (abs(dx) > dp(8) || abs(dy) > dp(8))) dragging = true
-                    if (dragging) {
-                        moved = true
-                        v.parent?.requestDisallowInterceptTouchEvent(true)
-                        // margins are measured from BOTTOM/END, so the button tracks the finger
-                        fabLp.rightMargin = (startX - dx).coerceIn(0, root.width - v.width)
-                        fabLp.bottomMargin = (startY - dy).coerceIn(dp(64), root.height - v.width)
-                        root.updateViewLayout(v, fabLp)
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (dragging) {
-                        // snap to the nearer horizontal edge
-                        val toEnd = fabLp.rightMargin < (root.width - v.width) / 2
-                        fabLp.rightMargin = if (toEnd) dp(14) else root.width - v.width - dp(14)
-                        root.updateViewLayout(v, fabLp)
-                        moved = false  // a finished drag never counts as a tap
-                    } else if (System.currentTimeMillis() - pressTime < 600) {
-                        onTap()
-                    }
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> { dragging = false; true }
-                else -> false
-            }
-        }
     }
 
     // ------------------------------------------------------------ refresh button
@@ -629,6 +591,7 @@ class MainActivity : Activity() {
             entries = NotifyLog.entries(this).filter { !(it.kind == "sys" && it.title == "Check OK") }.asReversed()
         }
         renderHeader(loggedIn)
+        renderSetup(loggedIn)
         renderHero(loggedIn)
         renderDue()
         renderEvents()
@@ -755,7 +718,7 @@ class MainActivity : Activity() {
                 card.addView(label("WELCOME"))
                 card.addView(tv("Never miss a class link", 24f, white, true).apply { setPadding(0, dp(6), 0, 0) })
                 card.addView(tv("Log in with your Spectrum account to get class links, deadlines and new materials here.", 14f, soft).apply { setPadding(0, dp(6), 0, dp(14)) })
-                card.addView(pill("Log in", true) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(WRAP, WRAP))
+                card.addView(pill("Log in", true) { startActivity(Intent(this, LoginWebActivity::class.java)) }, lp(WRAP, WRAP))
             } else {
                 val due = ov.due.firstOrNull()
                 val inBreak = !AcademicCalendar.inTeaching(this, java.time.LocalDate.now())
@@ -819,10 +782,19 @@ class MainActivity : Activity() {
                     13f, soft,
                 ).apply { setPadding(0, dp(10), 0, 0) })
             }
+            if (c.hiddenOwn.isNotEmpty()) {
+                card.addView(tv(
+                    "Your own ${Shorts.display(this, c.code.ifEmpty { c.course })} entry (${c.hiddenOwn}) is hidden: Spectrum lists this class at the same time.",
+                    12f, soft,
+                ).apply { setPadding(0, dp(8), 0, 0) })
+            }
             // horizontal scroll so three pills never get squeezed into wrapping vertically
+            // its own padded zone: a sideways drag that starts here scrolls the buttons, never the card (HeroPager)
             val actions = HorizontalScrollView(this).apply {
                 isHorizontalScrollBarEnabled = false
-                setPadding(0, dp(14), 0, 0)
+                tag = HeroPager.NO_SWIPE
+                setPadding(dp(6), dp(6), dp(6), dp(6))
+                background = roundBg(0x1FFFFFFF, 0, this@MainActivity, 26)
             }
             val actionsRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -851,7 +823,7 @@ class MainActivity : Activity() {
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
             actions.addView(actionsRow, lp(WRAP, WRAP))
-            card.addView(actions)
+            card.addView(actions, lp(MATCH, WRAP).apply { topMargin = dp(14) })
             // countdown progress: how far we are into the wait (or the class itself), fills to 100%
             val span = if (live) maxOf(1, c.end - c.start) else maxOf(1, (c.start - now) + (c.end - c.start))
             val done = if (live) now - c.start else (c.start - now).coerceAtLeast(0)
@@ -998,7 +970,7 @@ class MainActivity : Activity() {
             editIntent.putExtra(TimetableEditActivity.EXTRA_GRP, manualSlot.grp)
         } else {
             // exact time first, else the nearest class of this course that day (a moved or overridden class)
-            val sameDay = Timetable.all(this).filter { it.course.equals(c.course, true) && it.day == day }
+            val sameDay = Timetable.all(this, null).filter { it.course.equals(c.course, true) && it.day == day }
             val learnedSlot = sameDay.firstOrNull { it.start == startMin }
                 ?: sameDay.minByOrNull { abs(it.start - startMin) }?.takeIf { abs(it.start - startMin) <= 180 }
             if (learnedSlot != null) {
@@ -1103,18 +1075,16 @@ class MainActivity : Activity() {
             dueSig = ""
             render()
         }
-        row("Hide this (wrong?)", "Removes it everywhere; restore from Settings → APP & MAINTENANCE") {
-            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Hide this deadline?")
-                .setMessage("“" + d.name + "” will be removed from Home and Notifications, and Spectrum's reminder for it is silenced. You can bring it back: Settings → APP & MAINTENANCE → “Restore hidden deadlines”.")
-                .setPositiveButton("Hide it") { _, _ ->
-                    if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId)
-                    dueSig = ""
-                    render()
-                    Toast.makeText(this, "Hidden. Restore: Settings → APP & MAINTENANCE → “Restore hidden deadlines”.", Toast.LENGTH_LONG).show()
-                }
-                .setNegativeButton("Keep it", null)
-                .show()
+        row("Hide this (wrong?)", "Removes it from Home, Notifications and reminders — you can undo right after") {
+            if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId)
+            sheetDismiss()
+            dueSig = ""
+            render()
+            undoBar("Deadline hidden") {
+                if (d.eventId != 0L) NotifyLog.unhideEvent(this, "dl:" + d.eventId)
+                dueSig = ""
+                render()
+            }
         }
         val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_DayNight)
             .setView(sheet)
@@ -1233,6 +1203,10 @@ class MainActivity : Activity() {
  * [onCommit] shows the neighbour, or springs back. At the first/last class the card only stretches a little.
  */
 private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
+    companion object {
+        /** Tag a child with this to keep sideways drags that start on it (e.g. the scrolling button row). */
+        const val NO_SWIPE = "heroNoSwipe"
+    }
     var canGo: (Int) -> Boolean = { false }
     var onCommit: (Int) -> Unit = {}
     var onDragState: (Boolean) -> Unit = {}
@@ -1242,7 +1216,19 @@ private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
     private var downX = 0f
     private var downY = 0f
     private var dragging = false
+    /** This gesture started inside a [NO_SWIPE] child: it belongs to that child, not to the card. */
+    private var blocked = false
     private var vt: android.view.VelocityTracker? = null
+
+    private fun inNoSwipe(v: View, rawX: Float, rawY: Float): Boolean {
+        if (v.tag == NO_SWIPE && v.isShown) {
+            val loc = IntArray(2)
+            v.getLocationOnScreen(loc)
+            if (rawX >= loc[0] && rawX < loc[0] + v.width && rawY >= loc[1] && rawY < loc[1] + v.height) return true
+        }
+        if (v is ViewGroup) for (i in 0 until v.childCount) if (inNoSwipe(v.getChildAt(i), rawX, rawY)) return true
+        return false
+    }
 
     private fun card(): View? = if (childCount > 0) getChildAt(0) else null
 
@@ -1262,12 +1248,13 @@ private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = ev.x; downY = ev.y; dragging = false
+                blocked = inNoSwipe(this, ev.rawX, ev.rawY)
                 vt?.recycle(); vt = android.view.VelocityTracker.obtain()
                 vt?.addMovement(ev)
             }
             MotionEvent.ACTION_MOVE -> {
                 vt?.addMovement(ev)
-                if (!dragging && sideways(ev)) startDrag()
+                if (!dragging && !blocked && sideways(ev)) startDrag()
             }
         }
         return dragging

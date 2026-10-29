@@ -19,7 +19,7 @@ import android.widget.Toast
  * same day (some courses log lecture and tutorial separately) are clarified once via a
  * dialog and the choice can be redone from the "Fix labels" action.
  */
-class AttendanceActivity : Activity() {
+class AttendanceActivity : BaseActivity() {
     private lateinit var col: LinearLayout
     private lateinit var p: Prefs
 
@@ -92,7 +92,7 @@ class AttendanceActivity : Activity() {
             val sorted = items.sortedBy { it.start }
             val kinds = listOf("Lecture", "Tutorial", "Both (attendance)", "Not attendance")
             val chosen = intArrayOf(0, 1)
-            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            android.app.AlertDialog.Builder(this, Ui.dialogTheme)
                 .setTitle("$course: two events today")
                 .setMessage(
                     "This course has two attendance-like events today:\n\n" +

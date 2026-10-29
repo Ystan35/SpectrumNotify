@@ -16,7 +16,7 @@ import android.widget.TextView
 import android.widget.Toast
 
 /** All your courses: class times, and a button to each course's Spectrum home page. */
-class CoursesActivity : Activity() {
+class CoursesActivity : BaseActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT

@@ -23,7 +23,7 @@ import java.time.LocalDate
  * Weekly timetable. Day view = the chosen weekday as cards; Week view = a scrollable time grid.
  * One colour per course; the lecture / tutorial / lab tag is text only, so colour always means "which course".
  */
-class TimetableActivity : Activity() {
+class TimetableActivity : BaseActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -48,6 +48,10 @@ class TimetableActivity : Activity() {
         super.onResume()
         recreateIfLookChanged()
         render()
+        Timetable.justHidden?.let { key ->
+            Timetable.justHidden = null
+            undoBar("Class removed from your timetable") { Timetable.unhide(this, key); render() }
+        }
     }
 
     private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
@@ -79,7 +83,7 @@ class TimetableActivity : Activity() {
             return
         }
 
-        box.chips(listOf("Day", "Week", "Events"), setOf(mode), false) { mode = it.first(); render() }
+        box.chips(listOf("Day", "Week", "Month"), setOf(mode), false) { mode = it.first(); render() }
         when (mode) {
             0 -> renderDay()
             1 -> renderWeek()
@@ -201,7 +205,7 @@ class TimetableActivity : Activity() {
         val userLoc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
         val locLine = when {
-            userLoc.startsWith("online:") -> "💻 Online" + (if (userLoc.removePrefix("online:").isNotEmpty()) " · link set" else "")
+            userLoc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
             userLoc.startsWith("room:") -> "📍 " + userLoc.removePrefix("room:")
             autoMeeting.isNotEmpty() -> "💻 Online (auto)"
             room.isNotEmpty() -> "📍 $room"
@@ -303,7 +307,7 @@ class TimetableActivity : Activity() {
             roomField.visibility = if (mode[0] == 1) android.view.View.VISIBLE else android.view.View.GONE
         }
         refresh()
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Location — $course")
             .setMessage(
                 "Online: the app looks for this course's meeting link automatically" +
@@ -320,7 +324,11 @@ class TimetableActivity : Activity() {
                             Toast.makeText(this, "No meeting link found — paste one, or choose Physical room.", Toast.LENGTH_LONG).show()
                             return@setPositiveButton
                         }
-                        Timetable.setLocation(this, course, "online:${link.ifEmpty { autoMeeting }}")
+                        // the Join buttons read the meeting-link override: a pasted link must land there,
+                        // and keeping the found link means "follow whatever Spectrum posts next"
+                        val pinned = Timetable.meetingLinkOf(this, course).isNotEmpty()
+                        Timetable.setMeetingLink(this, course, if (link.isEmpty() || (link == autoMeeting && !pinned)) "" else link)
+                        Timetable.setLocation(this, course, "online:")
                     }
                     1 -> Timetable.setLocation(this, course, "room:" + roomField.text.toString().trim())
                     else -> Timetable.setLocation(this, course, "")
@@ -341,7 +349,7 @@ class TimetableActivity : Activity() {
             hint = "https://spectrum.um.edu.my/mod/attendance/view.php?id=…"
             setTextIsSelectable(true)
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Attendance links — $course")
             .setMessage("Paste one or more links (one per line). Leave empty to go back to the automatic one.")
             .setView(field)
@@ -401,29 +409,35 @@ class TimetableActivity : Activity() {
         val maxH = maxOf(17, (slots.maxOf { it.end } + 59) / 60)
         val totalH = headH + (maxH - minH) * hourH + dp(10)
         val today = LocalDate.now(zone()).dayOfWeek.value
+        // Mon–Fri always; Saturday and Sunday only when they have a class this week
+        val byDay = (1..7).associateWith { d -> Timetable.on(slots, Timetable.dateThisWeek(d)) }
+        val days = (1..7).filter { it <= 5 || byDay[it]!!.isNotEmpty() }
+        val gridW = days.size * colW
 
         val gutter = FrameLayout(this)
         val grid = FrameLayout(this)
 
         // today's column tint
-        grid.addView(View(this).apply { setBackgroundColor(Ui.tint(Ui.CYAN, 0x14)) },
-            FrameLayout.LayoutParams(colW, totalH - headH).apply { leftMargin = (today - 1) * colW; topMargin = headH })
+        if (today in days) {
+            grid.addView(View(this).apply { setBackgroundColor(Ui.tint(Ui.CYAN, 0x14)) },
+                FrameLayout.LayoutParams(colW, totalH - headH).apply { leftMargin = days.indexOf(today) * colW; topMargin = headH })
+        }
 
         for (h in minH..maxH) {
             val y = headH + (h - minH) * hourH
-            gutter.addView(tv(String.format(java.util.Locale.ENGLISH, "%02d:00", h), 11f, Ui.DIM),
-                FrameLayout.LayoutParams(gutterW, WRAP).apply { topMargin = y - dp(7) })
+            gutter.addView(tv(String.format(java.util.Locale.ENGLISH, "%02d:00", h), 12f, Ui.DIM),
+                FrameLayout.LayoutParams(gutterW, WRAP).apply { topMargin = y - dp(8) })
             grid.addView(View(this).apply { setBackgroundColor(Ui.BORDER) },
-                FrameLayout.LayoutParams(7 * colW, 1).apply { topMargin = y })
+                FrameLayout.LayoutParams(gridW, 1).apply { topMargin = y })
         }
-        for (d in 1..7) {
-            grid.addView(tv(Timetable.DAYS[d - 1], 13f, if (d == today) Ui.CYAN else Ui.TEXT, d == today).apply {
+        for ((col, d) in days.withIndex()) {
+            grid.addView(tv(Timetable.DAYS[d - 1], 14f, if (d == today) Ui.CYAN else Ui.TEXT, d == today).apply {
                 gravity = Gravity.CENTER
-            }, FrameLayout.LayoutParams(colW, headH).apply { leftMargin = (d - 1) * colW })
+            }, FrameLayout.LayoutParams(colW, headH).apply { leftMargin = col * colW })
         }
 
-        for (d in 1..7) {
-            val list = Timetable.on(slots, Timetable.dateThisWeek(d))
+        for ((col, d) in days.withIndex()) {
+            val list = byDay[d]!!
             var i = 0
             while (i < list.size) {
                 // a cluster = slots that overlap in time; they share the column side by side
@@ -443,9 +457,9 @@ class TimetableActivity : Activity() {
                 for ((s, lane) in placed) {
                     val w = colW / lanes
                     val top = headH + (s.start - minH * 60) * hourH / 60
-                    val h = maxOf(dp(30), (s.end - s.start) * hourH / 60 - dp(2))
+                    val h = maxOf(dp(36), (s.end - s.start) * hourH / 60 - dp(2))
                     grid.addView(weekBlock(s, lanes > 1),
-                        FrameLayout.LayoutParams(w - dp(4), h).apply { leftMargin = (d - 1) * colW + lane * w + dp(2); topMargin = top })
+                        FrameLayout.LayoutParams(w - dp(4), h).apply { leftMargin = col * colW + lane * w + dp(2); topMargin = top })
                 }
                 i = j
             }
@@ -455,10 +469,10 @@ class TimetableActivity : Activity() {
         wrap.addView(gutter, LinearLayout.LayoutParams(gutterW, totalH))
         val hs = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
-            addView(grid, FrameLayout.LayoutParams(7 * colW, totalH))
+            addView(grid, FrameLayout.LayoutParams(gridW, totalH))
         }
         wrap.addView(hs, LinearLayout.LayoutParams(0, totalH, 1f))
-        hs.post { hs.scrollTo(maxOf(0, today - 2) * colW, 0) }
+        hs.post { hs.scrollTo(maxOf(0, days.indexOf(today).coerceAtLeast(0) - 1) * colW, 0) }
         return wrap
     }
 
@@ -475,9 +489,9 @@ class TimetableActivity : Activity() {
             isClickable = true
             setOnClickListener { slotDetail(s) }   // tap anywhere: full detail popup
         }
-        b.addView(tv(Shorts.display(this, s.course), 12f, Ui.TEXT, true).apply { maxLines = 1 })
+        b.addView(tv(Shorts.display(this, s.course), 13f, Ui.TEXT, true).apply { maxLines = 1 })
         val sub = if (narrow) s.kind.tag else listOf(s.kind.tag, Timetable.fmtMin(s.start)).filter { it.isNotEmpty() }.joinToString(" · ")
-        if (sub.isNotEmpty()) b.addView(tv(sub, 10f, Ui.DIM).apply { maxLines = 1 })
+        if (sub.isNotEmpty()) b.addView(tv(sub, 12f, Ui.DIM).apply { maxLines = 1 })
         // location line when there is room for it (not the narrow multi-lane blocks)
         if (!narrow) {
             val loc = Timetable.locationOf(this, s.course)
@@ -486,8 +500,10 @@ class TimetableActivity : Activity() {
                 loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
                 else -> ""
             }
-            if (line.isNotEmpty()) b.addView(tv(line, 10f, Ui.DIM).apply { maxLines = 1 })
+            if (line.isNotEmpty()) b.addView(tv(line, 12f, Ui.DIM).apply { maxLines = 1 })
         }
+        b.contentDescription = "${Shorts.display(this, s.course)} ${s.kind.label}, ${Timetable.DAY_FULL[s.day - 1]} " +
+            "${Timetable.fmtMin(s.start)} to ${Timetable.fmtMin(s.end)}. Tap for details."
         return b
     }
 
@@ -514,7 +530,7 @@ class TimetableActivity : Activity() {
         val autoMeeting = meetingOf(s)
         val attUrl = userAttLink(s.course).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
         val locLine = when {
-            loc.startsWith("online:") -> "💻 Online" + (if (loc.removePrefix("online:").isNotEmpty()) " · link set" else "")
+            loc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
             loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
             autoMeeting.isNotEmpty() -> "💻 Online (auto)"
             else -> ""
@@ -558,7 +574,7 @@ class TimetableActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             isClickable = true
         }.also { it.setOnClickListener { openEdit(s) } })
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setView(box)
             .setPositiveButton("Close", null)
             .show()

@@ -18,7 +18,7 @@ import android.widget.Toast
  * Microsoft, so after sign-in lands on the dashboard this page asks for the token again, now that
  * a session exists, and catches the spectrumnotify:// redirect itself.
  */
-class LoginWebActivity : Activity() {
+class LoginWebActivity : BaseActivity() {
     private lateinit var p: Prefs
     private lateinit var web: WebView
     private lateinit var launchUrl: String

@@ -18,6 +18,7 @@ import android.view.ViewGroup
 import android.graphics.drawable.GradientDrawable
 import android.widget.Button
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -49,6 +50,10 @@ object Ui {
     @Volatile var touchDp = 48
     /** Fingerprint of the last applied appearance; activities recreate when it changes. */
     @Volatile var look: String = ""
+
+    /** Alert dialogs in the app's colour mode (the plain Dialog_Alert style is always dark). */
+    val dialogTheme: Int
+        get() = if (dark) android.R.style.Theme_DeviceDefault_Dialog_Alert else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
     /** 1 = dark palette was made with extra contrast. */
     private var contrastDark = -1
 
@@ -105,18 +110,17 @@ object Ui {
     fun tint(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or (alpha shl 24)
 }
 
-/** Applies the appearance settings and colours the system bars to match.
- *  Sets [lookChanged] when the appearance changed while a screen was open, so its
- *  onResume can rebuild with the new look. */
-@Volatile var lookChanged = false
+/** The appearance each open screen was built with, so only screens built with an older look rebuild. */
+private val builtLook = java.util.WeakHashMap<Activity, String>()
 
+/** Applies the appearance settings and colours the system bars to match. */
 fun Activity.applyBars() {
     // every page draws the shared header; hide the system title bar.
     // requestWindowFeature is only legal before setContentView; guard it so
     // recreate() paths (theme toggle, look change) can never crash here.
     try { requestWindowFeature(Window.FEATURE_NO_TITLE) } catch (_: Exception) { }
-    val before = Ui.look
     Ui.setup(this)
+    builtLook[this] = Ui.look
     window.statusBarColor = Ui.BG
     window.navigationBarColor = Ui.BG
     if (!Ui.dark) {
@@ -124,15 +128,17 @@ fun Activity.applyBars() {
         if (Build.VERSION.SDK_INT >= 26) f = f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         window.decorView.systemUiVisibility = f
     }
-    if (before.isNotEmpty() && before != Ui.look) lookChanged = true
 }
 
-/** Call at the top of onResume: rebuilds the screen when the appearance changed while it was open. */
+/**
+ * Call at the top of onResume: rebuilds the screen when the appearance changed while it was in the background.
+ * A screen that just rebuilt itself already has the new look, so it is not rebuilt a second time
+ * (the old global flag made every theme change redraw twice, ~2-3 s of frozen frames).
+ */
 fun Activity.recreateIfLookChanged() {
-    if (lookChanged) {
-        lookChanged = false
-        recreate()
-    }
+    Ui.setup(this)
+    val built = builtLook[this]
+    if (built != null && built != Ui.look) recreate()
 }
 
 fun Context.dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
@@ -242,7 +248,15 @@ fun Activity.screen(
     if (onRefresh != null) attachPullToRefresh(sv, onRefresh)
     root.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
     if (navTo != null) addNavBar(root, navTo)
-    setContentView(root)
+    if (navTo != null) {
+        // tabs: the floating toolbox group (Aa + back to top) floats over the page
+        val frame = FrameLayout(this)
+        frame.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        setContentView(frame)
+        attachToolbox(frame, sv)
+    } else {
+        setContentView(root)
+    }
     return col
 }
 
@@ -686,6 +700,65 @@ fun Activity.attachPullToRefresh(sv: ScrollView, onRefresh: () -> Unit) {
 fun LinearLayout.navBellDot(): View = tag as? View ?: View(this.context)
 
 /** Standard top divider + nav bar, added to a page column (the weighted-content pattern). */
+/**
+ * A bar above the bottom navigation: "[message]   UNDO". Disappears after 6 s; tapping Undo runs [onUndo].
+ * Used right after Hide / Remove instead of a confirm dialog and "restore it from Settings".
+ */
+fun Activity.undoBar(message: String, onUndo: () -> Unit) {
+    val root = findViewById<FrameLayout>(android.R.id.content) ?: return
+    root.findViewWithTag<View>("undoBar")?.let { root.removeView(it) }
+    val bar = LinearLayout(this).apply {
+        tag = "undoBar"
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(16), dp(4), dp(4), dp(4))
+        background = roundBg(if (Ui.dark) 0xFFE8EAF0.toInt() else 0xFF2A2F3A.toInt(), 0, this@undoBar, 12)
+        elevation = dp(6).toFloat()
+        isClickable = true   // the bar itself swallows taps meant for the list behind it
+    }
+    val fg = if (Ui.dark) 0xFF12151C.toInt() else 0xFFFFFFFF.toInt()
+    bar.addView(TextView(this).apply {
+        text = message
+        textSize = 14f * Ui.fontScale
+        setTextColor(fg)
+        maxLines = 2
+    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    val dismiss = Runnable { root.removeView(bar) }
+    bar.addView(TextView(this).apply {
+        text = "UNDO"
+        textSize = 14f * Ui.fontScale
+        setTextColor(if (Ui.dark) Ui.HERO_A else 0xFF9DB2FF.toInt())
+        setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER
+        minHeight = dp(Ui.touch(48)); minWidth = dp(Ui.touch(64))
+        isClickable = true
+        contentDescription = "Undo: $message"
+        setOnClickListener { bar.removeCallbacks(dismiss); root.removeView(bar); onUndo() }
+    })
+    root.addView(bar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+        setMargins(dp(12), 0, dp(12), dp(88))   // clear of the bottom navigation
+    })
+    bar.announceForAccessibility("$message. Undo available.")
+    bar.postDelayed(dismiss, 6000)
+}
+
+/**
+ * Lets background checks run: Android's own one-tap "allow in background" prompt (this is exactly what
+ * [batteryUnrestricted] reads), falling back to the battery list on phones that block the prompt.
+ */
+fun Activity.askBatteryUnrestricted() {
+    try {
+        startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+    } catch (_: Exception) {
+        try { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+        catch (_: Exception) { android.widget.Toast.makeText(this, "Open Settings → Apps → Spectrum Notify → Battery and choose Unrestricted", android.widget.Toast.LENGTH_LONG).show() }
+    }
+}
+
+/** True when Android reports the app as not battery-optimised (Unrestricted). */
+fun Context.batteryUnrestricted(): Boolean =
+    getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
 fun Activity.addNavBar(page: LinearLayout, active: Class<*>) {
     page.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
     page.addView(bottomNav(active), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -695,7 +768,7 @@ fun Activity.addNavBar(page: LinearLayout, active: Class<*>) {
 // ---------------------------------------------------------------- floating toolbox (all tabs)
 
 /** The draggable "Aa" toolbox button + its quick sheet. Lives on every tab. */
-fun Activity.attachToolbox(root: FrameLayout) {
+fun Activity.attachToolbox(root: FrameLayout, scroll: ScrollView? = null) {
     val fab = TextView(this).apply {
         text = "Aa"
         textSize = 17f * Ui.fontScale
@@ -710,7 +783,41 @@ fun Activity.attachToolbox(root: FrameLayout) {
         rightMargin = dp(14); bottomMargin = dp(78)
     }
     root.addView(fab, fabLp)
-    setupFabDrag(fab, fabLp, root) { showQuickSheet(root, fabLp) }
+
+    // "back to top" ↑ sits just above Aa as one group: it follows Aa when dragged and only shows
+    // once the page is scrolled down about a screen
+    val upSize = dp(Ui.touch(44))
+    val up = TextView(this).apply {
+        text = "↑"
+        textSize = 18f * Ui.fontScale
+        setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER
+        setTextColor(Ui.CYAN)
+        background = rippleBg(Ui.BAR, Ui.CYAN, this@attachToolbox, 24)
+        contentDescription = "Back to top"
+        elevation = dp(6).toFloat()
+        visibility = View.GONE
+        alpha = 0f
+    }
+    val upLp = FrameLayout.LayoutParams(upSize, upSize, Gravity.BOTTOM or Gravity.END)
+    fun sync() {
+        upLp.rightMargin = fabLp.rightMargin + (fabLp.width - upSize) / 2
+        upLp.bottomMargin = fabLp.bottomMargin + fabLp.height + dp(10)
+        if (up.parent != null) root.updateViewLayout(up, upLp)
+    }
+    sync()
+    root.addView(up, upLp)
+    if (scroll != null) {
+        fun show(on: Boolean) {
+            if (on == (up.visibility == View.VISIBLE)) return
+            up.animate().cancel()
+            if (on) { up.visibility = View.VISIBLE; up.animate().alpha(1f).setDuration(150).start() }
+            else up.animate().alpha(0f).setDuration(150).withEndAction { up.visibility = View.GONE }.start()
+        }
+        scroll.setOnScrollChangeListener { _, _, y, _, _ -> show(y > scroll.height * 0.8f) }
+        up.setOnClickListener { scroll.smoothScrollTo(0, 0); show(false) }
+    }
+    setupFabDrag(fab, fabLp, root, onMoved = { sync() }) { showQuickSheet(root, fabLp) }
 }
 
 fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) {
@@ -732,7 +839,8 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
             isClickable = true
             background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
         }
-        r.addView(TextView(this).apply { text = name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        // weight 1 so the name takes the free width (FrameLayout params here gave it zero width: invisible labels)
+        r.addView(TextView(this).apply { text = name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         r.addView(TextView(this).apply { text = "$value  ▸"; textSize = 13f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD) })
         r.setOnClickListener { onCycle() }
         sheet.addView(r)
@@ -765,11 +873,17 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
         val r = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(44)
+            minimumHeight = dp(Ui.touch(48))
             isClickable = true
             background = rippleBg(Ui.BAR, 0, this@showQuickSheet, 12)
+            contentDescription = "Open ${l.name}"
         }
-        r.addView(TextView(this).apply { text = l.name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        r.addView(ImageView(this).apply {
+            setImageResource(Shortcuts.iconRes(l.icon))
+            setColorFilter(Ui.CYAN)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(12) })
+        r.addView(TextView(this).apply { text = l.name; textSize = 14f * Ui.fontScale; setTextColor(Ui.TEXT) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         r.addView(TextView(this).apply { text = "↗"; textSize = 13f * Ui.fontScale; setTextColor(Ui.CYAN); setTypeface(typeface, Typeface.BOLD) })
         r.setOnClickListener {
             closeQuickSheet(root)
@@ -789,7 +903,8 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
     }
     editLinks.setOnClickListener {
         closeQuickSheet(root)
-        LinksEditor.open(this) { }
+        // the editor lives in Settings → UM links (icons, order, course pages)
+        startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_OPEN, "umlinks"))
     }
     sheet.addView(editLinks)
 
@@ -877,7 +992,7 @@ fun Activity.closeQuickSheet(root: FrameLayout) {
 }
 
 /** Tap opens the quick sheet; holding still and dragging moves the button and snaps it to the nearest edge. */
-fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onTap: () -> Unit) {
+fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onMoved: () -> Unit = {}, onTap: () -> Unit) {
     var downX = 0f
     var downY = 0f
     var startX = 0
@@ -904,6 +1019,7 @@ fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: 
                     fabLp.rightMargin = (startX - dx).coerceIn(0, root.width - v.width)
                     fabLp.bottomMargin = (startY - dy).coerceIn(dp(64), root.height - v.width)
                     root.updateViewLayout(v, fabLp)
+                    onMoved()
                 }
                 true
             }
@@ -913,6 +1029,7 @@ fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: 
                     val toEnd = fabLp.rightMargin < (root.width - v.width) / 2
                     fabLp.rightMargin = if (toEnd) dp(14) else root.width - v.width - dp(14)
                     root.updateViewLayout(v, fabLp)
+                    onMoved()
                     moved = false  // a finished drag never counts as a tap
                 } else if (System.currentTimeMillis() - pressTime < 600) {
                     onTap()

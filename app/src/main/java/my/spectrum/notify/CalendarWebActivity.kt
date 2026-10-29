@@ -8,7 +8,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 
 /** UM academic calendar, in-app, cached so it opens offline once seen. */
-class CalendarWebActivity : Activity() {
+class CalendarWebActivity : BaseActivity() {
     companion object {
         // UM academic calendar page; change the URL via the UM-links editor if UM moves it
         const val URL = "https://www.um.edu.my/students/academic-calendar"

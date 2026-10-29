@@ -30,15 +30,20 @@ object Notifier {
         )
     }
 
-    /** buttons = (label, url), max 3. Tapping the notification opens the app on this record; buttons open links. */
+    /**
+     * buttons = (label, url), max 3. Tapping the notification opens the app on this record; buttons open links.
+     * During quiet hours it is only added to the Notifications list (no pop-up), unless [ignoreQuiet].
+     */
     fun push(
         ctx: Context,
         title: String,
         body: String,
         alert: Boolean = false,
         buttons: List<Pair<String, String>> = emptyList(),
+        ignoreQuiet: Boolean = false,
     ) {
         val logTs = NotifyLog.add(ctx, "notif", title, body, buttons)
+        if (!ignoreQuiet && Checker.inQuiet(java.time.ZonedDateTime.now(zone()), Prefs(ctx))) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
         ensureChannels(nm)
         val b = Notification.Builder(ctx, if (alert) CH_ALERT else CH_INFO)
