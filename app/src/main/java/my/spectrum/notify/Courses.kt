@@ -20,16 +20,26 @@ object Courses {
             if (id <= 0L) continue
             arr.put(
                 JSONObject().put("id", id).put("shortname", c.str("shortname")).put("fullname", c.str("fullname"))
+                    .put("startdate", c.optLong("startdate")).put("enddate", c.optLong("enddate"))
             )
         }
         if (arr.length() > 0) st.j.put("courses", arr)
+    }
+
+    /**
+     * Spectrum keeps you enrolled in past semesters' courses. A course whose Spectrum end date is more than
+     * two weeks gone is a past one (0 = no end date set: kept).
+     */
+    fun isPast(c: JSONObject, now: Long = System.currentTimeMillis() / 1000): Boolean {
+        val end = c.optLong("enddate", 0L)
+        return end > 0L && end < now - 14 * 86400L
     }
 
     fun all(ctx: Context): List<Course> {
         val p = Prefs(ctx)
         val st = State(ctx)
         val byId = LinkedHashMap<Long, JSONObject>()
-        for (c in (st.j.optJSONArray("courses") ?: JSONArray()).objs()) byId[c.optLong("id")] = c
+        for (c in (st.j.optJSONArray("courses") ?: JSONArray()).objs()) if (!isPast(c)) byId[c.optLong("id")] = c
         for (e in (st.j.optJSONArray("cal") ?: JSONArray()).objs()) {
             val c = e.optJSONObject("course") ?: continue
             val id = c.optLong("id", 0L)

@@ -22,6 +22,7 @@ enum class SlotKind(val label: String, val tag: String) {
 /**
  * One class. day: 1 = Monday ... 7 = Sunday. start/end: minutes after midnight.
  * date: null = every week; set = a one-off on that date only (seen in a single week so far).
+ * sem: the semester it belongs to (AcademicCalendar label); you take different subjects each semester.
  */
 data class Slot(
     val key: String,
@@ -35,6 +36,7 @@ data class Slot(
     val note: String = "",
     val grp: String = "",
     val date: LocalDate? = null,
+    val sem: String = "",
 ) {
     fun occursOn(d: LocalDate): Boolean = day == d.dayOfWeek.value && (date == null || date == d)
 }
@@ -228,7 +230,8 @@ object Timetable {
         val e = o.optInt("end")
         if (day !in 1..7 || e <= s) return@mapNotNull null
         val grp = o.str("grp")
-        Slot("m:$grp:$day", o.str("course"), o.str("title"), day, s, e, SlotKind.parse(o.str("kind")), true, o.str("note"), grp)
+        Slot("m:$grp:$day", o.str("course"), o.str("title"), day, s, e, SlotKind.parse(o.str("kind")), true, o.str("note"), grp,
+            sem = o.str("sem").ifEmpty { legacySem(ctx) })
     }
 
     private fun writeManual(ctx: Context, list: List<Slot>) {
@@ -236,7 +239,7 @@ object Timetable {
         for (s in list) {
             arr.put(
                 JSONObject().put("grp", s.grp).put("course", s.course).put("title", s.title).put("day", s.day)
-                    .put("start", s.start).put("end", s.end).put("kind", s.kind.name).put("note", s.note)
+                    .put("start", s.start).put("end", s.end).put("kind", s.kind.name).put("note", s.note).put("sem", s.sem)
             )
         }
         sp(ctx).edit().putString("manual", arr.toString()).apply()
@@ -250,7 +253,9 @@ object Timetable {
     fun saveManual(ctx: Context, grp: String, course: String, title: String, days: Collection<Int>,
                    start: Int, end: Int, kind: SlotKind, note: String) {
         val rest = manual(ctx).filter { it.grp != grp }
-        val mine = days.sorted().map { d -> Slot("m:$grp:$d", course, title, d, start, end, kind, true, note, grp) }
+        // editing keeps the entry in its semester; a new entry belongs to the semester you are planning for
+        val sem = manual(ctx).firstOrNull { it.grp == grp }?.sem ?: AcademicCalendar.planningLabel(ctx)
+        val mine = days.sorted().map { d -> Slot("m:$grp:$d", course, title, d, start, end, kind, true, note, grp, sem = sem) }
         writeManual(ctx, rest + mine)
     }
 
@@ -460,7 +465,7 @@ object Timetable {
      * Learned slots (minus hidden / ignored ones, with your type overrides) plus your own entries, by day and time.
      * One-offs (date set) are kept from this week on; use [on] for what happens on a given date.
      */
-    fun all(ctx: Context): List<Slot> {
+    fun all(ctx: Context, sem: String? = AcademicCalendar.planningLabel(ctx)): List<Slot> {
         val p = Prefs(ctx)
         val st = State(ctx)
         val now = System.currentTimeMillis() / 1000
@@ -469,9 +474,12 @@ object Timetable {
         val stored = merge(readStored(st), cur, now)
         migrateOrphans(ctx, stored.map { it.slot })
         val merged = stored.mapNotNull { m ->
-            if (weekly(m.dates)) m.slot
-            else m.dates?.maxOrNull()?.takeIf { !it.isBefore(weekStart) }?.let { m.slot.copy(date = it) }
-        }
+            // a learned slot belongs to the semester it was last seen in
+            val lastSeen = m.dates?.maxOrNull() ?: localDt(m.seen).toLocalDate()
+            val tagged = m.slot.copy(sem = AcademicCalendar.labelFor(ctx, lastSeen) ?: "")
+            if (weekly(m.dates)) tagged
+            else m.dates?.maxOrNull()?.takeIf { !it.isBefore(weekStart) }?.let { tagged.copy(date = it) }
+        }.filter { inSem(it, sem) }
         val hidden = hiddenKeys(ctx)
         val overrides = readObj(ctx, "kinds")
         val auto = merged.filter { it.key !in hidden && !isSkipped(it, p) }.map { s ->
@@ -484,7 +492,7 @@ object Timetable {
         // Only weekly Spectrum slots hide your entries for good; a one-off replaces them on its date (see [on]).
         val weeklyAuto = auto.filter { it.date == null }
         val own = ArrayList<Slot>()
-        for (m in manual(ctx).sortedBy { if (it.grp.startsWith("cat-")) 0 else 1 }) {
+        for (m in manual(ctx).filter { inSem(it, sem) }.sortedBy { if (it.grp.startsWith("cat-")) 0 else 1 }) {
             if (weeklyAuto.any { overlaps(it, m) }) continue
             if (own.any { it.grp != m.grp && overlaps(it, m) }) continue
             own.add(m)
@@ -497,6 +505,21 @@ object Timetable {
         val day = slots.filter { it.occursOn(date) }
         val oneOffs = day.filter { it.date != null }
         return day.filter { s -> s.date != null || oneOffs.none { overlaps(it, s) } }.sortedBy { it.start }
+    }
+
+    /** [sem] null = every semester; an untagged slot shows in any semester. */
+    fun inSem(s: Slot, sem: String?): Boolean = sem == null || s.sem.isEmpty() || s.sem == sem
+
+    /**
+     * Entries made before v0.26 had no semester: they belong to the one being planned when this version first ran
+     * (remembered, so they do not jump to the next semester later).
+     */
+    private fun legacySem(ctx: Context): String {
+        val k = "legacySem"
+        sp(ctx).getString(k, null)?.let { return it }
+        val v = AcademicCalendar.planningLabel(ctx)
+        sp(ctx).edit().putString(k, v).apply()
+        return v
     }
 
     /** The date of weekday [day] (1 = Monday) in the current week. */

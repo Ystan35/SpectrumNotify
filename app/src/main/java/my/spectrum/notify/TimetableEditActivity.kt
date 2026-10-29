@@ -39,7 +39,7 @@ class TimetableEditActivity : Activity() {
         val grp = intent.getStringExtra(EXTRA_GRP) ?: ""
         val key = intent.getStringExtra(EXTRA_KEY) ?: ""
         val own = if (grp.isNotEmpty()) Timetable.manualGroup(this, grp) else emptyList()
-        val learned = if (key.isNotEmpty()) Timetable.all(this).firstOrNull { it.key == key } else null
+        val learned = if (key.isNotEmpty()) Timetable.all(this, null).firstOrNull { it.key == key } else null
         if ((grp.isNotEmpty() && own.isEmpty()) || (key.isNotEmpty() && learned == null)) {
             finish()
             return

@@ -22,6 +22,7 @@ Android port of spectrum_notify.py. Runs entirely on the phone with your own Spe
 | **Refreshable UM timetable data** | automatic | Each check downloads the newest `catalog.json` from this repo; the bundled copy is the offline fallback. The picker shows "Data as of <date>". |
 | **Get set up** | Home (new installs) | Checklist card: allow notifications (reason shown first), log in, exact alarms, battery, confirm Occ, check class times, short names (optional). Hide with Undo. |
 | **Undo** | Home, bell, Timetable | Hiding a deadline, swiping away a notification or removing a class shows an Undo bar for 6 s instead of a confirm dialog. |
+| **Semesters** | automatic + calendar | Bundled UM 2026/27 calendar (Sem I, Sem II, Special). Classes hide outside teaching weeks; each timetable entry belongs to one semester, so next semester's subjects start clean. Past courses drop out of Courses and checks. |
 | **Login** | Settings > Profile | In-app WebView sign-in (Microsoft) or browser redirect (`spectrumnotify://`); token in Keystore-encrypted storage. |
 
 ## The app in one line
@@ -29,7 +30,7 @@ Log in once → checks run in the background → you get class reminders, deadli
 
 ## Update the UM timetable data (catalog)
 
-The catalog is a snapshot of UM TimeEdit; lecturers/rooms can change, so refresh it a few times a semester:
+The catalog is a snapshot of UM TimeEdit for one semester; lecturers/rooms can change, so refresh it a few times a semester — and always before a new semester starts, since the subjects change:
 
 1. Open https://cloud.timeedit.net/my_um/web/students/ and **log in**
 2. Paste `tools/collect_timetable.js` into the browser console (F12) and wait — it downloads `lecturer_data.json` then `course_events_with_details.json` (the course part takes a while)

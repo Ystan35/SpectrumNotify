@@ -169,7 +169,7 @@ object MonthGridView {
                 })
             }
             val inTeaching = AcademicCalendar.inTeaching(activity, date)
-            val classList = if (inTeaching) Timetable.on(Timetable.all(activity), date) else emptyList()
+            val classList = if (inTeaching) Timetable.on(Timetable.all(activity, AcademicCalendar.labelFor(activity, date)), date) else emptyList()
             val events = eventsFor(activity, date)
             val colours = Timetable.colours(activity, classList.map { it.course }.toSet())
 
@@ -258,10 +258,12 @@ object MonthGridView {
 
         // what each day holds: class days (Mon-Sun during teaching weeks), event days,
         // academic markers. Days with NOTHING stay completely plain — no color at all.
-        val slots = Timetable.all(activity)
-        // weekdays with a weekly class; one-offs mark only their own date
-        val classDays = slots.filter { it.date == null }.map { it.day }.toSet()
-        val oneOffDates = slots.mapNotNull { it.date }.toSet()
+        // each date shows the classes of ITS semester (different subjects each semester); one list per semester
+        val bySem = HashMap<String?, List<Slot>>()
+        fun classesOn(date: LocalDate): List<Slot> {
+            val sem = AcademicCalendar.labelFor(activity, date)
+            return Timetable.on(bySem.getOrPut(sem) { Timetable.all(activity, sem) }, date)
+        }
 
         val holder = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         box.addView(holder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -350,7 +352,7 @@ object MonthGridView {
                 val isToday = date == LocalDate.now()
                 val hasEvents = eventsOn[date]?.isNotEmpty() == true
                 // class days only count when the day is inside teaching weeks (holiday mode)
-                val hasClasses = (date.dayOfWeek.value in classDays || date in oneOffDates) && AcademicCalendar.inTeaching(activity, date)
+                val hasClasses = AcademicCalendar.inTeaching(activity, date) && classesOn(date).isNotEmpty()
                 val hasAnything = hasEvents || hasClasses
 
                 val cellBox = LinearLayout(activity).apply {
@@ -439,7 +441,7 @@ object MonthGridView {
         val inTeaching = AcademicCalendar.inTeaching(activity, date)
         if (inTeaching) {
             val dow = date.dayOfWeek.value
-            val slots = Timetable.on(Timetable.all(activity), date)
+            val slots = Timetable.on(Timetable.all(activity, AcademicCalendar.labelFor(activity, date)), date)
             if (slots.isNotEmpty()) {
                 box.label("Classes", 13f, Ui.TEXT, 10).setTypeface(null, Typeface.BOLD)
                 for (s in slots.sortedBy { it.start }) {

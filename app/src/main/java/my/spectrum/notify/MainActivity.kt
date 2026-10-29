@@ -170,11 +170,11 @@ class MainActivity : Activity() {
     private fun confirmOccDialog(manual: Boolean = false) {
         if (occDialogShown) return
         val flags = getSharedPreferences("health", MODE_PRIVATE)
-        if (!manual && flags.getBoolean("occAutoAsked", false)) return
+        if (!manual && flags.getBoolean(semFlag("occAutoAsked"), false)) return
         val asks = pendingOccAsks()
         if (asks.isEmpty()) return
         occDialogShown = true
-        flags.edit().putBoolean("occAutoAsked", true).apply()
+        flags.edit().putBoolean(semFlag("occAutoAsked"), true).apply()
 
         // one dialog with the My-classes layout: scrollable content (last courses reachable),
         // sized below the app header
@@ -242,6 +242,15 @@ class MainActivity : Activity() {
 
     private var setupSig = ""
 
+    /** A setup flag that starts fresh each semester: new subjects mean a new Occ to confirm and new times to check. */
+    private fun semFlag(name: String): String {
+        val flags = getSharedPreferences("health", MODE_PRIVATE)
+        val key = name + ":" + AcademicCalendar.planningLabel(this)
+        // v0.25.1 kept these once per install: count them for the semester you are in now
+        if (!flags.contains(key) && flags.getBoolean(name, false)) flags.edit().putBoolean(key, true).remove(name).apply()
+        return key
+    }
+
     private class SetupStep(val title: String, val why: String, val done: Boolean, val button: String, val optional: Boolean = false, val go: (() -> Unit)?)
 
     /** Every step a new install needs, in order; a step's button does that step (or opens the screen for it). */
@@ -272,8 +281,8 @@ class MainActivity : Activity() {
                 if (!checked) "Your Occ (class group) is detected after the first check." else "Your Occ is your class group, e.g. Occ 2. It decides which links and posts are yours.",
                 loggedIn && checked && !occPending, "Confirm", go = if (occPending) ({ confirmOccDialog(manual = true) }) else null),
             SetupStep("Check your class times", "Open the timetable once and tap any class whose time looks wrong to fix it.",
-                flags.getBoolean("setupReviewed", false), "Open") {
-                flags.edit().putBoolean("setupReviewed", true).apply()
+                flags.getBoolean(semFlag("setupReviewed"), false), "Open") {
+                flags.edit().putBoolean(semFlag("setupReviewed"), true).apply()
                 startActivity(Intent(this, TimetableActivity::class.java))
             },
             SetupStep("Give courses short names", "Optional: \"HCI\" is easier to spot than WIA2010.",
@@ -286,7 +295,7 @@ class MainActivity : Activity() {
 
     private fun renderSetup(loggedIn: Boolean) {
         val flags = getSharedPreferences("health", MODE_PRIVATE)
-        val hidden = flags.getBoolean("setupHidden", false)
+        val hidden = flags.getBoolean(semFlag("setupHidden"), false)
         if (hidden) {
             if (setupSig != "hidden") { setupSig = "hidden"; setupBox.removeAllViews() }
             return
@@ -341,10 +350,10 @@ class MainActivity : Activity() {
             minHeight = dp(Ui.touch(48))
             isClickable = true
             setOnClickListener {
-                flags.edit().putBoolean("setupHidden", true).apply()
+                flags.edit().putBoolean(semFlag("setupHidden"), true).apply()
                 setupSig = ""
                 render()
-                undoBar("Setup guide hidden") { flags.edit().putBoolean("setupHidden", false).apply(); setupSig = ""; render() }
+                undoBar("Setup guide hidden") { flags.edit().putBoolean(semFlag("setupHidden"), false).apply(); setupSig = ""; render() }
             }
         }, LinearLayout.LayoutParams(MATCH, WRAP))
         setupBox.addView(card, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
@@ -1102,7 +1111,7 @@ class MainActivity : Activity() {
             editIntent.putExtra(TimetableEditActivity.EXTRA_GRP, manualSlot.grp)
         } else {
             // exact time first, else the nearest class of this course that day (a moved or overridden class)
-            val sameDay = Timetable.all(this).filter { it.course.equals(c.course, true) && it.day == day }
+            val sameDay = Timetable.all(this, null).filter { it.course.equals(c.course, true) && it.day == day }
             val learnedSlot = sameDay.firstOrNull { it.start == startMin }
                 ?: sameDay.minByOrNull { abs(it.start - startMin) }?.takeIf { abs(it.start - startMin) <= 180 }
             if (learnedSlot != null) {

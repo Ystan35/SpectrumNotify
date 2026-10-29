@@ -297,6 +297,8 @@ object Checker {
         val manualClasses = if (!classesActive) emptyList() else Timetable.manual(ctx).flatMap { slot ->
             (0..13L).map { off -> java.time.LocalDate.now(zoneId).plusDays(off) }
                 .filter { dd -> dd.dayOfWeek.value == slot.day }
+                // your own entries only in their own semester's teaching days
+                .filter { dd -> Timetable.inSem(slot, AcademicCalendar.labelFor(ctx, dd)) && AcademicCalendar.inTeaching(ctx, dd) }
                 .map { dd ->
                     val dayStart = dd.atStartOfDay(zoneId).toEpochSecond()
                     Triple(slot, dayStart + slot.start * 60L, dayStart + slot.end * 60L)
@@ -483,6 +485,8 @@ object Checker {
         Courses.remember(st, enrolled)
         for (c in enrolled) {
             val cid = c.optLong("id")
+            // a past semester's course: not checked any more (saves 2-3 Spectrum calls each), its links kept
+            if (Courses.isPast(c)) { prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }; continue }
             val ckey = "course$cid"
             val extra = HashMap<String, String>()
             val secOf = HashMap<String, String>()

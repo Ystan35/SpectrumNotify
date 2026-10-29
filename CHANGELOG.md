@@ -2,6 +2,12 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.26.0 (versionCode 81)
+- Whole 2026/27 academic calendar bundled (UM Lampiran D, amended, Senate 22 Jul 2026): Semester I (exams end 04.02.2027, was 14.02), Semester II (01.03–04.07.2027; mid-break 19–25 Apr; UM iFest 08–11 Jun with no classes) and the Special Semester. The app knows which semester a date is in; revision week, exams and breaks show in the calendar. Settings → semester dates edits the semester you are planning for; corrections are kept per semester.
+- Different subjects each semester: timetable entries belong to a semester. Classes picked from the UM list or added by hand are tagged with the semester being planned (during exams/break that is the next one); learned Spectrum classes with the semester they were seen in. Timetable, Courses and Home show the current semester; the month calendar shows each date's own semester. Existing entries count as Semester I.
+- Past courses: Spectrum keeps old enrolments, so a course whose Spectrum end date is over two weeks gone is left out of Courses, Occ questions and background checks.
+- New semester, fresh setup: "Confirm your Occ" and "Check your class times" come back on the Get set up card for each semester.
+
 ## 0.25.1 (versionCode 80)
 - Settings without typing: quiet hours from an hour list, daily messages with a clock picker and an on/off switch, deadline reminders as multi-select chips (1h–72h), check frequency as chips (10/15/30/60 min). Every change saves immediately; the "red box when you leave" check is gone. The "Raw groups" box now really saves.
 - "Get set up" card on Home replaces the launch-time permission prompt and the Occ → short names → check times dialog chain. The Welcome card's Log in opens the sign-in directly.
