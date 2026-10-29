@@ -16,6 +16,8 @@ import kotlin.math.sqrt
  *
  * Every route is a run of stops with minutes from the first stop. A trip normally starts at UM Central; before
  * [Route.farUntil] some routes start at their far end ([Route.farStop]) and run the rest of the loop into UM Central.
+ * Rapid KL routes have no trip list, only [Route.bands] ("every 15 min, 5:45–23:30"): they are planned with the
+ * longest wait counted in, so a leave-by time is safe whenever the bus comes.
  */
 object ShuttleModel {
 
@@ -29,6 +31,9 @@ object ShuttleModel {
 
     class Schedule(val days: Set<Int>, val starts: List<Int>, val fridayBreak: IntRange?)
 
+    /** A bus every [every] minutes from [from] to [to] on [days] (Rapid KL style). */
+    class Band(val days: Set<Int>, val from: Int, val to: Int, val every: Int)
+
     class Route(
         val id: String, val name: String, val color: Int,
         val stops: List<String>, val offsets: List<Int>, val loop: Boolean,
@@ -36,7 +41,16 @@ object ShuttleModel {
         /** The last stops' minutes are guessed (the source did not show them). */
         val tailEstimated: Boolean,
         val schedule: Schedule,
-    )
+        /** "um" (UM shuttle, fixed trips) or "rapid" (Rapid KL, a bus every few minutes). */
+        val operator: String = "um",
+        val bands: List<Band> = emptyList(),
+    ) {
+        val frequent: Boolean get() = bands.isNotEmpty()
+        val label: String get() = if (operator == "rapid") "Rapid $id" else "Route $id"
+
+        /** The service bands on [date], e.g. "every 15 min, 5:45–23:30". */
+        fun bandsOn(date: LocalDate): List<Band> = bands.filter { date.dayOfWeek.value in it.days }
+    }
 
     class Data(
         val generatedAt: String, val source: String, val officialUrl: String, val phone: String, val email: String,
@@ -45,14 +59,20 @@ object ShuttleModel {
         val faculties: Map<String, String>,
     )
 
-    /** One trip of a route: it leaves stops[[first]] at [start]. */
-    class Run(val route: Route, val first: Int, val start: Int) {
+    /**
+     * One trip of a route: it leaves stops[[first]] at [start]. For a frequent (Rapid) route this is a planning slot:
+     * be at the stop by then, and the bus comes within [wait] minutes.
+     */
+    class Run(val route: Route, val first: Int, val start: Int, val wait: Int = 0) {
         fun at(i: Int): Int = start + route.offsets[i] - route.offsets[first]
         val end: Int get() = at(route.stops.size - 1)
     }
 
-    /** Ride [route] from stop index [from] (leaving [depart]) to stop index [to] (arriving [arrive]). */
-    class Ride(val route: Route, val fromIdx: Int, val toIdx: Int, val depart: Int, val arrive: Int)
+    /**
+     * Ride [route] from stop index [fromIdx] (leaving [depart]) to stop index [toIdx] (arriving [arrive]).
+     * For a frequent route, [depart] is when to be at the stop and [arrive] counts the longest [wait].
+     */
+    class Ride(val route: Route, val fromIdx: Int, val toIdx: Int, val depart: Int, val arrive: Int, val wait: Int = 0)
 
     sealed class Plan {
         /** Origin and destination are the same place: nothing to do. */
@@ -130,12 +150,21 @@ object ShuttleModel {
             val stops = strs(o.optJSONArray("stops"))
             val offsets = ints(o.optJSONArray("offsets"))
             if (stops.size < 2 || stops.size != offsets.size) continue
+            val bands = ArrayList<Band>()
+            val ba = o.optJSONArray("bands") ?: JSONArray()
+            for (k in 0 until ba.length()) {
+                val b = ba.optJSONObject(k) ?: continue
+                val every = b.optInt("every", 0)
+                if (every <= 0) continue
+                bands.add(Band(ints(b.optJSONArray("days")).toSet(), hm(b.optString("from")), hm(b.optString("to")), every))
+            }
             routes.add(Route(
                 o.optString("id"), o.optString("name"), color(o.optString("color")),
                 stops, offsets, o.optBoolean("loop", false),
                 o.optString("farStop", ""), if (o.has("farUntil")) hm(o.optString("farUntil")) else -1,
                 o.optBoolean("tailEstimated", false),
                 parseSchedule(o.optJSONObject("schedule"), base),
+                o.optString("operator", "um"), bands,
             ))
         }
         val fac = LinkedHashMap<String, String>()
@@ -152,6 +181,11 @@ object ShuttleModel {
     /** Every trip of [r] on [date] (none on days it does not run; Friday-prayer trips dropped). */
     fun runs(r: Route, date: LocalDate): List<Run> {
         val dow = date.dayOfWeek.value
+        if (r.frequent) {
+            // one planning slot per bus in each band; no Friday-prayer gap (that is the UM shuttle only)
+            return r.bandsOn(date).flatMap { b -> (b.from..b.to step b.every).map { t -> Run(r, 0, t, b.every) } }
+                .distinctBy { it.start }.sortedBy { it.start }
+        }
         if (dow !in r.schedule.days) return emptyList()
         val farIdx = if (r.farStop.isNotEmpty()) r.stops.indexOf(r.farStop) else -1
         return r.schedule.starts
@@ -197,7 +231,14 @@ object ShuttleModel {
                     if (r.stops[i] != from) continue
                     var found = false
                     for (j in i + 1 until r.stops.size) if (r.stops[j] == to) {
-                        consider(Ride(r, i, j, run.at(i), run.at(j))); found = true; break
+                        consider(Ride(r, i, j, run.at(i), run.at(j) + run.wait, run.wait)); found = true; break
+                    }
+                    // a frequent loop keeps going round: ride past its first stop into the next lap
+                    if (!found && r.frequent && r.loop) {
+                        for (j in 1 until i) if (r.stops[j] == to) {
+                            consider(Ride(r, i, j, run.at(i), run.end + r.offsets[j] - r.offsets[0] + run.wait, run.wait)); break
+                        }
+                        continue
                     }
                     // stay on through UM Central into the next trip of the same loop
                     val next = rs.getOrNull(k + 1)

@@ -86,7 +86,8 @@ class ShuttleActivity : BaseActivity() {
         // ---- does it run today?
         val runsToday = d.routes.any { ShuttleModel.runs(it, today).isNotEmpty() }
         val status = when {
-            !runsToday -> "No shuttle today (it runs Monday to Friday)."
+            !runsToday -> "No buses from here today."
+            d.routes.none { !it.frequent && ShuttleModel.runs(it, today).isNotEmpty() } -> "No UM shuttle today (it runs Monday to Friday). Rapid KL buses still run."
             !AcademicCalendar.inTeaching(this, today) -> "Outside teaching weeks: the shuttle may not run (breaks and study week)."
             today.dayOfWeek == DayOfWeek.FRIDAY -> "Friday: no buses 12:30 pm – 2:30 pm (Friday prayer)."
             else -> ""
@@ -100,7 +101,10 @@ class ShuttleActivity : BaseActivity() {
         col.addView(spinner(stops.map { it.name }, sel) { i ->
             if (stops[i].id != fromId) { fromId = stops[i].id; render() }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
-        val next = ShuttleModel.departures(d, fromId, today, now).take(5)
+        val all = ShuttleModel.departures(d, fromId, today, now)
+        // a Rapid route shows once ("every 15 min"); UM shuttle trips by time
+        val next = (all.filter { !it.run.route.frequent }.take(5) +
+            all.filter { it.run.route.frequent }.distinctBy { it.run.route.id }).sortedBy { it.time }
         if (next.isEmpty()) {
             // the first bus on the next day the shuttle runs
             val later = (1..7L).asSequence().map { today.plusDays(it) }
@@ -129,12 +133,15 @@ class ShuttleActivity : BaseActivity() {
             }, LinearLayout.LayoutParams(dp(44), dp(32)))
             val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
             val mins = dep.time - now
-            texts.addView(tv("${ShuttleModel.fmt(dep.time)}  ·  " + (if (mins <= 0) "now" else "in $mins min"), 15f, Ui.TEXT, true))
+            val head = if (r.frequent) "Rapid · every ~${dep.run.wait} min (until ${ShuttleModel.fmt(r.bandsOn(today).maxOf { it.to })})"
+                else "${ShuttleModel.fmt(dep.time)}  ·  " + (if (mins <= 0) "now" else "in $mins min")
+            texts.addView(tv(head, 15f, Ui.TEXT, true))
             texts.addView(tv("→ " + r.stops.drop(dep.idx + 1).joinToString(" → ") { Shuttle.stopName(this, it) }, 12f, Ui.DIM).apply {
                 maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
             })
             row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            row.contentDescription = "Route ${r.id} at ${ShuttleModel.fmt(dep.time)}, ${if (mins <= 0) "now" else "in $mins minutes"}. Tap for the route."
+            row.contentDescription = if (r.frequent) "${r.label}, every ${dep.run.wait} minutes. Tap for the route."
+                else "${r.label} at ${ShuttleModel.fmt(dep.time)}, ${if (mins <= 0) "now" else "in $mins minutes"}. Tap for the route."
             col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         }
         if (Shuttle.homeId(this).isEmpty()) {
@@ -146,13 +153,16 @@ class ShuttleActivity : BaseActivity() {
         routeIdx = routeIdx.coerceIn(0, (d.routes.size - 1).coerceAtLeast(0))
         if (d.routes.isEmpty()) return
         col.chips(d.routes.map { it.id }, setOf(routeIdx), false) { routeIdx = it.first(); render() }
+        if (d.routes.any { it.frequent }) col.label("AB … 13: UM shuttle · " + d.routes.filter { it.frequent }.joinToString(", ") { it.id } + ": Rapid KL", 11f, Ui.DIM, 4)
         val r = d.routes[routeIdx]
-        col.label(r.name, 15f, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
+        col.label("${r.label} · ${r.name}", 15f, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
         val runs = ShuttleModel.runs(r, today)
         // the trip to show along the stops: the one running now, else the next, else the first of the day
-        val shown = runs.firstOrNull { now <= it.end } ?: runs.firstOrNull()
+        // (a Rapid route has no fixed trips: its stops show minutes from the start instead)
+        val shown = if (r.frequent) null else runs.firstOrNull { now <= it.end } ?: runs.firstOrNull()
         col.label(
             when {
+                r.frequent -> "Rapid KL bus, no fixed times. Stops, with minutes from ${Shuttle.stopName(this, r.stops[0])}:"
                 shown == null -> "No trips today. Stops, with minutes from the start:"
                 now in shown.start..shown.end -> "On the road now (left ${ShuttleModel.fmt(shown.start)}):"
                 else -> "Next trip, ${ShuttleModel.fmt(shown.start)} from ${Shuttle.stopName(this, r.stops[shown.first])}:"
@@ -185,7 +195,18 @@ class ShuttleActivity : BaseActivity() {
             col.label("Morning trips until ${ShuttleModel.fmt(r.farUntil)} start at ${Shuttle.stopName(this, r.farStop)}.", 11f, Ui.DIM, 2)
         }
 
-        if (runs.isNotEmpty()) {
+        if (r.frequent) {
+            col.label("How often", 13f, Ui.TEXT, 16).setTypeface(null, Typeface.BOLD)
+            val week = r.bands.filter { 1 in it.days }
+            val weekend = r.bands.filter { 6 in it.days || 7 in it.days }
+            fun bandText(bs: List<ShuttleModel.Band>) = bs.joinToString("\n") { "every ${it.every} min, ${ShuttleModel.fmt(it.from)}–${ShuttleModel.fmt(it.to)}" }
+            if (week.isNotEmpty()) col.label("Weekdays\n" + bandText(week), 13f, Ui.TEXT, 4)
+            if (weekend.isNotEmpty()) col.label("Weekends\n" + bandText(weekend), 13f, Ui.TEXT, 8)
+            col.label("Runs in semester breaks too. Live arrivals: MyRapid PULSE app.", 12f, Ui.DIM, 6)
+            col.addView(chip("Open MyRapid PULSE", false, size = 13f, padH = 12) {
+                open("https://play.google.com/store/search?q=MyRapid%20PULSE&c=apps")
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        } else if (runs.isNotEmpty()) {
             col.label("Today's trips (from the first stop)", 13f, Ui.TEXT, 16).setTypeface(null, Typeface.BOLD)
             val sb = SpannableStringBuilder()
             for ((k, run) in runs.withIndex()) {

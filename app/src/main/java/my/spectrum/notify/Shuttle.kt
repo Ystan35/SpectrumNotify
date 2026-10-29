@@ -112,9 +112,16 @@ object Shuttle {
 
     /** One line for Home, e.g. "🚌 AB 9:31 Za'ba RC → Faculty of Engineering, ~9:44", or null. */
     fun line(ctx: Context, t: TripInfo): String? = when (val p = t.plan) {
-        is ShuttleModel.Plan.Bus ->
-            "🚌 Route ${p.ride.route.id} ${ShuttleModel.fmt(p.ride.depart)} from ${stopName(ctx, p.ride.route.stops[p.ride.fromIdx])}" +
-                " → ${stopName(ctx, p.ride.route.stops[p.ride.toIdx])}, ~${ShuttleModel.fmt(p.ride.arrive)}"
+        is ShuttleModel.Plan.Bus -> {
+            val r = p.ride
+            val from = stopName(ctx, r.route.stops[r.fromIdx])
+            val to = stopName(ctx, r.route.stops[r.toIdx])
+            // a Rapid bus has no fixed time: say how often it comes and when to be at the stop (longest wait counted)
+            if (r.route.frequent) "🚌 ${r.route.label} (every ~${r.wait} min) from $from → $to · be at the stop by ${ShuttleModel.fmt(r.depart)}" +
+                (if (p.to.id != r.route.stops[r.toIdx]) ", then walk to ${p.to.name}" else "")
+            else "🚌 ${r.route.label} ${ShuttleModel.fmt(r.depart)} from $from → $to, ~${ShuttleModel.fmt(r.arrive)}" +
+                (if (p.to.id != r.route.stops[r.toIdx]) ", then walk to ${p.to.name}" else "")
+        }
         is ShuttleModel.Plan.Walk ->
             "🚶 Walk to ${p.to.name}" +
                 (p.minutes?.let { " (~$it min" + (p.meters?.let { m -> ", $m m" } ?: "") + "), leave by ${ShuttleModel.fmt(t.arriveBy - ShuttleModel.ARRIVE_EARLY - it)}" } ?: "") +
