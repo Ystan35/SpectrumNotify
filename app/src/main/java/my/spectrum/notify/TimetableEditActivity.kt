@@ -312,9 +312,10 @@ class TimetableEditActivity : Activity() {
         }
         dangerBtn(col, "Remove from my timetable") {
             Timetable.hide(this, s.key)
+            Timetable.justHidden = s.key   // the Timetable screen offers Undo when it comes back
             finish()
         }
-        col.label("Removed classes can be brought back from the Timetable screen.", 12f, Ui.DIM, 6)
+        col.label("You can undo this right after, or bring removed classes back from the Timetable screen.", 12f, Ui.DIM, 6)
     }
 
     // ------------------------------------------------------------ helpers

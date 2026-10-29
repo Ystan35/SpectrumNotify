@@ -686,6 +686,48 @@ fun Activity.attachPullToRefresh(sv: ScrollView, onRefresh: () -> Unit) {
 fun LinearLayout.navBellDot(): View = tag as? View ?: View(this.context)
 
 /** Standard top divider + nav bar, added to a page column (the weighted-content pattern). */
+/**
+ * A bar above the bottom navigation: "[message]   UNDO". Disappears after 6 s; tapping Undo runs [onUndo].
+ * Used right after Hide / Remove instead of a confirm dialog and "restore it from Settings".
+ */
+fun Activity.undoBar(message: String, onUndo: () -> Unit) {
+    val root = findViewById<FrameLayout>(android.R.id.content) ?: return
+    root.findViewWithTag<View>("undoBar")?.let { root.removeView(it) }
+    val bar = LinearLayout(this).apply {
+        tag = "undoBar"
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(16), dp(4), dp(4), dp(4))
+        background = roundBg(if (Ui.dark) 0xFFE8EAF0.toInt() else 0xFF2A2F3A.toInt(), 0, this@undoBar, 12)
+        elevation = dp(6).toFloat()
+        isClickable = true   // the bar itself swallows taps meant for the list behind it
+    }
+    val fg = if (Ui.dark) 0xFF12151C.toInt() else 0xFFFFFFFF.toInt()
+    bar.addView(TextView(this).apply {
+        text = message
+        textSize = 14f * Ui.fontScale
+        setTextColor(fg)
+        maxLines = 2
+    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    val dismiss = Runnable { root.removeView(bar) }
+    bar.addView(TextView(this).apply {
+        text = "UNDO"
+        textSize = 14f * Ui.fontScale
+        setTextColor(if (Ui.dark) Ui.HERO_A else 0xFF9DB2FF.toInt())
+        setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER
+        minHeight = dp(Ui.touch(48)); minWidth = dp(Ui.touch(64))
+        isClickable = true
+        contentDescription = "Undo: $message"
+        setOnClickListener { bar.removeCallbacks(dismiss); root.removeView(bar); onUndo() }
+    })
+    root.addView(bar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+        setMargins(dp(12), 0, dp(12), dp(88))   // clear of the bottom navigation
+    })
+    bar.announceForAccessibility("$message. Undo available.")
+    bar.postDelayed(dismiss, 6000)
+}
+
 fun Activity.addNavBar(page: LinearLayout, active: Class<*>) {
     page.addView(View(this).apply { setBackgroundColor(Ui.BORDER) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
     page.addView(bottomNav(active), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

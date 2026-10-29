@@ -1,5 +1,17 @@
 # Changelog
 
+> Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
+
+## 0.25.1 (versionCode 80)
+- Settings without typing: quiet hours from an hour list, daily messages with a clock picker and an on/off switch, deadline reminders as multi-select chips (1h–72h), check frequency as chips (10/15/30/60 min). Every change saves immediately; the "red box when you leave" check is gone. The "Raw groups" box now really saves.
+- "Get set up" card on Home replaces the launch-time permission prompt and the Occ → short names → check times dialog chain. The Welcome card's Log in opens the sign-in directly.
+- Occ dialog: a course left on "?" stays unconfirmed (it was marked confirmed and never asked again); the dialog opens by itself once, then from the setup card.
+- Undo bar after hiding a deadline (Home and bell), swiping away a notification and removing a class, instead of a confirm dialog plus "restore it from Settings".
+- Quiet hours silence every pop-up (class alerts, daily messages, event reminders); they still go into the bell list. "Send test notification" ignores quiet hours.
+- Week grid: Saturday/Sunday columns only when they have a class this week; larger text (12–14sp); screen-reader descriptions on class blocks.
+- Fix: a meeting link pasted in a class's Location dialog was stored but the Join buttons kept the old detected link. Pasted links now win on Home, the course sheet, Timetable, the widget and the 10-minute alert.
+- Fix: the calendar showed this semester's classes on dates after the semester ends (break, next semester).
+
 ## 0.8.4 (versionCode 17)
 - Refreshable UM timetable data: each background check downloads the newest `catalog.json` from the repo (raw.githubusercontent) and keeps the newest copy by its `generatedAt` date; the bundled copy stays the first-launch/offline fallback. The picker shows "Data as of <date>" — lecturers and rooms may have changed. Pushing a new `catalog.json` updates every installed app, no APK needed.
 - Catalog tooling: `tools/collect_timetable.js` (one console paste combines the SDK's main.js + lecturer.js), `tools/update_catalog.bat`/`.ps1` (finds newest Downloads copy, cleans, builds, commits, pushes), patched `tools/cleaner.js` (skips reservations with missing details instead of crashing), `tools/make_catalog.js` stamps `generatedAt`.

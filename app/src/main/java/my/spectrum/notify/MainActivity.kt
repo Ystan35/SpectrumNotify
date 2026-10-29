@@ -58,6 +58,7 @@ class MainActivity : Activity() {
     private lateinit var greetSub: TextView
     private lateinit var syncLabel: TextView
     private lateinit var refreshBtn: ImageButton
+    private lateinit var setupBox: LinearLayout
     private lateinit var heroBox: LinearLayout
     private lateinit var dueSection: LinearLayout
     private lateinit var dueRow: LinearLayout
@@ -103,11 +104,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
         applyBars()
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
-        }
+        // the notification permission is asked from the "Get set up" card, with the reason shown first
         buildUi()
         handleIntent(intent)
         Scheduler.startupCheck(this)   // auto-detect courses + Occ on open when data is stale
@@ -129,21 +126,23 @@ class MainActivity : Activity() {
         confirmOccDialog()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        setupSig = ""
+        render()
+    }
+
     private var occDialogShown = false
 
-    /**
-     * After the auto-detection finds courses with visible Occ pages, ask the user to confirm
-     * each one (the detection is a good guess, but only the user knows their real Occ).
-     * One dialog per course; "Skip" leaves it unconfirmed and it is asked again next launch.
-     */
-    private fun confirmOccDialog() {
-        if (occDialogShown) return
+    private data class OccAsk(val code: String, val cname: String, val occs: List<String>, val predicted: String?)
+
+    /** Courses whose Occ the user has not confirmed yet (detected from visible Occ pages). */
+    private fun pendingOccAsks(): List<OccAsk> {
         val st = State(this)
-        val seen = st.j.optJSONObject("occ_seen") ?: return
+        val seen = st.j.optJSONObject("occ_seen") ?: return emptyList()
         val names = st.j.optJSONObject("occ_courses") ?: JSONObject()
         val codes = Courses.all(this).associate { it.id to it.code.uppercase() }
-        data class Ask(val code: String, val cname: String, val occs: List<String>, val predicted: String?)
-        val asks = ArrayList<Ask>()
+        val asks = ArrayList<OccAsk>()
         for (cidS in seen.keys()) {
             val code = codes[cidS.toLongOrNull() ?: -1L] ?: continue
             if (Prefs(this).occConfirmed(code)) continue
@@ -157,10 +156,25 @@ class MainActivity : Activity() {
                         .mapNotNull { Regex("occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
                 }
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
-            asks.add(Ask(code, names.optString(cidS, code), occs, predictedNum))
+            asks.add(OccAsk(code, names.optString(cidS, code), occs, predictedNum))
         }
+        return asks
+    }
+
+    /**
+     * After the auto-detection finds courses with visible Occ pages, ask the user to confirm
+     * each one (the detection is a good guess, but only the user knows their real Occ).
+     * Opens by itself once; after that only from the "Get set up" card ([manual]).
+     * A course left on "?" stays unconfirmed and is asked again.
+     */
+    private fun confirmOccDialog(manual: Boolean = false) {
+        if (occDialogShown) return
+        val flags = getSharedPreferences("health", MODE_PRIVATE)
+        if (!manual && flags.getBoolean("occAutoAsked", false)) return
+        val asks = pendingOccAsks()
         if (asks.isEmpty()) return
         occDialogShown = true
+        flags.edit().putBoolean("occAutoAsked", true).apply()
 
         // one dialog with the My-classes layout: scrollable content (last courses reachable),
         // sized below the app header
@@ -200,8 +214,9 @@ class MainActivity : Activity() {
             .setPositiveButton("Save all") { _, _ ->
                 val notInCatalog = ArrayList<String>()
                 asks.forEachIndexed { i, a ->
-                    Prefs(this).setOccConfirmed(a.code)
                     val v = choices[i]
+                    // "?" is not an answer: that course stays unconfirmed and is asked again
+                    if (v >= 0 || a.occs.isEmpty()) Prefs(this).setOccConfirmed(a.code)
                     if (v >= 0 && a.occs.isNotEmpty()) {
                         val keep = p.myGroups.split(",").map { it.trim() }
                             .filter { it.isNotEmpty() && !it.startsWith("${a.code}:", true) }
@@ -216,38 +231,123 @@ class MainActivity : Activity() {
                         Toast.LENGTH_LONG).show()
                 }
                 ovAt = 0L
-                askShortNames { askReviewTimetable() }
             }
             .setNegativeButton("Later", null)
+            // the next steps (check times, short names) are on the "Get set up" card, not more dialogs
+            .setOnDismissListener { occDialogShown = false; setupSig = ""; render() }
             .show()
     }
 
-    /** After the first Occ save: offer to give courses short names. Once per install. */
-    private fun askShortNames(next: () -> Unit) {
-        val sp = getSharedPreferences("health", MODE_PRIVATE)
-        if (sp.getBoolean("askedShortNames", false)) { next(); return }
-        sp.edit().putBoolean("askedShortNames", true).apply()
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Name your courses?")
-            .setMessage("Course codes like WIA2010 are hard to remember. You can give each course a short name you recognise (for example \"HCI\" or \"cm\") — it shows next to the code everywhere.")
-            .setPositiveButton("Yes, set names") { _, _ ->
-                startActivity(Intent(this, CoursesActivity::class.java))
-            }
-            .setNegativeButton("Later") { _, _ -> next() }
-            .setOnCancelListener { next() }
-            .show()
-    }
+    // ------------------------------------------------------------ "Get set up" card
 
-    /** After saving Occs: remind the user to eyeball the timetable once. */
-    private fun askReviewTimetable() {
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Check your class times")
-            .setMessage("Your timetable was built from the attendance data and the UM list, and the times can be out of date. Take a minute: open the Timetable, switch between the days, and tap any class whose time looks wrong to fix it.")
-            .setPositiveButton("Review now") { _, _ ->
+    private var setupSig = ""
+
+    private class SetupStep(val title: String, val why: String, val done: Boolean, val button: String, val optional: Boolean = false, val go: (() -> Unit)?)
+
+    /** Every step a new install needs, in order; a step's button does that step (or opens the screen for it). */
+    private fun setupSteps(loggedIn: Boolean): List<SetupStep> {
+        val flags = getSharedPreferences("health", MODE_PRIVATE)
+        val notifOk = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val batteryOk = getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        val checked = p.lastRunTs > 0L
+        val occPending = loggedIn && pendingOccAsks().isNotEmpty()
+        return listOf(
+            SetupStep("Allow notifications", "Class links, deadlines and new materials arrive as notifications.", notifOk, "Allow") {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            },
+            SetupStep("Log in to Spectrum", "Uses your normal UM sign-in. Your login stays on this phone.", loggedIn, "Log in") {
+                startActivity(Intent(this, LoginWebActivity::class.java))
+            },
+            SetupStep("Allow exact alarms", "So the class reminder arrives about 10 minutes before class, not late.", Scheduler.canExact(this), "Allow") {
+                if (Build.VERSION.SDK_INT >= 31) startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+            },
+            SetupStep("Let checks run in the background",
+                "In the list, find Spectrum Notify and choose Unrestricted (or Not optimised), so Android does not stop the checks.",
+                batteryOk, "Open") {
+                try { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                catch (_: Exception) { Toast.makeText(this, "Open Settings → Battery and set Spectrum Notify to Unrestricted", Toast.LENGTH_LONG).show() }
+            },
+            SetupStep("Confirm your Occ",
+                if (!checked) "Your Occ (class group) is detected after the first check." else "Your Occ is your class group, e.g. Occ 2. It decides which links and posts are yours.",
+                loggedIn && checked && !occPending, "Confirm", go = if (occPending) ({ confirmOccDialog(manual = true) }) else null),
+            SetupStep("Check your class times", "Open the timetable once and tap any class whose time looks wrong to fix it.",
+                flags.getBoolean("setupReviewed", false), "Open") {
+                flags.edit().putBoolean("setupReviewed", true).apply()
                 startActivity(Intent(this, TimetableActivity::class.java))
+            },
+            SetupStep("Give courses short names", "Optional: \"HCI\" is easier to spot than WIA2010.",
+                flags.getBoolean("setupNamed", false), "Open", optional = true) {
+                flags.edit().putBoolean("setupNamed", true).apply()
+                startActivity(Intent(this, CoursesActivity::class.java))
+            },
+        )
+    }
+
+    private fun renderSetup(loggedIn: Boolean) {
+        val flags = getSharedPreferences("health", MODE_PRIVATE)
+        val hidden = flags.getBoolean("setupHidden", false)
+        if (hidden) {
+            if (setupSig != "hidden") { setupSig = "hidden"; setupBox.removeAllViews() }
+            return
+        }
+        val steps = setupSteps(loggedIn)
+        val required = steps.filter { !it.optional }
+        val sig = steps.joinToString("") { if (it.done) "1" else "0" } + hidden
+        if (sig == setupSig) return
+        setupSig = sig
+        setupBox.removeAllViews()
+        if (hidden || steps.all { it.done }) return
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(10))
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, 16)
+        }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(tv("Get set up", 16f, Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        head.addView(tv("${required.count { it.done }} of ${required.size} done", 12f, Ui.DIM, true))
+        card.addView(head)
+        val next = steps.firstOrNull { !it.done && it.go != null }
+        for (s in steps) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(10), 0, 0)
             }
-            .setNegativeButton("Later", null)
-            .show()
+            row.addView(tv(if (s.done) "✓" else "○", 16f, if (s.done) Ui.GREEN else Ui.DIM, true).apply {
+                contentDescription = if (s.done) "Done" else "Not done"
+            }, LinearLayout.LayoutParams(dp(26), WRAP))
+            val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            text.addView(tv(s.title + if (s.optional) " (optional)" else "", 14f, if (s.done) Ui.DIM else Ui.TEXT, !s.done))
+            if (!s.done) text.addView(tv(s.why, 12f, Ui.DIM))
+            row.addView(text, LinearLayout.LayoutParams(0, WRAP, 1f))
+            if (!s.done && s.go != null) {
+                val filled = s === next
+                row.addView(tv(s.button, 13f, if (filled) onAccent() else Ui.CYAN, true).apply {
+                    gravity = Gravity.CENTER
+                    minHeight = dp(Ui.touch(48)); minWidth = dp(72)
+                    setPadding(dp(12), 0, dp(12), 0)
+                    isClickable = true
+                    background = if (filled) roundBg(Ui.CYAN, 0, this@MainActivity, 20) else rippleBg(Ui.BAR, Ui.CYAN, this@MainActivity, 20)
+                    contentDescription = "${s.button}: ${s.title}"
+                    setOnClickListener { s.go.invoke(); setupSig = "" }
+                }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
+            }
+            card.addView(row)
+        }
+        card.addView(tv("Hide this guide", 12f, Ui.DIM, true).apply {
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            minHeight = dp(Ui.touch(48))
+            isClickable = true
+            setOnClickListener {
+                flags.edit().putBoolean("setupHidden", true).apply()
+                setupSig = ""
+                render()
+                undoBar("Setup guide hidden") { flags.edit().putBoolean("setupHidden", false).apply(); setupSig = ""; render() }
+            }
+        }, LinearLayout.LayoutParams(MATCH, WRAP))
+        setupBox.addView(card, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
     }
 
     override fun onPause() {
@@ -337,6 +437,9 @@ class MainActivity : Activity() {
         }
         header.addView(refreshBtn, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
         content.addView(header, lp(MATCH, WRAP).apply { topMargin = dp(14); bottomMargin = dp(12) })
+
+        setupBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(setupBox, lp(MATCH, WRAP))
 
         heroBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(heroBox, lp(MATCH, WRAP))
@@ -629,6 +732,7 @@ class MainActivity : Activity() {
             entries = NotifyLog.entries(this).filter { !(it.kind == "sys" && it.title == "Check OK") }.asReversed()
         }
         renderHeader(loggedIn)
+        renderSetup(loggedIn)
         renderHero(loggedIn)
         renderDue()
         renderEvents()
@@ -755,7 +859,7 @@ class MainActivity : Activity() {
                 card.addView(label("WELCOME"))
                 card.addView(tv("Never miss a class link", 24f, white, true).apply { setPadding(0, dp(6), 0, 0) })
                 card.addView(tv("Log in with your Spectrum account to get class links, deadlines and new materials here.", 14f, soft).apply { setPadding(0, dp(6), 0, dp(14)) })
-                card.addView(pill("Log in", true) { startActivity(Intent(this, SettingsActivity::class.java)) }, lp(WRAP, WRAP))
+                card.addView(pill("Log in", true) { startActivity(Intent(this, LoginWebActivity::class.java)) }, lp(WRAP, WRAP))
             } else {
                 val due = ov.due.firstOrNull()
                 val inBreak = !AcademicCalendar.inTeaching(this, java.time.LocalDate.now())
@@ -1103,18 +1207,16 @@ class MainActivity : Activity() {
             dueSig = ""
             render()
         }
-        row("Hide this (wrong?)", "Removes it everywhere; restore from Settings → APP & MAINTENANCE") {
-            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Hide this deadline?")
-                .setMessage("“" + d.name + "” will be removed from Home and Notifications, and Spectrum's reminder for it is silenced. You can bring it back: Settings → APP & MAINTENANCE → “Restore hidden deadlines”.")
-                .setPositiveButton("Hide it") { _, _ ->
-                    if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId)
-                    dueSig = ""
-                    render()
-                    Toast.makeText(this, "Hidden. Restore: Settings → APP & MAINTENANCE → “Restore hidden deadlines”.", Toast.LENGTH_LONG).show()
-                }
-                .setNegativeButton("Keep it", null)
-                .show()
+        row("Hide this (wrong?)", "Removes it from Home, Notifications and reminders — you can undo right after") {
+            if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId)
+            sheetDismiss()
+            dueSig = ""
+            render()
+            undoBar("Deadline hidden") {
+                if (d.eventId != 0L) NotifyLog.unhideEvent(this, "dl:" + d.eventId)
+                dueSig = ""
+                render()
+            }
         }
         val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_DayNight)
             .setView(sheet)

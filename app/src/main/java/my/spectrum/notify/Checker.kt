@@ -286,7 +286,7 @@ object Checker {
             ClassItem(
                 unesc(e.str("name")), short.ifEmpty { full.ifEmpty { "Class" } }, full,
                 startShown, endShown,
-                linksForEvent(e, cal, links).firstOrNull()?.first ?: "",
+                linksForEvent(ctx, e, cal, links).firstOrNull()?.first ?: "",
                 if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site,
                 isManual(e, p), cid,
             )
@@ -337,12 +337,16 @@ object Checker {
         return toks
     }
 
-    private fun linksForEvent(e: JSONObject, cal: List<JSONObject>, links: Map<String, List<Link>>): List<Pair<String, String>> {
+    private fun linksForEvent(ctx: Context, e: JSONObject, cal: List<JSONObject>, links: Map<String, List<Link>>): List<Pair<String, String>> {
         val cid = courseId(e)
         var evTokens = groupTokens(e.str("name"))
         if (evTokens.isEmpty()) evTokens = courseGroupTokens(cid, cal)
         val cands = ArrayList<Cand>()
         val seen = HashSet<String>()
+        // a link you pasted for this course beats anything detected, on every screen and in the class alert
+        Timetable.meetingLinkOf(ctx, Timetable.courseCode(e.optJSONObject("course"))).takeIf { it.isNotEmpty() }?.let { u ->
+            seen.add(u); cands.add(Cand(1000, true, 0L, u, "your link"))
+        }
         for (u in findLinks(e.str("description"))) if (seen.add(u)) cands.add(Cand(100, linkIsMeeting(u), 0L, u, "calendar event"))
         for (l in links["$cid"] ?: emptyList()) {
             if (!seen.add(l.url)) continue
@@ -640,7 +644,7 @@ object Checker {
             val mins = maxOf(0L, Math.round((start - now) / 60.0))
             val whenS = fmtTime(start)
             val note = if (isManual(e, p)) "\nAttendance for this class is via Teams record." else ""
-            val ls = linksForEvent(e, cal, links)
+            val ls = linksForEvent(ctx, e, cal, links)
             if (ls.isNotEmpty()) {
                 val body = "$name\nStarts $whenS.$note\n\nOnline link:" +
                     ls.take(3).joinToString("") { "\n  ${it.first}  (${it.second})" }

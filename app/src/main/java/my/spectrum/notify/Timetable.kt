@@ -294,7 +294,10 @@ object Timetable {
 
     /** Meeting link override for a course (user pasted); empty = use the auto-detected one. */
     fun meetingLinkOf(ctx: Context, course: String): String =
-        sp(ctx).getString("mlink:$course", "") ?: ""
+        (sp(ctx).getString("mlink:$course", "") ?: "").ifEmpty {
+            // links pasted in the Location dialog before v0.25.1 were only stored as the location
+            locationOf(ctx, course).takeIf { it.startsWith("online:") }?.removePrefix("online:")?.trim() ?: ""
+        }
 
     fun setMeetingLink(ctx: Context, course: String, url: String) {
         sp(ctx).edit().putString("mlink:$course", url.trim()).apply()
@@ -348,6 +351,15 @@ object Timetable {
     fun hide(ctx: Context, key: String) {
         val h = hiddenKeys(ctx)
         h.add(key)
+        sp(ctx).edit().putString("hidden", jarr(h).toString()).apply()
+    }
+
+    /** Key of the class removed a moment ago, so the Timetable screen can offer Undo once. */
+    @Volatile var justHidden: String? = null
+
+    fun unhide(ctx: Context, key: String) {
+        val h = hiddenKeys(ctx)
+        h.remove(key)
         sp(ctx).edit().putString("hidden", jarr(h).toString()).apply()
     }
 

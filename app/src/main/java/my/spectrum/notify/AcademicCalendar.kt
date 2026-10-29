@@ -92,12 +92,14 @@ object AcademicCalendar {
         a != null && b != null && !d.isBefore(a) && !d.isAfter(b)
 
     /** Teaching weeks: teachStart..teachEnd, minus the mid-semester break.
-     *  FAIL-SAFE: if today is past the configured semester end (stale calendar — the user
+     *  FAIL-SAFE: if TODAY is past the configured semester end (stale calendar — the user
      *  never updated dates for the new semester), the gate FAILS OPEN and shows classes.
-     *  Hiding everything because data went stale is the v0.21.0 regression this prevents. */
+     *  Hiding everything because data went stale is the v0.21.0 regression this prevents.
+     *  While the semester is still on, dates after its end are NOT teaching: the next semester
+     *  has a different timetable, so the calendar must not repeat this one's classes into it. */
     fun inTeaching(ctx: Context, d: LocalDate): Boolean {
         val dt = get(ctx)
-        if (d.isAfter(dt.semEnd)) return true  // stale calendar: show classes, never blank
+        if (d.isAfter(dt.semEnd)) return LocalDate.now().isAfter(dt.semEnd)
         return !d.isBefore(dt.teachStart) && !d.isAfter(dt.teachEnd) && !isBreak(ctx, d)
     }
 

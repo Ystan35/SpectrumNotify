@@ -33,10 +33,24 @@ class SettingsActivity : Activity() {
         var target: LinearLayout = col   // the open-able body of the current section
 
         fun add(key: String, title: String, help: String, value: String, hint: String = "", kind: Int = 0) {
-            fields[key] = target.setting(title, help, value, hint, kind)
+            val f = target.setting(title, help, value, hint, kind)
+            fields[key] = f
+            // stored on every change; alarms are re-armed once, when you leave the screen
+            f.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    val v = s?.toString()?.trim() ?: ""
+                    when (key) {
+                        "manualCourses" -> p.manualCourses = v
+                        "skipClasses" -> p.skipClasses = v
+                        "myGroups" -> if (v != p.myGroups) p.myGroups = v
+                    }
+                }
+            })
         }
 
-        col.label("Changes are saved automatically when you leave this screen.", 12f, Ui.DIM, 4)
+        col.label("Changes are saved as you make them.", 12f, Ui.DIM, 4)
 
         // search: type a keyword, matching sections are listed; tapping one opens it
         var searchBox: EditText? = null
@@ -139,17 +153,58 @@ class SettingsActivity : Activity() {
             refreshProfile()
         }
 
+        // pickers, switches and chips save the moment you change them — nothing to type, nothing to get wrong
+        fun heading(title: String, help: String) {
+            target.label(title, 15f, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+            target.label(help, 12f, Ui.DIM, 2)
+        }
+        val hours = (0..23).map { h ->
+            Timetable.fmtMin(h * 60) + when (h) { 0 -> " (midnight)"; 12 -> " (noon)"; else -> "" }
+        }
+        fun hourPicker(title: String, help: String, value: Int, onPick: (Int) -> Unit) {
+            heading(title, help)
+            target.addView(spinner(hours, value.coerceIn(0, 23)) { h -> onPick(h); Scheduler.scheduleAll(this) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        }
+        /** A daily message: on/off switch plus a clock picker; switching off keeps the time for next time. */
+        fun dailyPicker(title: String, help: String, value: String, default: String, store: (String) -> Unit) {
+            heading(title, help)
+            var minutes = parseHm(value.ifEmpty { default })?.let { it.first * 60 + it.second } ?: 0
+            val sw = android.widget.Switch(this).apply {
+                text = "Send this message"
+                textSize = 14f * Ui.fontScale
+                setTextColor(Ui.TEXT)
+                minHeight = dp(Ui.touch(48))
+                isChecked = value.isNotEmpty()
+            }
+            val tf = timeField(minutes) { m ->
+                minutes = m
+                sw.isChecked = true
+                store(Timetable.fmtMin(m))
+                Scheduler.scheduleAll(this)
+            }
+            sw.setOnCheckedChangeListener { _, on ->
+                store(if (on) Timetable.fmtMin(minutes) else "")
+                tf.view.alpha = if (on) 1f else 0.5f
+                Scheduler.scheduleAll(this)
+            }
+            tf.view.alpha = if (sw.isChecked) 1f else 0.5f
+            target.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+            target.addView(tf.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        }
+
         target = accordion(col, "QUIET HOURS",
-            "During these hours the app does not check Spectrum, so you are not woken up. Use the 24-hour clock: 0 = midnight, 13 = 1 pm.",
+            "During these hours nothing pops up: no checks, class alerts, daily messages or event reminders. " +
+                "Anything that would have alerted you still goes into the Notifications list.",
             icon = R.drawable.ic_cat_daily, contents = listOf("Quiet from", "Quiet until"))
-        add("quietStart", "Quiet from (hour)", "Start of the quiet period. Example: 1 means 1 am.", p.quietStart.toString(), "1", 1)
-        add("quietEnd", "Quiet until (hour)", "End of the quiet period. Example: 7 means 7 am.", p.quietEnd.toString(), "7", 1)
+        hourPicker("Quiet from", "Start of the quiet period.", p.quietStart) { p.quietStart = it }
+        hourPicker("Quiet until", "End of the quiet period. Pick the same hour twice to turn quiet hours off.", p.quietEnd) { p.quietEnd = it }
 
         target = accordion(col, "DAILY MESSAGES",
-            "Two short messages each day. Type the time as HH:MM, for example 07:05. Leave a box empty to turn that message off.",
+            "Two short messages each day. Tap a time to change it; switch a message off if you do not want it.",
             icon = R.drawable.ic_cat_news, contents = listOf("Morning summary", "Afternoon check-in"))
-        add("summaryTime", "Morning summary", "Sent once each morning with today's classes and deadlines.", p.summaryTime, "07:05", 2)
-        add("afternoonTime", "Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00", 2)
+        dailyPicker("Morning summary", "Sent once each morning with today's classes and deadlines.", p.summaryTime, "07:05") { p.summaryTime = it }
+        dailyPicker("Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00") { p.afternoonTime = it }
 
         target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
             contents = listOf("My Occ", "Classes to ignore", "Teams-recording courses"))
@@ -209,20 +264,23 @@ class SettingsActivity : Activity() {
 
         target = accordion(col, "DEADLINES", icon = R.drawable.ic_cat_deadline,
             contents = listOf("Remind me before a deadline"))
-        add(
-            "deadlineHours", "Remind me before a deadline",
-            "Number of hours before the deadline, separated by commas. 24,3 means one reminder a day before and another 3 hours before.",
-            p.deadlineHours, "24,3",
-        )
+        heading("Remind me before a deadline",
+            "Tap every time you want a reminder, for example 24h and 3h: one a day before, another 3 hours before. None selected = no deadline reminders.")
+        val dlHours = listOf(1, 3, 6, 12, 24, 48, 72)
+        target.chips(dlHours.map { "${it}h" }, dlHours.indices.filter { dlHours[it] in p.deadlineList }.toSet(), true) { sel ->
+            p.deadlineHours = sel.sorted().joinToString(",") { dlHours[it].toString() }
+        }
 
         target = accordion(col, "BACKGROUND CHECKS", icon = R.drawable.ic_refresh,
             contents = listOf("Check every (minutes)"))
-        add(
-            "pollMinutes", "Check Spectrum every (minutes)",
-            "How often the app looks for new materials, announcements and notifications. The lowest is 10. " +
-                "Below 15 the app uses alarms, so keep the battery setting on Unrestricted (see Tools) or Android may delay checks while the phone sleeps.",
-            p.pollMinutes.toString(), "10", 1,
-        )
+        heading("Check Spectrum every",
+            "How often the app looks for new materials, announcements and notifications. " +
+                "Below 15 minutes the app uses alarms, so keep the battery setting on Unrestricted (see App & maintenance) or Android may delay checks while the phone sleeps.")
+        val pollOpts = listOf(10, 15, 30, 60)
+        val pollSel = pollOpts.indices.minByOrNull { Math.abs(pollOpts[it] - p.pollMinutes) } ?: 0
+        target.chips(pollOpts.map { "$it min" }, setOf(pollSel), false) { sel ->
+            sel.firstOrNull()?.let { p.pollMinutes = pollOpts[it]; Scheduler.ensurePolling(this) }
+        }
 
         target = accordion(col, "APPEARANCE & ACCESSIBILITY",
             "Change how the app looks. Tap a chip to apply it right away — the screen redraws with your choice.",
@@ -276,7 +334,7 @@ class SettingsActivity : Activity() {
             }.start()
         }
         target.action("Send test notification", "Sends one test message so you can see how notifications look and that tapping opens the app.") {
-            Notifier.push(this, "Test", "Notifications are working.\nTap the button below to open Spectrum.", true, listOf(Pair("Open Spectrum", p.site)))
+            Notifier.push(this, "Test", "Notifications are working.\nTap the button below to open Spectrum.", true, listOf(Pair("Open Spectrum", p.site)), ignoreQuiet = true)
         }
         alarmBtn = target.action("Allow exact alarms", "Needed so class reminders arrive about 10 minutes before the class, on time.") {
             if (Build.VERSION.SDK_INT >= 31) {
@@ -420,30 +478,11 @@ class SettingsActivity : Activity() {
 
     private fun f(key: String) = fields[key]?.text?.toString()?.trim() ?: ""
 
+    /** The remaining free-text boxes (course lists). Times, hours and choices save as soon as they change. */
     private fun save() {
-        // Validate before storing: bad input keeps the old value and marks the box red,
-        // so a typo can never silently kill the daily messages or the reminders.
-        var ok = true
-        fun bad(key: String) { fields[key]?.setBackgroundResource(0); fields[key]?.background = roundBg(Ui.tint(Ui.RED, 80), Ui.RED, this); ok = false }
-        fun good(key: String) { fields[key]?.background = rippleBg(Ui.BAR, Ui.BORDER, this) }
-
-        val qs = f("quietStart").toIntOrNull()
-        if (qs == null || qs !in 0..23) bad("quietStart") else { good("quietStart"); p.quietStart = qs }
-        val qe = f("quietEnd").toIntOrNull()
-        if (qe == null || qe !in 0..23) bad("quietEnd") else { good("quietEnd"); p.quietEnd = qe }
-        val pm = f("pollMinutes").toIntOrNull()
-        if (pm == null) bad("pollMinutes") else { good("pollMinutes"); p.pollMinutes = maxOf(10, pm) }  // 10 min is the documented floor
-        for (key in listOf("summaryTime", "afternoonTime")) {
-            val v = f(key)
-            if (v.isEmpty() || parseHm(v) != null) { good(key); if (key == "summaryTime") p.summaryTime = v else p.afternoonTime = v }
-            else bad(key)
-        }
-        if (!ok) Toast.makeText(this, "Some boxes are red — fix them or the related messages will not work.", Toast.LENGTH_LONG).show()
-
         p.manualCourses = f("manualCourses")
         p.skipClasses = f("skipClasses")
         // p.myGroups is owned by the Courses page now — never written here
-        p.deadlineHours = f("deadlineHours")
         Scheduler.ensurePolling(this)
         Scheduler.scheduleAll(this)
     }

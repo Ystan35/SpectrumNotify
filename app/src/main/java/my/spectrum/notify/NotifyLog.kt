@@ -122,6 +122,11 @@ object NotifyLog {
         ctx.getSharedPreferences("health", Context.MODE_PRIVATE).edit().putStringSet(hiddenPref, s).apply()
     }
 
+    fun unhide(ctx: Context, ts: Long) {
+        val s = hiddenSetFor(ctx); s.remove(ts.toString())
+        ctx.getSharedPreferences("health", Context.MODE_PRIVATE).edit().putStringSet(hiddenPref, s).apply()
+    }
+
     fun isHidden(ctx: Context, ts: Long): Boolean = hiddenSetFor(ctx).contains(ts.toString())
 
     /** Silence a deadline's SOURCE event so re-polls don't resurrect it ("dl:<eventId>" keys). */
@@ -129,6 +134,14 @@ object NotifyLog {
         val sp = ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
         val s = sp.getStringSet("hiddenEvents", emptySet())!!.toMutableSet()
         s.add(key)
+        sp.edit().putStringSet("hiddenEvents", s).apply()
+    }
+
+    /** Undo of [hideEvent]. */
+    fun unhideEvent(ctx: Context, key: String) {
+        val sp = ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
+        val s = sp.getStringSet("hiddenEvents", emptySet())!!.toMutableSet()
+        s.remove(key)
         sp.edit().putStringSet("hiddenEvents", s).apply()
     }
 
