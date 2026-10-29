@@ -125,7 +125,7 @@ object Scheduler {
         val codes = LinkedHashSet<Int>()
         for (e in cal) {
             if (!classesActive || !Checker.isAttEvent(e)) continue
-            val start = e.optLong("timestart")
+            val start = Checker.classTimes(ctx, e).first   // honours your Time Override
             val at = start - 590  // fires just inside the 10-minute window
             if (at <= now || at > now + 3 * 86400) continue
             val code = (e.optLong("id") * 31 + start).hashCode()

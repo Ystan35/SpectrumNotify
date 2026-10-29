@@ -266,23 +266,11 @@ object Checker {
         // holiday mode: outside teaching weeks the hero/widget suppress class entries
         val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now())
         val classes = if (!classesActive) emptyList() else cal.filter { isAttEvent(it) }.map { e ->
-            val start = e.optLong("timestart")
-            val dur = e.optLong("timeduration")
             val c = e.optJSONObject("course")
             val short = c?.str("shortname") ?: ""
             val full = c?.str("fullname") ?: ""
             val cid = courseId(e)
-            // holiday hero: honour the user's Time Override from the class editor — the
-            // editor saves under "course|day|start|end" (Timetable.fromCalendar's key),
-            // so derive the same key here and shift the shown start/end
-            val z = localDt(start)
-            val day = z.dayOfWeek.value
-            val startMin = z.hour * 60 + z.minute
-            val endMin = minOf(24 * 60, startMin + (if (dur > 0L) (dur / 60).toInt() else 60))
-            val code = Timetable.courseCode(c)
-            val override = Timetable.timeOverride(ctx, "$code|$day|$startMin|$endMin")
-            val startShown = override?.first?.let { h -> start - startMin * 60L + h * 60L } ?: start
-            val endShown = override?.second?.let { h -> start - startMin * 60L + h * 60L } ?: (startShown + (if (dur > 0) dur else 3600L))
+            val (startShown, endShown) = classTimes(ctx, e)
             ClassItem(
                 unesc(e.str("name")), short.ifEmpty { full.ifEmpty { "Class" } }, full,
                 startShown, endShown,
@@ -628,11 +616,29 @@ object Checker {
     }
 
     // ------------------------------------------------------------ class links (10 min before class)
+    /**
+     * A class event's start/end (epoch seconds) with your Time Override from the class editor applied.
+     * The editor saves under "course|day|start|end" (Timetable's slot key), so derive the same key here.
+     * Home, the widget, the 10-minute alarm and the alert all use this, so they agree on the time.
+     */
+    fun classTimes(ctx: Context, e: JSONObject): Pair<Long, Long> {
+        val start = e.optLong("timestart")
+        val dur = e.optLong("timeduration")
+        val z = localDt(start)
+        val startMin = z.hour * 60 + z.minute
+        val endMin = minOf(24 * 60, startMin + (if (dur > 0L) (dur / 60).toInt() else 60))
+        val code = Timetable.courseCode(e.optJSONObject("course"))
+        val o = Timetable.timeOverride(ctx, "$code|${z.dayOfWeek.value}|$startMin|$endMin")
+            ?: return Pair(start, start + (if (dur > 0) dur else 3600L))
+        val midnight = start - startMin * 60L
+        return Pair(midnight + o.first * 60L, midnight + o.second * 60L)
+    }
+
     private fun checkClassLinks(ctx: Context, st: State, p: Prefs, cal: List<JSONObject>, links: Map<String, List<Link>>, now: Long) {
         val sent = st.strings("links_sent")
         for (e in cal) {
             if (!isAttEvent(e)) continue
-            val start = e.optLong("timestart")
+            val start = classTimes(ctx, e).first   // your corrected time, not Spectrum's
             if (now < start - 600 || now > start + 300) continue
             val eid = e.optLong("id")
             val kok = "linkok:$eid:$start"

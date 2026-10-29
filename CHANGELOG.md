@@ -11,6 +11,7 @@
 - Week grid: Saturday/Sunday columns only when they have a class this week; larger text (12–14sp); screen-reader descriptions on class blocks.
 - Fix: a meeting link pasted in a class's Location dialog was stored but the Join buttons kept the old detected link. Pasted links now win on Home, the course sheet, Timetable, the widget and the 10-minute alert.
 - Fix: the calendar showed this semester's classes on dates after the semester ends (break, next semester).
+- Fix: after changing a Spectrum class's time (e.g. 10–2 → 11–1), the 10-minute alarm and alert still fired for the old time. The alarm, the alert and Home now all use your time, and saving or resetting re-arms the alarm at once.
 
 ## 0.8.4 (versionCode 17)
 - Refreshable UM timetable data: each background check downloads the newest `catalog.json` from the repo (raw.githubusercontent) and keeps the newest copy by its `generatedAt` date; the bundled copy stays the first-launch/offline fallback. The picker shows "Data as of <date>" — lecturers and rooms may have changed. Pushing a new `catalog.json` updates every installed app, no APK needed.

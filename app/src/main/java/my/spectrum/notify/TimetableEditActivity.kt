@@ -298,6 +298,7 @@ class TimetableEditActivity : Activity() {
             if (attLinkField.text.toString().trim() != Timetable.userAttLinkRaw(this, s.course)) {
                 Timetable.setAttendanceLink(this, s.course, attLinkField.text.toString().trim())
             }
+            Scheduler.scheduleAll(this)   // the class alarm moves with the new time right away
             finish()
         }
         if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course).isNotEmpty() ||
@@ -307,6 +308,9 @@ class TimetableEditActivity : Activity() {
                 Timetable.clearTimeOverride(this, s.key)
                 Timetable.setMeetingLink(this, s.course, "")
                 Timetable.setAttendanceLink(this, s.course, "")
+                // a link pasted in the Location dialog (pre-0.25.1) would otherwise come back as the override
+                if (Timetable.locationOf(this, s.course).startsWith("online:")) Timetable.setLocation(this, s.course, "online:")
+                Scheduler.scheduleAll(this)
                 finish()
             }
         }
