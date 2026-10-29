@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-29",
-  "source": "JPPHB Shuttle Bus Operation Schedule (Oct 2024), current times as checked 29 Oct 2026, stops from the UM shuttle app",
+  "generatedAt": "2026-10-30",
+  "source": "JPPHB Shuttle Bus Operation Schedule (Oct 2024), times as in the PDF, confirmed 30 Oct 2026, stops from the UM shuttle app",
   "officialUrl": "https://jpphb.um.edu.my/transport",
   "phone": "03-7967 3311",
   "email": "kenderaanjpphb@um.edu.my",
@@ -58,12 +58,14 @@
       "id": "C", "name": "UM Central – Pantai Dalam", "color": "#8D6E63", "loop": true,
       "stops":   ["UMC", "CFS", "ANGK", "PP", "BSOUTH", "FENG", "UMC"],
       "offsets": [0, 3, 10, 12, 16, 23, 26],
+      "schedule": { "every": 30, "from": "07:30", "to": "16:30", "then": ["17:10", "17:40", "19:00", "20:00", "21:00", "22:00"] },
       "farStop": "PP", "farUntil": "09:30"
     },
     {
       "id": "D", "name": "UM Central – International House – Seksyen 16 – KK13", "color": "#43A047", "loop": true,
       "stops":   ["UMC", "FENGW", "IH", "RS1", "RS2", "RS3", "RS4", "RS5", "PS16", "KK13", "UMC"],
       "offsets": [0, 0, 6, 7, 8, 9, 10, 11, 13, 17, 21],
+      "schedule": { "every": 30, "from": "07:30", "to": "16:30", "then": ["17:10", "17:40", "19:00", "20:00", "21:00", "22:00"] },
       "farStop": "IH", "farUntil": "09:30"
     },
     {
@@ -75,13 +77,14 @@
       "id": "13", "name": "UM Central – KK13", "color": "#8E24AA", "loop": true,
       "stops":   ["UMC", "KK13", "UMC"],
       "offsets": [0, 3, 7],
+      "schedule": { "every": 30, "from": "07:30", "to": "16:30", "then": ["17:10", "17:40", "19:00", "20:00", "21:00", "22:00"] },
       "farStop": "KK13", "farUntil": "09:30"
     }
   ],
   "schedule": {
     "days": [1, 2, 3, 4, 5],
-    "every": 30, "from": "07:30", "to": "18:00",
-    "then": ["19:00", "20:00", "21:00", "22:00"],
+    "every": 30, "from": "07:30", "to": "16:30",
+    "then": ["17:10", "17:40", "18:00", "19:00", "20:00", "21:00", "22:00"],
     "fridayBreak": ["12:30", "14:30"]
   }
 }

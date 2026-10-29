@@ -2,8 +2,11 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.27.1 (versionCode 87)
+- UM shuttle times as in JPPHB's schedule: every 30 min 7:30 am–4:30 pm, then 5:10, 5:40 and 6:00 pm, then 7, 8, 9 and 10 pm (routes C, D and 13 have no 6:00 pm trip). 0.27.0 wrongly ran every 30 min until 6:00 pm.
+
 ## 0.27.0 (versionCode 86)
-- UM shuttle. Routes AB, BA, C, D, E and 13 with their stops (from the UM shuttle app) and trip times: every 30 min from 7:30 am to 6:00 pm, then 7, 8, 9 and 10 pm, Monday to Friday; none 12:30–2:30 pm on Fridays. The 7:30–9:30 am trips of C, D and 13 start at their far end (Pantai Permai, International House, KK13), as in JPPHB's Oct 2024 schedule.
+- UM shuttle. Routes AB, BA, C, D, E and 13 with their stops (from the UM shuttle app) and trip times, Monday to Friday; none 12:30–2:30 pm on Fridays. The 7:30–9:30 am trips of C, D and 13 start at their far end (Pantai Permai, International House, KK13), as in JPPHB's Oct 2024 schedule.
 - Shuttle screen (toolbox → UM Shuttle, or Settings → UM shuttle): the next buses from any stop, each route's stops with the times of the next trip, today's trips, notes, and Call / Email / Official page.
 - Home: the class card says how to get there, e.g. "Route AB 9:31 from Za'ba RC → Faculty of Engineering, ~9:44", planned from your home stop (first class of the day) or the previous class. It suggests walking when the places are close, share a stop, no direct bus arrives in time, or walking lets you leave later; tap for Google Maps walking directions. Walking minutes appear for places with coordinates in bus.json.
 - Leave-by alert 5, 10 or 15 min before you must set off (Settings → UM shuttle; default 10 min, Off available). Its alarm is armed on its own, like the class-start alert.
