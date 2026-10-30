@@ -1207,9 +1207,10 @@ class MainActivity : BaseActivity() {
                 setPadding(0, dp(10), 0, 0)
                 if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
             })
-            val shortName = Shorts.display(this, d.course)
-            if (d.course.isNotEmpty()) c.addView(tv(shortName, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
-            if (d.course.isNotEmpty() && !shortName.equals(d.course, true)) c.addView(tv(d.course, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
+            // "GUL1001 · UMLEADER": the code is already in it, so no second line repeating the code
+            if (d.course.isNotEmpty()) c.addView(tv(Shorts.display(this, d.course), Type.CAPTION, Ui.DIM).apply {
+                setPadding(0, dp(2), 0, 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            })
             c.contentDescription = "${d.name}, due in ${relShort(left)}" + (if (isDone) ", marked done" else "")
             dueRow.addView(c, lp(dp(172), WRAP).apply { rightMargin = dp(10) })
         }
