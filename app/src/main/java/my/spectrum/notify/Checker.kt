@@ -841,8 +841,12 @@ object Checker {
         for (e in cal) {
             if (!isAttEvent(e)) continue
             val (start, end) = classTimes(ctx, e)
-            if (now < start || now > minOf(end, start + 15 * 60)) continue
-            val key = "attstart:${e.optLong("id")}:$start"
+            // signing only works during class: once when it starts, and a last chance 10 minutes before it ends
+            // (not for a class of 25 minutes or less, where the two would come almost together)
+            val atStart = now >= start && now <= minOf(end, start + 15 * 60)
+            val lastChance = end - start > 25 * 60 && now >= end - 10 * 60 - 60 && now < end
+            if (!atStart && !lastChance) continue
+            val key = (if (atStart) "attstart:" else "attend:") + "${e.optLong("id")}:$start"
             if (key in sent) continue
             val c = e.optJSONObject("course")
             val code = Timetable.courseCode(c)
@@ -858,8 +862,10 @@ object Checker {
             att.ifEmpty { coursePage }.takeIf { it.isNotEmpty() }?.let { buttons.add(Pair("Sign attendance", it)) }
             if (meeting.isNotEmpty()) buttons.add(Pair("Join class", meeting))
             Notifier.push(
-                ctx, "${Shorts.display(ctx, code)} has started: sign your attendance",
-                "$name\nStarted ${hhmm(start)}. Open the attendance page and mark yourself present.",
+                ctx, if (atStart) "${Shorts.display(ctx, code)} has started: sign your attendance"
+                    else "${Shorts.display(ctx, code)}: signed your attendance?",
+                if (atStart) "$name\nStarted ${hhmm(start)}. Open the attendance page and mark yourself present (until ${hhmm(end)})."
+                    else "$name\nClass ends at ${hhmm(end)}. If you have not signed yet, do it now; it closes when class ends.",
                 true, buttons,
             )
             sent.add(key)
@@ -884,37 +890,39 @@ object Checker {
             val whenS = fmtTime(start)
             val note = if (isManual(e, p)) "\nAttendance for this class is via Teams record." else ""
             val code = Timetable.courseCode(c)
+            // attendance can only be signed in class time: the notice says when, the sign alerts come then
+            val classEnd = classTimes(ctx, e).second
+            val signLine = if (!p.attStartAlert || isManual(e, p) || Timetable.attMode(ctx, code) == "manual") ""
+                else "\nAttendance: sign from ${hhmm(start)} to ${hhmm(classEnd)}. You'll get a reminder when class starts."
             if (Timetable.inPerson(ctx, code)) {
-                // in person: a plain reminder with the room, and the attendance page when there is one
+                // in person: a plain notice with the room (no attendance button: signing opens when class starts)
                 if (kok in sent) continue
                 val room = Timetable.locationOf(ctx, code).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
                 val cid = courseId(e)
-                val att = attendanceUrl(ctx, cid)
                 val buttons = ArrayList<Pair<String, String>>()
-                if (att.isNotEmpty() && !isManual(e, p)) buttons.add(Pair("Attendance", att))
                 if (cid != 0L) buttons.add(Pair("Course page", "${p.site}/course/view.php?id=$cid"))
-                Notifier.push(ctx, "Class in ~$mins min: $cname · in person",
-                    "$name\nStarts $whenS" + (if (room.isNotEmpty()) " · $room" else "") + ".$note", true, buttons)
+                Notifier.push(ctx, "Upcoming class in ~$mins min: $cname · in person",
+                    "$name\nStarts $whenS" + (if (room.isNotEmpty()) " · $room" else "") + ".$note" + signLine, true, buttons)
                 sent.add(kok)
                 sent.add(kno)
                 continue
             }
             val ls = linksForEvent(ctx, e, cal, links)
             if (ls.isNotEmpty()) {
-                val body = "$name\nStarts $whenS.$note\n\nOnline link:" +
+                val body = "$name\nStarts $whenS.$note$signLine\n\nOnline link:" +
                     ls.take(3).joinToString("") { "\n  ${it.first}  (${it.second})" }
                 val buttons = ls.take(3).mapIndexed { i, l -> Pair(if (i == 0) "Join class" else "Link ${i + 1}", l.first) }
-                val title = if (kno in sent) "Online link posted: $cname" else "Class in ~$mins min: $cname"
+                val title = if (kno in sent) "Online link posted: $cname" else "Upcoming class in ~$mins min: $cname"
                 Notifier.push(ctx, title, body, true, buttons)
                 sent.add(kok)
                 sent.add(kno)
             } else if (kno !in sent) {
                 val cid = courseId(e)
                 val courseUrl = if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site
-                val body = "$name\nStarts $whenS.$note\n\nNo online link found yet in the calendar event, " +
+                val body = "$name\nStarts $whenS.$note$signLine\n\nNo online link found yet in the calendar event, " +
                     "course page or announcements. It may be in person, or not posted yet. " +
                     "I'll keep checking until the class starts.\n  $courseUrl"
-                Notifier.push(ctx, "Class in ~$mins min: $cname (no link yet)", body, true, listOf(Pair("Open course", courseUrl)))
+                Notifier.push(ctx, "Upcoming class in ~$mins min: $cname (no link yet)", body, true, listOf(Pair("Open course", courseUrl)))
                 sent.add(kno)
             }
         }

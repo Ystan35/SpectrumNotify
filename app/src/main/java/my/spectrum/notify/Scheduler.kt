@@ -127,8 +127,10 @@ object Scheduler {
             val start = Checker.classTimes(ctx, e).first   // honours your Time Override
             // holiday mode: no class alarms on days outside teaching weeks (decided by the class's own date)
             if (!AcademicCalendar.inTeaching(ctx, localDt(start).toLocalDate())) continue
+            val end = Checker.classTimes(ctx, e).second
             val at = start - 590  // fires just inside the 10-minute window
-            if (start + 20 <= now || at > now + 3 * 86400) continue
+            // kept until the class ends: the last-chance attendance alarm comes during it
+            if (end <= now || at > now + 3 * 86400) continue
             val code = (e.optLong("id") * 31 + start).hashCode()
             if (at > now) {
                 setAlarm(ctx, at * 1000, code)
@@ -138,9 +140,17 @@ object Scheduler {
             // Armed on its own: a re-run inside the last 10 minutes (every check, and the 10-minute alarm
             // itself) must keep it, or the clean-up below cancels it
             if (p.attStartAlert) {
-                val code2 = code xor 0x2A2A2A
-                setAlarm(ctx, (start + 20) * 1000, code2)
-                codes.add(code2)
+                if (start + 20 > now) {
+                    val code2 = code xor 0x2A2A2A
+                    setAlarm(ctx, (start + 20) * 1000, code2)
+                    codes.add(code2)
+                }
+                // and the last-chance one, 10 minutes before the class ends (Checker.checkAttendanceStart)
+                if (end - start > 25 * 60 && end - 600 + 20 > now) {
+                    val code4 = code xor 0x3C3C3C
+                    setAlarm(ctx, (end - 600 + 20) * 1000, code4)
+                    codes.add(code4)
+                }
             }
             // third: the leave-by alert for the shuttle or the walk (Checker.checkLeaveBy), also armed on its own
             val lead = Shuttle.leadMin(ctx)

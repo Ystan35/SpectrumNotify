@@ -233,10 +233,10 @@ class SettingsActivity : BaseActivity() {
 
         target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
             contents = listOf("My Occ", "Attendance reminder", "Classes to ignore", "Teams-recording courses"))
-        heading("Attendance reminder", "A second alert when each class starts, with a Sign attendance button, so you do not forget. " +
+        heading("Attendance reminder", "Sign attendance alerts during class, when signing works: when it starts, and 10 minutes before it ends. " +
             "Not sent for classes where the lecturer takes attendance in class or attendance is by Teams recording.")
         target.addView(android.widget.Switch(this).apply {
-            text = "Remind me when a class starts"
+            text = "Remind me to sign attendance"
             textSize = Type.BODY * Ui.fontScale
             setTextColor(Ui.TEXT)
             minHeight = dp(Ui.touch(48))
