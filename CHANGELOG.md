@@ -9,6 +9,7 @@ Fixes from checking 0.30.0 on a phone with large text.
 - **Walking times match Google Maps:** the estimate assumes a longer path (1.7× the straight line) at 70 m a minute, e.g. to the Faculty of Pharmacy 40 min / 2.8 km instead of 27 min / 2.1 km.
 - **Hidden tasks stay hidden.** A deadline hidden with "Hide this (wrong?)" no longer shows up in the morning summary (it still came in from Spectrum's calendar). Hiding a deadline reminder on the Notifications tab now hides the task itself: its other reminders, its Home card and the morning summary, not only that one line.
 - **Home deadline cards** no longer repeat the course code on a second line ("GUL1001 · UMLEADER" then "GUL1001").
+- **Semester dates editor** lists the dates in the order they happen: teaching starts, mid-semester break, teaching ends, exams, semester ends.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
 
 ## 0.30.0 (versionCode 94)

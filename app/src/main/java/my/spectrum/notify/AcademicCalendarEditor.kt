@@ -48,10 +48,11 @@ object AcademicCalendarEditor {
         col.label("Semester name", Type.LABEL, Ui.TEXT, 0).setTypeface(null, Typeface.BOLD)
         col.addView(labelF, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
 
+        // in the order they happen in the semester
         dateRow("Teaching starts", teachStart) { teachStart = it }
-        dateRow("Teaching ends", teachEnd) { teachEnd = it }
         dateRow("Mid-semester break starts", breakStart) { breakStart = it }
         dateRow("Mid-semester break ends", breakEnd) { breakEnd = it }
+        dateRow("Teaching ends", teachEnd) { teachEnd = it }
         dateRow("Exams start", examStart) { examStart = it }
         dateRow("Exams end", examEnd) { examEnd = it }
         dateRow("Semester ends", semEnd) { semEnd = it }
