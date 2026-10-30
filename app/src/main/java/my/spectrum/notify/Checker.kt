@@ -443,7 +443,7 @@ object Checker {
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
                                kinds: MutableMap<String, FileKind>,
                                secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
-                               secParent: MutableMap<String, String>,
+                               secParent: MutableMap<String, String>, pub: MutableSet<String>,
                                attCmids: MutableMap<Long, HashMap<Long, MutableSet<String>>>, occSeen: MutableMap<Long, MutableSet<String>>,
                                st: State): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
@@ -486,6 +486,8 @@ object Checker {
                 // a sub-section entry is a page, not material: its own files are what notify you
                 val isSub = m.str("modname") == "subsection"
                 if (!isSub) snap[key] = Triple(name, url, sname)
+                // forums are for everyone in the course: never muted for another Occ
+                if (m.str("modname") in setOf("forum", "hsuforum")) pub.add(key)
                 if (!isSub) secOf[key] = skey
                 // what it opens (slides, PDF, …) from its file name / type, or the address of a link
                 val file = contents.firstOrNull()
@@ -599,8 +601,9 @@ object Checker {
             val secOf = HashMap<String, String>()
             val secNames = LinkedHashMap<String, String>()
             val secParent = HashMap<String, String>()
+            val pub = HashSet<String>()
             val result = try {
-                snapshotCourse(api, p.site, c, extra, kinds, secOf, secNames, secParent, attCmids, occSeen, st)
+                snapshotCourse(api, p.site, c, extra, kinds, secOf, secNames, secParent, pub, attCmids, occSeen, st)
             } catch (e: Exception) {
                 Log.w(TAG, "course $cid skipped: $e")
                 prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }
@@ -646,11 +649,17 @@ object Checker {
                 // a page switched off also covers its sub-sections
                 val inPages = newKeys.filter { k -> secOf[k]?.let { Sections.isOff(off, secParent, it) } != true }
                 val mine = Groups.mine(st, p, code)
+                val sure = Groups.mineSure(p, code)
                 val fresh = inPages.filter { k ->
+                    // announcements and forums are public: always notify
+                    if (k.startsWith("ann:") || k in pub) return@filter true
                     val t = snap[k]
-                    // its own name, its page, the main page that page sits in ("Tutorial Occ 3" › "Week 2"), its description
+                    // a page (or the main page it sits in, "Tutorial Occ 3" › "Week 2") for another Occ: muted, but only
+                    // when your Occ is one you set or confirmed; not sure = it stays on
                     val mainPage = secOf[k]?.let { secParent[it] }?.let { secNames[it] } ?: ""
-                    !Groups.isForeign("${t?.first ?: ""} ${t?.third ?: ""} $mainPage ${extra[k] ?: ""}", mine)
+                    if (Groups.isForeign("${t?.third ?: ""} $mainPage", sure)) return@filter false
+                    // the item itself names another group ("Occ 3 slides")
+                    !Groups.isForeign("${t?.first ?: ""} ${extra[k] ?: ""}", mine)
                 }
                 val freshItems = fresh.filter { snap[it] != null }
                 if (freshItems.isNotEmpty()) pushCourse(ctx, p.site, c, freshItems.map { snap[it]!! }, freshItems.map { kinds[it] })
@@ -697,7 +706,9 @@ object Checker {
             val text = n.str("subject") + " " + n.str("smallmessage").ifEmpty { n.str("fullmessage") }
             val code = Groups.codeIn(text)
             val mine = if (code.isNotEmpty()) Groups.mine(st, p, code) else Groups.mineAnywhere(st, p)
-            if (Groups.isForeign(text, mine)) {
+            // forum posts and announcements are public: never skipped for another group
+            val public = n.str("component") == "mod_forum" || "/mod/forum/" in n.str("contexturl")
+            if (!public && Groups.isForeign(text, mine)) {
                 NotifyLog.sys(ctx, "Skipped a notification for another group: ${clean(n.str("subject"), 60)}")
                 continue
             }

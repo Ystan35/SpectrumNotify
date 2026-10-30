@@ -59,14 +59,23 @@ class SectionsActivity : BaseActivity() {
         val off = Sections.offSet(this, cid)
 
         // your Occ decides which Occ pages are yours; pages for another Occ are skipped automatically
+        // muted only when sure: an Occ you set or confirmed; one guessed from attendance names only marks pages
         val code = Courses.all(this).firstOrNull { it.id == cid }?.code ?: ""
-        val mine = Groups.mine(State(this), Prefs(this), code)
-        val myOcc = mine.mapNotNull { Regex("^occ(.+)").find(it)?.groupValues?.get(1) }
-        box.label(if (myOcc.isNotEmpty()) "Your Occ: ${myOcc.joinToString(", ")}. Pages for another Occ are skipped."
-            else "Set your Occ on the Courses page to skip pages for other Occs.", Type.LABEL, if (myOcc.isNotEmpty()) Ui.GREEN else Ui.ORANGE, 12)
+        val p = Prefs(this)
+        val sure = Groups.mineSure(p, code)
+        val mine = Groups.mine(State(this), p, code)
+        val myOcc = (sure.ifEmpty { mine }).mapNotNull { Regex("^occ(.+)").find(it)?.groupValues?.get(1) }
+        box.label(when {
+            sure.isNotEmpty() && myOcc.isNotEmpty() -> "Your Occ: ${myOcc.joinToString(", ")}. Other Occs' pages are muted; announcements and forums always notify."
+            myOcc.isNotEmpty() -> "Your Occ looks like ${myOcc.joinToString(", ")}. Confirm it on the Courses page to mute other Occs' pages."
+            else -> "Set your Occ on the Courses page to mute other Occs' pages."
+        }, Type.LABEL, if (sure.isNotEmpty()) Ui.GREEN else Ui.ORANGE, 12)
 
         fun row(pg: Sections.Page, sub: Boolean, parentOff: Boolean) {
-            val foreign = Groups.isForeign(pg.name, mine)
+            // announcements are public; another Occ's page is muted only when your Occ is sure
+            val public = pg.id == Sections.ANN
+            val foreign = !public && Groups.isForeign(pg.name, sure)
+            val maybe = !public && !foreign && Groups.isForeign(pg.name, mine)
             val ours = mine.isNotEmpty() && Groups.tokens(pg.name).any { it in mine }
             val wrap = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -78,7 +87,7 @@ class SectionsActivity : BaseActivity() {
             sw.setTextColor(Ui.TEXT)
             sw.textSize = (if (sub) Type.BODY else Type.BODY_L) * Ui.fontScale
             sw.minHeight = dp(Ui.touch(48))
-            sw.setPadding(dp(4), dp(8), dp(4), dp(if (foreign || ours || parentOff) 0 else 8))
+            sw.setPadding(dp(4), dp(8), dp(4), dp(if (foreign || maybe || ours || parentOff) 0 else 8))
             // another Occ's page or a page under a switched-off main page: shown off and greyed, its own choice kept
             val forced = foreign || parentOff
             sw.isChecked = !forced && pg.id !in off
@@ -87,8 +96,9 @@ class SectionsActivity : BaseActivity() {
             sw.setOnCheckedChangeListener { _, on -> Sections.setOn(this@SectionsActivity, cid, pg.id, on); render() }
             wrap.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             val note = when {
-                foreign -> Pair("Another Occ: skipped", Ui.DIM)
+                foreign -> Pair("Another Occ: muted (its forums still notify)", Ui.DIM)
                 parentOff -> Pair("Off with its main page", Ui.DIM)
+                maybe -> Pair("Maybe another Occ: kept on until you confirm your Occ", Ui.ORANGE)
                 ours -> Pair("Your Occ", Ui.GREEN)
                 else -> null
             }
@@ -97,7 +107,7 @@ class SectionsActivity : BaseActivity() {
         }
         for (top in tops) {
             row(top, sub = false, parentOff = false)
-            val topOff = top.id in off || Groups.isForeign(top.name, mine)
+            val topOff = top.id in off || (top.id != Sections.ANN && Groups.isForeign(top.name, sure))
             kids[top.id]?.forEach { row(it, sub = true, parentOff = topOff) }
         }
         box.btn("Turn all pages on") { setAll(pages, true) }

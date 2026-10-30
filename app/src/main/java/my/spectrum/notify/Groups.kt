@@ -69,6 +69,16 @@ object Groups {
     }
 
     /**
+     * Your groups for one course only when you set or confirmed them (Courses / Confirm your Occ / Settings),
+     * not guessed from attendance names: whole pages are muted for another Occ only when this is sure.
+     */
+    fun mineSure(p: Prefs, code: String): Set<String> {
+        if (p.groupsOff) return emptySet()
+        val up = code.uppercase(Locale.ROOT)
+        return manual(p).filter { it.code.isEmpty() || it.code == up }.flatMap { it.tokens }.toSet()
+    }
+
+    /**
      * The single best-guess Occ per course, for prefilling the confirm dialog.
      * Priority: attendance-event occ token (your own events name your Occ) >
      * availability-detected occ (pages you can see). Returns code -> occ number, only when
