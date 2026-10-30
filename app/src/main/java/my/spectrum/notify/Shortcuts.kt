@@ -64,13 +64,16 @@ object Shortcuts {
 
     /** UM defaults, also what "Reset to UM defaults" restores. */
     fun defaults(): List<Link> = listOf(
-        Link("Maya", "https://maya.um.edu.my/s/studentsignin", "person"),
-        Link("ePay", "https://epay.um.edu.my/", "payment"),
-        Link("STAREcs", "https://starecs.um.edu.my/", "grades"),
-        Link("MySiswa", "https://mysis.um.edu.my/", "school"),
         Link("Spectrum", "https://spectrum.um.edu.my/", "book"),
         Link("SpectrumExam", "https://spectrumexam.um.edu.my/", "grades"),
+        Link("Maya", MAYA_URL, "person"),
+        Link("ePay", "https://epay.um.edu.my/", "payment"),
+        Link("MySiswa", "https://mysis.um.edu.my/", "school"),
+        Link("STAREcs", "https://starecs.um.edu.my/", "grades"),
     )
+
+    private const val MAYA_URL = "https://maya.um.edu.my/sitsvision/wrd/siw_lgn"
+    private const val MAYA_OLD_URL = "https://maya.um.edu.my/s/studentsignin"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences("shortcuts", Context.MODE_PRIVATE)
 
@@ -98,7 +101,7 @@ object Shortcuts {
      * join the defaults (only when no link to them is there already; your own edits stay).
      */
     private fun upgrade(ctx: Context, list: List<Link>): List<Link> {
-        if (sp(ctx).getBoolean("v031", false)) return list
+        if (sp(ctx).getBoolean("v031", false)) return reorderOnce(ctx, list)
         val out = list.map { l ->
             if (Uri.parse(l.url).host.equals("mysiswa.um.edu.my", true)) l.copy(url = "https://mysis.um.edu.my/") else l
         }.toMutableList()
@@ -109,6 +112,20 @@ object Shortcuts {
         }
         save(ctx, out)
         sp(ctx).edit().putBoolean("v031", true).apply()
+        return reorderOnce(ctx, out)
+    }
+
+    /**
+     * Once: the UM links take the default order with your own links after them, and Maya's old sign-in
+     * address becomes the login page (an address you changed yourself stays).
+     */
+    private fun reorderOnce(ctx: Context, list: List<Link>): List<Link> {
+        if (sp(ctx).getBoolean("linkOrder2", false)) return list
+        val hosts = defaults().map { Uri.parse(it.url).host }
+        val out = list.map { l -> if (l.url.trimEnd('/').equals(MAYA_OLD_URL, true)) l.copy(url = MAYA_URL) else l }
+            .sortedBy { l -> hosts.indexOfFirst { it.equals(Uri.parse(l.url).host, true) }.let { if (it < 0) hosts.size else it } }
+        save(ctx, out)
+        sp(ctx).edit().putBoolean("linkOrder2", true).apply()
         return out
     }
 

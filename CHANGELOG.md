@@ -39,6 +39,7 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Clearing an Occ** (Not set) means Confirm your Occ asks about that course again, and its card stays where it is on the Courses page.
 - **Large text:** the Notifications tab label fits; Notification pages no longer repeats the course code in its heading.
 - **Courses opens faster:** the saved data is read once for the page, not again for each course.
+- **UM links** follow the order Spectrum, SpectrumExam, Maya, ePay, MySiswa, STAREcs, with your own links after them, and Maya opens the login page (maya.um.edu.my/sitsvision/wrd/siw_lgn). Saved lists are updated once; a Maya address you changed yourself stays.
 
 ## 0.30.0 (versionCode 94)
 Design and accessibility pass across the whole app.
