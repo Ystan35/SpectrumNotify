@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-30 (4)",
+ "generatedAt": "2026-10-30 (5)",
  "source": "JPPHB Shuttle Bus Operation Schedule (Oct 2024), times as in the PDF, confirmed 30 Oct 2026, stops from the UM shuttle app; Rapid KL routes from Prasarana GTFS (api.data.gov.my)",
  "officialUrl": "https://jpphb.um.edu.my/transport",
  "phone": "03-7967 3311",
@@ -334,7 +334,9 @@
     "Main Library",
     "UMLib",
     "Perpustakaan",
-    "Perpustakaan Utama"
+    "Perpustakaan Utama",
+    "KPS",
+    "Perdanasiswa"
    ]
   },
   {
@@ -346,7 +348,9 @@
    "aka": [
     "DTC",
     "Dewan Tunku Canselor",
-    "Canselor"
+    "Canselor",
+    "Canselori",
+    "Chancellery"
    ]
   },
   {
@@ -595,6 +599,59 @@
    "aka": [
     "KK6",
     "Ibnu Sina"
+   ]
+  },
+  {
+   "id": "UMMC",
+   "name": "UM Medical Centre (UMMC)",
+   "stop": false,
+   "near": "FENGW",
+   "q": "University Malaya Medical Centre, Kuala Lumpur",
+   "lat": 3.113611,
+   "lng": 101.652778,
+   "aka": [
+    "UMMC",
+    "PPUM",
+    "Hospital",
+    "Pusat Perubatan"
+   ]
+  },
+  {
+   "id": "AEI",
+   "name": "Asia-Europe Institute (AEI)",
+   "stop": false,
+   "near": "RDNS",
+   "q": "Asia-Europe Institute, Universiti Malaya",
+   "lat": 3.125159,
+   "lng": 101.659091,
+   "aka": [
+    "AEI"
+   ]
+  },
+  {
+   "id": "ARENA",
+   "name": "UM Arena (stadium)",
+   "stop": false,
+   "near": "API",
+   "q": "UM Arena, Universiti Malaya",
+   "lat": 3.130972,
+   "lng": 101.659333,
+   "aka": [
+    "Stadium",
+    "Arena"
+   ]
+  },
+  {
+   "id": "RIMBA",
+   "name": "Rimba Ilmu",
+   "stop": false,
+   "near": "API",
+   "q": "Rimba Ilmu Botanical Gardens, Universiti Malaya",
+   "lat": 3.131069,
+   "lng": 101.657964,
+   "aka": [
+    "Botanical Garden",
+    "Rimba"
    ]
   }
  ],
