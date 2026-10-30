@@ -18,6 +18,8 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Alarms after a restart:** class, summary and event alarms are set again as soon as the phone starts, without waiting for internet.
 - **Semester dates editor:** checks every date (break inside teaching, exams after teaching, semester end last, both dates of a pair set) and says what is wrong without closing, so nothing you entered is lost. Break and exam dates have Clear.
 - **Class alerts** name the course as the app does ("GUL1001 · UMLEADER"), not Spectrum's long name.
+- **Confirm your Occ saves what you picked.** The dialog saved the Occ one above the one shown whenever it had a guess (and nothing at all when the guess was the first Occ). Your picks are now kept while you switch to another app to check something; if Android rebuilt the screen meanwhile, the dialog comes back with them. A tap outside no longer closes it; Back counts as Later.
+- **Dropdowns only act when you change them.** Opening Courses or Settings could clear a course's Occ (or reset your home stop) when the saved value was not in the list.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
 
 ## 0.30.0 (versionCode 94)

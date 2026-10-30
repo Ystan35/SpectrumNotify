@@ -786,8 +786,15 @@ fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit
     sp.background = roundBg(Ui.BAR, Ui.BORDER_STRONG, this)
     sp.setPopupBackgroundDrawable(roundBg(Ui.BAR, Ui.BORDER, this))
     sp.setSelection(selected, false)
+    // [onSelect] only for a real change: Android also reports the starting item once when the spinner is first
+    // laid out, which wrote a value nobody picked (wrong Occ saved, or an Occ cleared when it was not in the list)
+    var last = selected
     sp.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) = onSelect(position)
+        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+            if (position == last) return
+            last = position
+            onSelect(position)
+        }
         override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
     }
     return sp

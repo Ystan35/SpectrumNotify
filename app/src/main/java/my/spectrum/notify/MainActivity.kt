@@ -123,7 +123,17 @@ class MainActivity : BaseActivity() {
         ovAt = 0L
         handler.post(ticker)
         if (refreshing) handler.post(refreshWatch)
-        confirmOccDialog()
+        // the Occ dialog was still open when the screen was rebuilt (you switched apps): bring it back, picks kept
+        if (getSharedPreferences("health", MODE_PRIVATE).getBoolean(semFlag("occDialogOpen"), false)) confirmOccDialog(manual = true)
+        else confirmOccDialog()
+    }
+
+    override fun onDestroy() {
+        // the screen is going (e.g. rebuilt while you were in another app): close the Occ dialog quietly, without
+        // counting it as answered, so onResume of the new screen reopens it with your picks
+        occDialog?.let { it.setOnDismissListener(null); it.dismiss() }
+        occDialog = null
+        super.onDestroy()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -133,6 +143,7 @@ class MainActivity : BaseActivity() {
     }
 
     private var occDialogShown = false
+    private var occDialog: android.app.AlertDialog? = null
 
     private data class OccAsk(val code: String, val cname: String, val occs: List<String>, val predicted: String?)
 
@@ -172,17 +183,28 @@ class MainActivity : BaseActivity() {
         val flags = getSharedPreferences("health", MODE_PRIVATE)
         if (!manual && flags.getBoolean(semFlag("occAutoAsked"), false)) return
         val asks = pendingOccAsks()
-        if (asks.isEmpty()) return
+        if (asks.isEmpty()) {
+            // nothing left to confirm (done elsewhere meanwhile): no dialog to bring back
+            flags.edit().putBoolean(semFlag("occDialogOpen"), false).remove(semFlag("occDraft")).apply()
+            return
+        }
         occDialogShown = true
-        flags.edit().putBoolean(semFlag("occAutoAsked"), true).apply()
+        // "occDialogOpen" stays set until you answer (Save all / Later / Back), so a rebuilt screen reopens it
+        flags.edit().putBoolean(semFlag("occAutoAsked"), true).putBoolean(semFlag("occDialogOpen"), true).apply()
+        // your picks so far (kept while you look things up in another app): course code -> Occ
+        val draft = try { JSONObject(flags.getString(semFlag("occDraft"), "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
+        fun saveDraft() = flags.edit().putString(semFlag("occDraft"), draft.toString()).apply()
+        fun closeDialog() = flags.edit().putBoolean(semFlag("occDialogOpen"), false).remove(semFlag("occDraft")).apply()
 
         // one dialog with the My-classes layout: scrollable content (last courses reachable),
         // sized below the app header
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(10), dp(24), 0) }
         val box = ScrollView(this).apply { addView(content) }
-        // prefill from the attendance-learning prediction, mapped into the full option list
+        // prefill: what you already picked (draft), else the attendance-learning prediction, in the full option list
         val choices = IntArray(asks.size) { i ->
-            asks[i].predicted?.let { pnum -> asks[i].occs.indexOf(pnum) } ?: -1
+            val picked = draft.optString(asks[i].code, "")
+            if (picked.isNotEmpty() && picked in asks[i].occs) asks[i].occs.indexOf(picked)
+            else asks[i].predicted?.let { pnum -> asks[i].occs.indexOf(pnum) } ?: -1
         }
         asks.forEachIndexed { i, a ->
             // single-line row: code·name on the left, occ dropdown on the right
@@ -201,17 +223,25 @@ class MainActivity : BaseActivity() {
                 hasPrediction -> a.occs.map { it }
                 else -> listOf("?") + a.occs.map { it }
             }
+            // with a "?" first, position 1 is the first Occ; without it, position 0 is (this used to be off by one)
+            val offset = if (opts.firstOrNull() == "?") 1 else 0
             val spinnerSel = if (hasPrediction) choices[i] else 0
-            val sp = spinner(opts, spinnerSel) { pos -> choices[i] = pos - 1 }
+            val sp = spinner(opts, spinnerSel) { pos ->
+                if (a.occs.isEmpty()) return@spinner
+                choices[i] = pos - offset
+                if (choices[i] >= 0) draft.put(a.code, a.occs[choices[i]]) else draft.remove(a.code)
+                saveDraft()
+            }
             sp.layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
             row.addView(sp, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
             content.addView(row, LinearLayout.LayoutParams(MATCH, WRAP))
         }
-        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
+        occDialog = android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Confirm your Occ")
             .setMessage("Prefilled from your attendance and materials — please confirm each. Unlisted courses keep working without a filter.")
             .setView(box)
             .setPositiveButton("Save all") { _, _ ->
+                closeDialog()
                 val notInCatalog = ArrayList<String>()
                 asks.forEachIndexed { i, a ->
                     val v = choices[i]
@@ -232,10 +262,14 @@ class MainActivity : BaseActivity() {
                 }
                 ovAt = 0L
             }
-            .setNegativeButton("Later", null)
+            .setNegativeButton("Later") { _, _ -> closeDialog() }
+            .setOnCancelListener { closeDialog() }   // Back = Later
             // the next steps (check times, short names) are on the "Get set up" card, not more dialogs
-            .setOnDismissListener { occDialogShown = false; setupSig = ""; render() }
-            .show()
+            .setOnDismissListener { occDialogShown = false; occDialog = null; setupSig = ""; render() }
+            .create()
+        // a stray tap outside must not throw away your picks
+        occDialog?.setCanceledOnTouchOutside(false)
+        occDialog?.show()
     }
 
     // ------------------------------------------------------------ "Get set up" card
