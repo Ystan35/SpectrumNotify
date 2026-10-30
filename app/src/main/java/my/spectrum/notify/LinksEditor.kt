@@ -92,7 +92,7 @@ object LinksEditor {
                     .show()
             }
         }
-        box.action("Reset to UM defaults", "Puts back Maya, ePay, STAREcs and MySiswa and removes your other links. You can undo right after.") {
+        box.action("Reset to UM defaults", "Puts back Maya, ePay, STAREcs, MySiswa, Spectrum and SpectrumExam and removes your other links. You can undo right after.") {
             val before = Shortcuts.all(activity)
             saveAndRedraw(Shortcuts.defaults())
             activity.undoBar("UM links reset") { saveAndRedraw(before) }
@@ -105,6 +105,8 @@ object LinksEditor {
         val old = index?.let { list.getOrNull(it) }
         val dp = { n: Int -> activity.dp(n) }
         var chosen = old?.icon ?: ""
+        // an icon you tapped stays; otherwise it follows what you type (a Drive slides link gets the slides icon)
+        var pickedByHand = old != null
         val col = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
 
         col.label("Icon", Type.LABEL, Ui.TEXT, 4).setTypeface(null, Typeface.BOLD)
@@ -122,7 +124,7 @@ object LinksEditor {
                     setImageResource(res)
                     scaleType = ImageView.ScaleType.CENTER
                     isClickable = true
-                    setOnClickListener { chosen = key; paint() }
+                    setOnClickListener { chosen = key; pickedByHand = true; paint() }
                 }
                 cells.add(Pair(key, v))
                 r.addView(v, LinearLayout.LayoutParams(0, dp(Ui.touch(48)), 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
@@ -147,6 +149,17 @@ object LinksEditor {
         val urlF = field("e.g. umlib.um.edu.my", old?.url ?: "", true)
         col.addView(urlF, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
         col.label("https:// is added for you if you leave it out.", Type.CAPTION, Ui.DIM, 4)
+        val follow = object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) {
+                if (pickedByHand) return
+                chosen = Shortcuts.guessIcon(nameF.text.toString(), urlF.text.toString())
+                paint()
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        }
+        nameF.addTextChangedListener(follow)
+        urlF.addTextChangedListener(follow)
 
         val scroll = android.widget.ScrollView(activity).apply { addView(col) }
         val b = AlertDialog.Builder(activity, Ui.dialogTheme)

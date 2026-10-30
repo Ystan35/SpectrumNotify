@@ -26,6 +26,7 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Choosing a place works the same everywhere:** Settings → Home stop and the class editor's Nearest bus stop open the Shuttle screen's searchable list (grouped, with short names like "· KK12", "· FSKTM") instead of a long dropdown.
 - **UM links:** MySiswa opens mysis.um.edu.my (the old address had moved); Spectrum and SpectrumExam are added. Lists you already edited get the same update once; your own links stay.
 - **File type icons:** new materials say what they are: the list reads "- Lecture 3 (slides) [Week 3]" and the buttons "Slides 1", "PDF 2" (or "Open slides" for one item), each with a document, slides, spreadsheet, PDF, folder or video icon. Google Drive / Docs and OneDrive / SharePoint links are recognised too, also in older notifications.
+- **UM link icons for files and drives:** presentation, spreadsheet, PDF, folder and cloud drive join the icon picker (Settings → UM links). A new link's icon follows what you type until you pick one: a Google Slides or PowerPoint link gets the presentation icon, Sheets / Excel the spreadsheet, Docs / Word the document, a Drive folder the folder, Google Drive / OneDrive / Dropbox the cloud.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
 
 ## 0.30.0 (versionCode 94)

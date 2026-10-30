@@ -17,7 +17,9 @@ object Shortcuts {
     val ICONS: List<Pair<String, Int>> = listOf(
         "school" to R.drawable.lk_school, "payment" to R.drawable.lk_payment, "library" to R.drawable.lk_library,
         "calendar" to R.drawable.lk_calendar, "mail" to R.drawable.lk_mail, "book" to R.drawable.lk_book,
-        "web" to R.drawable.lk_web, "document" to R.drawable.lk_document, "bus" to R.drawable.lk_bus,
+        "web" to R.drawable.lk_web, "document" to R.drawable.lk_document, "slides" to R.drawable.lk_slides,
+        "sheet" to R.drawable.lk_sheet, "pdf" to R.drawable.lk_pdf, "folder" to R.drawable.lk_folder,
+        "cloud" to R.drawable.lk_cloud, "bus" to R.drawable.lk_bus,
         "food" to R.drawable.lk_food, "wifi" to R.drawable.lk_wifi, "person" to R.drawable.lk_person,
         "star" to R.drawable.lk_star, "grades" to R.drawable.lk_grades, "video" to R.drawable.lk_video,
         "link" to R.drawable.lk_link, "home" to R.drawable.lk_home, "map" to R.drawable.lk_map,
@@ -27,7 +29,8 @@ object Shortcuts {
     /** Spoken name of each icon, for screen readers in the picker. */
     fun iconLabel(key: String): String = when (key) {
         "school" -> "Graduation cap"; "payment" -> "Payment card"; "library" -> "Library"; "calendar" -> "Calendar"
-        "mail" -> "Mail"; "book" -> "Book"; "web" -> "Web"; "document" -> "Document"; "bus" -> "Bus"
+        "mail" -> "Mail"; "book" -> "Book"; "web" -> "Web"; "document" -> "Document"; "slides" -> "Presentation"
+        "sheet" -> "Spreadsheet"; "pdf" -> "PDF"; "folder" -> "Folder"; "cloud" -> "Cloud drive"; "bus" -> "Bus"
         "food" -> "Food"; "wifi" -> "Wi-Fi"; "person" -> "Person"; "star" -> "Star"; "grades" -> "Grades"
         "video" -> "Video"; "link" -> "Link"; "home" -> "Home"; "map" -> "Map"; else -> "Help"
     }
@@ -38,6 +41,13 @@ object Shortcuts {
     fun guessIcon(name: String, url: String): String {
         val t = "$name $url".lowercase()
         return when {
+            // files and drives first (Google Drive / Docs, OneDrive / SharePoint), so "Exam slides" is slides
+            "docs.google.com/presentation" in t || "/:p:/" in t || "slides" in t || "presentation" in t || Regex("""\.pptx?\b""").containsMatchIn(t) -> "slides"
+            "docs.google.com/spreadsheets" in t || "/:x:/" in t || "spreadsheet" in t || Regex("""\.(xlsx?|csv)\b""").containsMatchIn(t) -> "sheet"
+            "docs.google.com/document" in t || "/:w:/" in t || Regex("""\.docx?\b""").containsMatchIn(t) -> "document"
+            "/:b:/" in t || Regex("""\.pdf\b""").containsMatchIn(t) -> "pdf"
+            "drive.google.com/drive/folders" in t || "/:f:/" in t || "folder" in t -> "folder"
+            "drive.google.com" in t || "onedrive" in t || "1drv.ms" in t || "sharepoint.com" in t || "dropbox" in t -> "cloud"
             "maya" in t || "siswa" in t -> "person"
             "pay" in t || "fee" in t || "bayar" in t -> "payment"
             "starecs" in t || "result" in t || "grade" in t || "exam" in t -> "grades"
