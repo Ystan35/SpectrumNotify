@@ -19,6 +19,7 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Semester dates editor:** checks every date (break inside teaching, exams after teaching, semester end last, both dates of a pair set) and says what is wrong without closing, so nothing you entered is lost. Break and exam dates have Clear.
 - **Class alerts** name the course as the app does ("GUL1001 · UMLEADER"), not Spectrum's long name.
 - **Confirm your Occ saves what you picked.** The dialog saved the Occ one above the one shown whenever it had a guess (and nothing at all when the guess was the first Occ). Your picks are now kept while you switch to another app to check something; if Android rebuilt the screen meanwhile, the dialog comes back with them. A tap outside no longer closes it; Back counts as Later.
+- **Check your Occ:** after you confirm (or change) a course's Occ, its card on the Courses page asks you to check that the class times match your UM timetable, with Looks right to clear it. Until every one is checked, Home's Get set up card has a step that opens the Courses page.
 - **Dropdowns only act when you change them.** Opening Courses or Settings could clear a course's Occ (or reset your home stop) when the saved value was not in the list.
 - **Home class card:** tap the card, then "Mark in person" / "Mark online" switches that course right there (no meeting links and the room shown when in person), with Undo.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.

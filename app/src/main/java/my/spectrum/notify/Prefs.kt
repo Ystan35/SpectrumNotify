@@ -180,6 +180,16 @@ class Prefs(ctx: Context) {
     fun occConfirmed(code: String): Boolean = sp.getBoolean("occconf:$code", false)
     fun setOccConfirmed(code: String) { sp.edit().putBoolean("occconf:$code", true).apply() }
 
+    /** An Occ just chosen that you have not checked on the Courses page yet ("Looks right" clears it). */
+    fun occNeedsCheck(code: String): Boolean = sp.getBoolean("occcheck:" + code.uppercase(), false)
+    fun setOccNeedsCheck(code: String, on: Boolean) {
+        val k = "occcheck:" + code.uppercase()
+        if (on) sp.edit().putBoolean(k, true).apply() else sp.edit().remove(k).apply()
+    }
+    /** Courses still waiting for that check. */
+    fun occChecksPending(): List<String> =
+        sp.all.keys.filter { it.startsWith("occcheck:") && sp.getBoolean(it, false) }.map { it.removePrefix("occcheck:") }
+
     /** Attendance duplicate labels per course, e.g. attlabel:WIX1003 = "0=Lecture,1=Tutorial". */
     fun attendanceLabel(course: String): String? =
         health.getString("attlabel:$course", null)

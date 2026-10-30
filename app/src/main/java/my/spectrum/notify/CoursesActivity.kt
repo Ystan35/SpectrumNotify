@@ -186,6 +186,24 @@ class CoursesActivity : BaseActivity() {
                 "If that is your class, your Occ may be wrong.", Type.CAPTION, Ui.ORANGE, 4)
         }
 
+        // just chosen (Confirm your Occ, or the dropdown above): ask you to check it against the class times
+        if (current.isNotEmpty() && pp.occNeedsCheck(c.code)) {
+            val note = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(4))
+                background = roundBg(Ui.tint(Ui.ORANGE, 0x1F), Ui.ORANGE, this@CoursesActivity, Radius.SM)
+            }
+            note.addView(tv("Check your Occ", Type.LABEL, Ui.ORANGE, true))
+            note.addView(tv("You chose Occ $current. Do the class times above match your UM timetable (MAYA)? " +
+                "If not, pick another Occ.", Type.CAPTION, Ui.TEXT).apply { setPadding(0, dp(2), 0, 0) })
+            note.addView(button("Looks right", Emphasis.TERTIARY, Ui.ORANGE) {
+                pp.setOccNeedsCheck(c.code, false)
+                render()
+            }.apply { contentDescription = "Occ $current for ${c.code} looks right" },
+                LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(-12) })
+            col.addView(note, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+        }
+
         // actions: the course page (a link out) and which pages notify you
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         if (c.url.isNotEmpty()) {
@@ -214,6 +232,8 @@ class CoursesActivity : BaseActivity() {
         val pp = Prefs(this)
         val keep = pp.myGroups.split(",").map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
         pp.myGroups = (if (occ.isEmpty()) keep else keep + "$code:occ$occ").joinToString(", ")
+        // a new Occ has new class times: ask for a look at them; none set, nothing to check
+        pp.setOccNeedsCheck(code, occ.isNotEmpty())
         if (occ.isEmpty()) Timetable.clearCatalog(this, code) else Timetable.autoSetup(this, code, occ)
     }
 

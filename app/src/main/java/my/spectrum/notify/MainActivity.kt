@@ -251,6 +251,8 @@ class MainActivity : BaseActivity() {
                         val keep = p.myGroups.split(",").map { it.trim() }
                             .filter { it.isNotEmpty() && !it.startsWith("${a.code}:", true) }
                         p.myGroups = (keep + "${a.code}:occ${a.occs[v]}").joinToString(", ")
+                        // flag it: you are asked to check this Occ against the class times on the Courses page
+                        p.setOccNeedsCheck(a.code, true)
                         val setup = Timetable.autoSetup(this, a.code, a.occs[v])
                         if (!setup) notInCatalog.add(a.code)
                     }
@@ -325,6 +327,15 @@ class MainActivity : BaseActivity() {
             SetupStep("Confirm your Occ",
                 if (!checked) "Your Occ (class group) is detected after the first check." else "Your Occ is your class group, e.g. Occ 2. It decides which links and posts are yours.",
                 loggedIn && checked && !occPending, "Confirm", go = if (occPending) ({ confirmOccDialog(manual = true) }) else null),
+            // after confirming: check each chosen Occ on the Courses page (its class times must match your UM timetable)
+            p.occChecksPending().let { pend ->
+                SetupStep("Check your Occ on the Courses page",
+                    if (pend.isEmpty()) "Each course card shows the class times of the Occ you chose."
+                    else "Make sure the class times for " + pend.joinToString(", ") { Shorts.display(this, it) } +
+                        " match your UM timetable, then tap Looks right on each card.",
+                    loggedIn && checked && !occPending && pend.isEmpty(), "Open",
+                    go = if (pend.isNotEmpty()) ({ startActivity(Intent(this, CoursesActivity::class.java)) }) else null)
+            },
             SetupStep("Check your class times", "Open the timetable once and tap any class whose time looks wrong to fix it.",
                 flags.getBoolean(semFlag("setupReviewed"), false), "Open") {
                 flags.edit().putBoolean(semFlag("setupReviewed"), true).apply()
