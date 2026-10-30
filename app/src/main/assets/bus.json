@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-30 (3)",
+ "generatedAt": "2026-10-30 (4)",
  "source": "JPPHB Shuttle Bus Operation Schedule (Oct 2024), times as in the PDF, confirmed 30 Oct 2026, stops from the UM shuttle app; Rapid KL routes from Prasarana GTFS (api.data.gov.my)",
  "officialUrl": "https://jpphb.um.edu.my/transport",
  "phone": "03-7967 3311",
@@ -16,7 +16,11 @@
    "name": "UM Central",
    "stop": true,
    "lat": 3.121085,
-   "lng": 101.653628
+   "lng": 101.653628,
+   "aka": [
+    "UM Sentral",
+    "Sentral"
+   ]
   },
   {
    "id": "ZABA",
@@ -89,7 +93,8 @@
    "aka": [
     "FK",
     "FOE",
-    "Engineering"
+    "Engineering",
+    "Fakulti Kejuruteraan"
    ]
   },
   {
@@ -146,7 +151,9 @@
    "aka": [
     "FS",
     "FOS",
-    "Science"
+    "Science",
+    "Fakulti Sains",
+    "FSains"
    ]
   },
   {
@@ -181,7 +188,8 @@
    "lng": 101.65435,
    "aka": [
     "FK",
-    "Engineering"
+    "Engineering",
+    "Fakulti Kejuruteraan"
    ]
   },
   {
@@ -257,7 +265,8 @@
    "aka": [
     "FSKTM",
     "FCSIT",
-    "Computer Science"
+    "Computer Science",
+    "Fakulti Sains Komputer"
    ]
   },
   {
@@ -267,7 +276,8 @@
    "lat": 3.114012,
    "lng": 101.662208,
    "aka": [
-    "LRT"
+    "LRT",
+    "LRT Universiti"
    ]
   },
   {
@@ -275,14 +285,22 @@
    "name": "Masjid Ar-Rahman UM (KL1102)",
    "stop": true,
    "lat": 3.117132,
-   "lng": 101.662619
+   "lng": 101.662619,
+   "aka": [
+    "Masjid",
+    "Mosque",
+    "Ar-Rahman"
+   ]
   },
   {
    "id": "R2137",
    "name": "Fakulti Undang-Undang UM (KL2137)",
    "stop": true,
    "lat": 3.118674,
-   "lng": 101.661071
+   "lng": 101.661071,
+   "aka": [
+    "Law"
+   ]
   },
   {
    "id": "R1103",
@@ -299,7 +317,11 @@
    "name": "Jabatan Bioperubatan UM (KL1104)",
    "stop": true,
    "lat": 3.119083,
-   "lng": 101.655587
+   "lng": 101.655587,
+   "aka": [
+    "Biomedical",
+    "Bioperubatan"
+   ]
   },
   {
    "id": "R1109",
@@ -309,7 +331,10 @@
    "lng": 101.65358,
    "aka": [
     "Library",
-    "Main Library"
+    "Main Library",
+    "UMLib",
+    "Perpustakaan",
+    "Perpustakaan Utama"
    ]
   },
   {
@@ -319,7 +344,9 @@
    "lat": 3.121867,
    "lng": 101.657186,
    "aka": [
-    "DTC"
+    "DTC",
+    "Dewan Tunku Canselor",
+    "Canselor"
    ]
   },
   {
@@ -422,7 +449,8 @@
    "lng": 101.652755,
    "aka": [
     "FBE",
-    "FPE"
+    "FPE",
+    "Fakulti Perniagaan dan Ekonomi"
    ]
   },
   {
@@ -434,7 +462,8 @@
    "lng": 101.655202,
    "aka": [
     "FAB",
-    "Alam Bina"
+    "Alam Bina",
+    "Fakulti Alam Bina"
    ]
   },
   {
@@ -445,7 +474,9 @@
    "lat": 3.120145,
    "lng": 101.652388,
    "aka": [
-    "FEDU"
+    "FEDU",
+    "Fakulti Pendidikan",
+    "Education"
    ]
   },
   {
@@ -457,7 +488,8 @@
    "lng": 101.65185,
    "aka": [
     "FASS",
-    "FSSS"
+    "FSSS",
+    "Fakulti Sastera dan Sains Sosial"
    ]
   },
   {
@@ -469,7 +501,8 @@
    "lng": 101.65092,
    "aka": [
     "FLL",
-    "FBL"
+    "FBL",
+    "Fakulti Bahasa dan Linguistik"
    ]
   },
   {
@@ -480,7 +513,8 @@
    "lat": 3.121061,
    "lng": 101.656951,
    "aka": [
-    "FCA"
+    "FCA",
+    "Fakulti Kesenian Kreatif"
    ]
   },
   {
@@ -493,7 +527,8 @@
    "aka": [
     "FOL",
     "FUU",
-    "Law"
+    "Law",
+    "Fakulti Undang-Undang"
    ]
   },
   {
@@ -505,7 +540,8 @@
    "lng": 101.652865,
    "aka": [
     "FOM",
-    "Medicine"
+    "Medicine",
+    "Fakulti Perubatan"
    ]
   },
   {
@@ -516,7 +552,8 @@
    "lat": 3.115289,
    "lng": 101.651872,
    "aka": [
-    "Pharmacy"
+    "Pharmacy",
+    "Fakulti Farmasi"
    ]
   },
   {
@@ -528,7 +565,8 @@
    "lng": 101.653193,
    "aka": [
     "FOD",
-    "Dentistry"
+    "Dentistry",
+    "Fakulti Pergigian"
    ]
   },
   {
