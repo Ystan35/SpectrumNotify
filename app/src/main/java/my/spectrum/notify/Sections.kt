@@ -29,24 +29,31 @@ object Sections {
         sp(ctx).edit().putString("off", all.toString()).apply()
     }
 
-    /** Called by the check: the pages the course has now, in page order (key -> name). */
-    fun remember(st: State, cid: Long, names: Map<String, String>) {
+    /** One page; [parent] = the main page a sub-section sits in ("" = a main page). */
+    data class Page(val id: String, val name: String, val parent: String = "")
+
+    /** Called by the check: the pages the course has now, in page order (key -> name), and each sub-section's main page. */
+    fun remember(st: State, cid: Long, names: Map<String, String>, parents: Map<String, String> = emptyMap()) {
         val root = st.j.optJSONObject("sections") ?: JSONObject()
         val arr = JSONArray()
-        for ((k, n) in names) arr.put(JSONObject().put("id", k).put("name", n))
+        for ((k, n) in names) arr.put(JSONObject().put("id", k).put("name", n).put("parent", parents[k] ?: ""))
         root.put("$cid", arr)
         st.j.put("sections", root)
     }
 
-    /** Pages of a course as last seen (key, name). */
-    fun known(ctx: Context, cid: Long): List<Pair<String, String>> {
+    /** Pages of a course as last seen. */
+    fun known(ctx: Context, cid: Long): List<Page> {
         val arr = State(ctx).j.optJSONObject("sections")?.optJSONArray("$cid") ?: return emptyList()
-        return arr.objs().map { Pair(it.str("id"), it.str("name")) }
+        return arr.objs().map { Page(it.str("id"), it.str("name"), it.str("parent")) }
     }
+
+    /** Is page [key] off, by itself or because its main page ([parents]: sub-section -> main page) is off? */
+    fun isOff(off: Set<String>, parents: Map<String, String>, key: String): Boolean =
+        key in off || parents[key]?.let { it in off } == true
 
     /** "all pages on", or "2 pages off". */
     fun summary(ctx: Context, cid: Long): String {
-        val known = known(ctx, cid).map { it.first }.toSet()
+        val known = known(ctx, cid).map { it.id }.toSet()
         val off = offSet(ctx, cid).count { it in known }
         return if (off == 0) "all pages on" else "$off page" + (if (off == 1) "" else "s") + " off"
     }

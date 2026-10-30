@@ -443,13 +443,30 @@ object Checker {
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
                                kinds: MutableMap<String, FileKind>,
                                secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
+                               secParent: MutableMap<String, String>,
                                attCmids: MutableMap<Long, HashMap<Long, MutableSet<String>>>, occSeen: MutableMap<Long, MutableSet<String>>,
                                st: State): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
         val raw = ArrayList<Triple<String, String, Long>>()
         val cid = c.optLong("id")
         val occSets = ArrayList<Set<String>>()
-        for (sec in api.arr("core_course_get_contents", mapOf("courseid" to cid)).objs()) {
+        val sections = api.arr("core_course_get_contents", mapOf("courseid" to cid)).objs()
+        // Sub-sections (Moodle 4.5+): a "subsection" module in a main page stands for a page of its own, which
+        // Spectrum lists separately (component "mod_subsection", itemid = that module; its link names the page).
+        // Remember which main page each sits in, so the pages list nests them and switching a main page off covers them.
+        val parentByCm = HashMap<Long, String>()
+        val parentBySec = HashMap<String, String>()
+        for (sec in sections) for (m in (sec.optJSONArray("modules") ?: JSONArray()).objs()) {
+            if (m.str("modname") != "subsection") continue
+            parentByCm[m.optLong("id")] = sec.optLong("id").toString()
+            Regex("""section\.php\?id=(\d+)""").find(m.str("url"))?.let { parentBySec[it.groupValues[1]] = sec.optLong("id").toString() }
+        }
+        for (sec in sections) {
+            val k = sec.optLong("id").toString()
+            val parent = (if (sec.str("component") == "mod_subsection") parentByCm[sec.optLong("itemid")] else null) ?: parentBySec[k]
+            if (parent != null && parent != k) secParent[k] = parent
+        }
+        for (sec in sections) {
             val sname = sec.str("name")
             val skey = sec.optLong("id").toString()
             // section descriptions often hold the weekly meeting links (e.g. "Online Lecture Link …: <href>")
@@ -466,15 +483,17 @@ object Checker {
                 val key = "mod:${m.optLong("id")}:$mt"
                 val name = m.str("name")
                 val url = m.str("url")
-                snap[key] = Triple(name, url, sname)
-                secOf[key] = skey
+                // a sub-section entry is a page, not material: its own files are what notify you
+                val isSub = m.str("modname") == "subsection"
+                if (!isSub) snap[key] = Triple(name, url, sname)
+                if (!isSub) secOf[key] = skey
                 // what it opens (slides, PDF, …) from its file name / type, or the address of a link
                 val file = contents.firstOrNull()
-                FileKind.of(if (m.str("modname") == "url") file?.str("fileurl") ?: url else url,
+                if (!isSub) FileKind.of(if (m.str("modname") == "url") file?.str("fileurl") ?: url else url,
                     "${file?.str("filename") ?: ""} ${file?.str("mimetype") ?: ""} ${m.str("modname").takeIf { it == "folder" } ?: ""}")
                     ?.let { kinds[key] = it }
                 val desc = clean(m.str("description"), 300)
-                if (desc.isNotEmpty()) extra[key] = desc
+                if (desc.isNotEmpty() && !isSub) extra[key] = desc
                 if (m.str("modname") == "attendance" && m.optLong("id") != 0L) {
                     // Spectrum can list one attendance module PER OCC (e.g. "Attendance Occ 2",
                     // "Attendance Occ 4"). Remember every one with its group tokens so the
@@ -579,15 +598,16 @@ object Checker {
             val kinds = HashMap<String, FileKind>()
             val secOf = HashMap<String, String>()
             val secNames = LinkedHashMap<String, String>()
+            val secParent = HashMap<String, String>()
             val result = try {
-                snapshotCourse(api, p.site, c, extra, kinds, secOf, secNames, attCmids, occSeen, st)
+                snapshotCourse(api, p.site, c, extra, kinds, secOf, secNames, secParent, attCmids, occSeen, st)
             } catch (e: Exception) {
                 Log.w(TAG, "course $cid skipped: $e")
                 prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }
                 continue
             }
             val snap = result.first
-            Sections.remember(st, cid, secNames)
+            Sections.remember(st, cid, secNames, secParent)
             attCmids[cid]?.let { perCid ->
                 // store ALL attendance cmids for this course keyed by "cid:cmid" -> tokens JSON
                 val am = st.j.optJSONObject("attcmids") ?: JSONObject()
@@ -623,11 +643,14 @@ object Checker {
                 // pages you switched off, then items that name another group (Occ / tutorial); both still count as seen
                 val code = Timetable.courseCode(c)
                 val off = Sections.offSet(ctx, cid)
-                val inPages = newKeys.filter { k -> secOf[k]?.let { it in off } != true }
+                // a page switched off also covers its sub-sections
+                val inPages = newKeys.filter { k -> secOf[k]?.let { Sections.isOff(off, secParent, it) } != true }
                 val mine = Groups.mine(st, p, code)
                 val fresh = inPages.filter { k ->
                     val t = snap[k]
-                    !Groups.isForeign("${t?.first ?: ""} ${t?.third ?: ""} ${extra[k] ?: ""}", mine)
+                    // its own name, its page, the main page that page sits in ("Tutorial Occ 3" › "Week 2"), its description
+                    val mainPage = secOf[k]?.let { secParent[it] }?.let { secNames[it] } ?: ""
+                    !Groups.isForeign("${t?.first ?: ""} ${t?.third ?: ""} $mainPage ${extra[k] ?: ""}", mine)
                 }
                 val freshItems = fresh.filter { snap[it] != null }
                 if (freshItems.isNotEmpty()) pushCourse(ctx, p.site, c, freshItems.map { snap[it]!! }, freshItems.map { kinds[it] })
