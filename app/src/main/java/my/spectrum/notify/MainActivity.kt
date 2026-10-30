@@ -895,23 +895,6 @@ class MainActivity : BaseActivity() {
                 if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
-            // switch this course between online and in person right here (same as Settings → Online or in person)
-            val modeCode = c.code.ifEmpty { c.course }
-            val wasInPerson = Timetable.inPerson(this, modeCode)
-            actionsRow.addView(pill(if (wasInPerson) "Mark online" else "Mark in person", false) {
-                fun setMode(inPerson: Boolean) {
-                    Timetable.setInPerson(this@MainActivity, listOf(modeCode), inPerson)
-                    Scheduler.scheduleAll(this@MainActivity)
-                    try { NextClassWidget.updateAll(this@MainActivity) } catch (_: Exception) { }
-                    ovAt = 0L; heroSig = ""; render()
-                }
-                setMode(!wasInPerson)
-                val name = Shorts.display(this@MainActivity, modeCode)
-                undoBar(if (wasInPerson) "$name is online again" else "$name is in person") { setMode(wasInPerson) }
-            }.apply {
-                contentDescription = if (wasInPerson) "Mark ${Shorts.display(this@MainActivity, modeCode)} as online"
-                    else "Mark ${Shorts.display(this@MainActivity, modeCode)} as in person: no meeting links, room shown"
-            }, lp(WRAP, dp(Ui.touch(44))).apply { leftMargin = dp(10) })
             actions.addView(actionsRow, lp(WRAP, WRAP))
             card.addView(actions, lp(MATCH, WRAP).apply { topMargin = dp(14) })
             // countdown progress: how far we are into the wait (or the class itself), fills to 100%
@@ -1052,6 +1035,35 @@ class MainActivity : BaseActivity() {
         if (Timetable.attMode(this, c.course) == "manual") row("Attendance", "Taken in class by the lecturer — no link needed", null)
         else if (att.isNotEmpty()) row("Attendance", att, att)
         if (meeting.isNotEmpty()) row("Join class — meeting link", meeting, meeting)
+        // switch the course between online and in person here (same as Settings → Online or in person)
+        val modeCode = c.code.ifEmpty { c.course }
+        val wasInPerson = Timetable.inPerson(this, modeCode)
+        val modeName = Shorts.display(this, modeCode)
+        fun setMode(inPerson: Boolean) {
+            Timetable.setInPerson(this, listOf(modeCode), inPerson)
+            Scheduler.scheduleAll(this)
+            try { NextClassWidget.updateAll(this) } catch (_: Exception) { }
+            ovAt = 0L; heroSig = ""; render()
+        }
+        sheet.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
+            addView(iconText(if (wasInPerson) R.drawable.ic_laptop else R.drawable.ic_place,
+                if (wasInPerson) "Mark online" else "Mark in person", Type.BODY_L, Ui.TEXT, true))
+            addView(tv(
+                if (wasInPerson) "In person now. Online: Join class and meeting links come back for $modeName."
+                else "No Join class or meeting links for $modeName; the room is shown instead.",
+                Type.CAPTION, Ui.DIM,
+            ).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            isClickable = true
+            contentDescription = if (wasInPerson) "Mark $modeName as online" else "Mark $modeName as in person"
+            setOnClickListener {
+                sheetDismiss()
+                setMode(!wasInPerson)
+                undoBar(if (wasInPerson) "$modeName is online again" else "$modeName is in person") { setMode(wasInPerson) }
+            }
+        }, lp(MATCH, WRAP).apply { topMargin = dp(8) })
         // edit this class entry: find the real slot (the editor finish()es silently otherwise)
         val day = localDt(c.start).dayOfWeek.value
         val startMin = localDt(c.start).let { it.hour * 60 + it.minute }
