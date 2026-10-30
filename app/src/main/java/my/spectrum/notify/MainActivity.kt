@@ -895,6 +895,23 @@ class MainActivity : BaseActivity() {
                 if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
             }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
             actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
+            // switch this course between online and in person right here (same as Settings → Online or in person)
+            val modeCode = c.code.ifEmpty { c.course }
+            val wasInPerson = Timetable.inPerson(this, modeCode)
+            actionsRow.addView(pill(if (wasInPerson) "Mark online" else "Mark in person", false) {
+                fun setMode(inPerson: Boolean) {
+                    Timetable.setInPerson(this@MainActivity, listOf(modeCode), inPerson)
+                    Scheduler.scheduleAll(this@MainActivity)
+                    try { NextClassWidget.updateAll(this@MainActivity) } catch (_: Exception) { }
+                    ovAt = 0L; heroSig = ""; render()
+                }
+                setMode(!wasInPerson)
+                val name = Shorts.display(this@MainActivity, modeCode)
+                undoBar(if (wasInPerson) "$name is online again" else "$name is in person") { setMode(wasInPerson) }
+            }.apply {
+                contentDescription = if (wasInPerson) "Mark ${Shorts.display(this@MainActivity, modeCode)} as online"
+                    else "Mark ${Shorts.display(this@MainActivity, modeCode)} as in person: no meeting links, room shown"
+            }, lp(WRAP, dp(Ui.touch(44))).apply { leftMargin = dp(10) })
             actions.addView(actionsRow, lp(WRAP, WRAP))
             card.addView(actions, lp(MATCH, WRAP).apply { topMargin = dp(14) })
             // countdown progress: how far we are into the wait (or the class itself), fills to 100%
