@@ -48,8 +48,9 @@ fun Activity.pickerField(
 private fun groupOf(p: ShuttleModel.Place): Int {
     val n = p.name.lowercase(Locale.ROOT)
     return when {
-        !p.isStop || n.startsWith("faculty") || n.startsWith("academy") || n.startsWith("fakulti") || "pasum" in n -> 0
+        // a college is a college, with or without a stop of its own (KK2 has none: bus to KK1, then walk)
         " rc" in "$n " || "residential" in n || "kolej kediaman" in n || "international house" in n -> 1
+        !p.isStop || n.startsWith("faculty") || n.startsWith("academy") || n.startsWith("fakulti") || "pasum" in n -> 0
         else -> 2
     }
 }
