@@ -22,6 +22,7 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Verify Occ selection:** after you confirm (or change) a course's Occ, its card on the Courses page asks "Occ 29: do the times above match MAYA?" with Looks right to clear it. Until every one is verified, Home's Get set up card has a step that opens the Courses page.
 - **Dropdowns only act when you change them.** Opening Courses or Settings could clear a course's Occ (or reset your home stop) when the saved value was not in the list.
 - **Home class card:** tap the card, then "Mark in person" / "Mark online" switches that course right there (no meeting links and the room shown when in person), with Undo.
+- **Short names popup:** titled "Short names" like its button; each course shows its name without repeating the code, on up to two lines.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
 
 ## 0.30.0 (versionCode 94)

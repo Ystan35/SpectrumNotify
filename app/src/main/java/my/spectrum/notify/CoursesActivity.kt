@@ -288,13 +288,15 @@ class CoursesActivity : BaseActivity() {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             left.addView(tv(c.code, Type.BODY, Ui.TEXT, true))
-            if (c.name.isNotEmpty() && !c.name.equals(c.code, true)) {
-                left.addView(tv(c.name, Type.CAPTION, Ui.DIM).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            // the name without the code in front ("GIG1003 BASIC …" repeated the code and cut the name off)
+            val name = Timetable.classTitle(c.code, c.name, "")
+            if (name.isNotEmpty()) {
+                left.addView(tv(name, Type.CAPTION, Ui.DIM).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
             }
             row.addView(left, LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
             val f = EditText(this).apply {
                 setText(Shorts.get(this@CoursesActivity, c.code))
-                hint = "short form"
+                hint = "short name"
                 textSize = Type.LABEL * Ui.fontScale
                 setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM); setSingleLine()
                 minWidth = dp(90)
@@ -311,8 +313,8 @@ class CoursesActivity : BaseActivity() {
             (resources.displayMetrics.heightPixels * 0.5).toInt().coerceAtLeast(dp(180)),
         )
         AlertDialog.Builder(this, Ui.dialogTheme)
-            .setTitle("Short forms for your courses")
-            .setMessage("Write the name you recognise. Blank = show the code only.")
+            .setTitle("Short names")
+            .setMessage("Blank = code only.")
             .setView(scroll)
             .setPositiveButton("Save all") { _, _ ->
                 var n = 0
@@ -320,7 +322,7 @@ class CoursesActivity : BaseActivity() {
                     val v = f.text.toString().trim()
                     if (v != Shorts.get(this, code)) { Shorts.set(this, code, v); n++ }
                 }
-                Toast.makeText(this, "Saved $n short form" + (if (n == 1) "" else "s") + ".", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Saved $n short name" + (if (n == 1) "" else "s") + ".", Toast.LENGTH_SHORT).show()
                 render()
             }
             .setNegativeButton("Cancel", null)
