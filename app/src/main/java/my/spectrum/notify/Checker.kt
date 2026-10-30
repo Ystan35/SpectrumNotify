@@ -466,13 +466,20 @@ object Checker {
             val parent = (if (sec.str("component") == "mod_subsection") parentByCm[sec.optLong("itemid")] else null) ?: parentBySec[k]
             if (parent != null && parent != k) secParent[k] = parent
         }
+        val nameById = sections.associate { it.optLong("id").toString() to it.str("name") }
         for (sec in sections) {
             val sname = sec.str("name")
             val skey = sec.optLong("id").toString()
+            // A link's own name often does not say whose it is ("Link for online classes"), but the section it sits in
+            // does ("DR. FAEZAH KASSIM (OCC 1 & 2)" › "Pautan MS Teams"): when the section or its main section names a
+            // group, that goes into the link's label, so its Occ is matched like one in the name
+            val where = listOf(sname, secParent[skey]?.let { nameById[it] } ?: "").filter { it.isNotBlank() }
+                .joinToString(" › ")
+            val inGroup = if (groupTokens(where).isNotEmpty()) " [" + clean(where, 60) + "]" else ""
             // section descriptions often hold the weekly meeting links (e.g. "Online Lecture Link …: <href>")
             // (Moodle sends "summary" as a plain HTML string; scan all of it, links can sit past 2000 chars)
             val secDesc = sec.optJSONObject("summary")?.optString("text") ?: sec.optString("summary", "")
-            for (u in findLinks(secDesc)) raw.add(Triple(u, "section: " + clean(sname, 50), mt0Of(sec)))
+            for (u in findLinks(secDesc)) raw.add(Triple(u, "section: " + clean(sname, 50) + inGroup, mt0Of(sec)))
             val mods = (sec.optJSONArray("modules") ?: JSONArray()).objs()
             if (mods.isNotEmpty()) {
                 secNames[skey] = sname.ifEmpty { if (sec.optInt("section") == 0) "General" else "Page ${sec.optInt("section")}" }
@@ -522,12 +529,12 @@ object Checker {
                     if (occs.isNotEmpty()) occSets.add(occs)
                 }
                 if (m.str("modname") in MEETING_MODS && m.optBoolean("uservisible", true) && url.isNotEmpty()) {
-                    raw.add(Triple(url, clean(name), mt))
+                    raw.add(Triple(url, clean(name) + inGroup, mt))
                 }
-                for (u in findLinks(m.str("description"))) raw.add(Triple(u, "page: " + clean(name, 50), mt))
+                for (u in findLinks(m.str("description"))) raw.add(Triple(u, "page: " + clean(name, 50) + inGroup, mt))
                 if (m.str("modname") == "url") {
                     for (f in contents) for (u in findLinks(f.str("fileurl"))) {
-                        raw.add(Triple(u, clean(name), f.optLong("timemodified", 0L)))
+                        raw.add(Triple(u, clean(name) + inGroup, f.optLong("timemodified", 0L)))
                     }
                 }
             }
