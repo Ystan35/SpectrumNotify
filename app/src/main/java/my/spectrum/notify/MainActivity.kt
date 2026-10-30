@@ -329,10 +329,9 @@ class MainActivity : BaseActivity() {
                 loggedIn && checked && !occPending, "Confirm", go = if (occPending) ({ confirmOccDialog(manual = true) }) else null),
             // after confirming: check each chosen Occ on the Courses page (its class times must match your UM timetable)
             p.occChecksPending().let { pend ->
-                SetupStep("Check your Occ on the Courses page",
-                    if (pend.isEmpty()) "Each course card shows the class times of the Occ you chose."
-                    else "Make sure the class times for " + pend.joinToString(", ") { Shorts.display(this, it) } +
-                        " match your UM timetable, then tap Looks right on each card.",
+                SetupStep("Verify Occ selection",
+                    if (pend.isEmpty()) "Class times match your Occ."
+                    else "Check on Courses: " + pend.joinToString(", ") { Shorts.display(this, it) },
                     loggedIn && checked && !occPending && pend.isEmpty(), "Open",
                     go = if (pend.isNotEmpty()) ({ startActivity(Intent(this, CoursesActivity::class.java)) }) else null)
             },

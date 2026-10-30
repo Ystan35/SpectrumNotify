@@ -193,9 +193,8 @@ class CoursesActivity : BaseActivity() {
                 setPadding(dp(12), dp(10), dp(12), dp(4))
                 background = roundBg(Ui.tint(Ui.ORANGE, 0x1F), Ui.ORANGE, this@CoursesActivity, Radius.SM)
             }
-            note.addView(tv("Check your Occ", Type.LABEL, Ui.ORANGE, true))
-            note.addView(tv("You chose Occ $current. Do the class times above match your UM timetable (MAYA)? " +
-                "If not, pick another Occ.", Type.CAPTION, Ui.TEXT).apply { setPadding(0, dp(2), 0, 0) })
+            note.addView(tv("Verify Occ selection", Type.LABEL, Ui.ORANGE, true))
+            note.addView(tv("Occ $current: do the times above match MAYA?", Type.CAPTION, Ui.TEXT).apply { setPadding(0, dp(2), 0, 0) })
             note.addView(button("Looks right", Emphasis.TERTIARY, Ui.ORANGE) {
                 pp.setOccNeedsCheck(c.code, false)
                 render()
