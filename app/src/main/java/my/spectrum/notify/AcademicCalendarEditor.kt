@@ -26,19 +26,29 @@ object AcademicCalendarEditor {
         val F = DateTimeFormatter.ofPattern("d MMM yyyy")
 
         fun lbl(t: String) { col.label(t, Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD) }
-        fun dateRow(title: String, initial: LocalDate?, onPick: (LocalDate) -> Unit) {
+        /** [optional] dates (break, exams) get a Clear button, so a set date can be removed again. */
+        fun dateRow(title: String, initial: LocalDate?, optional: Boolean = false, onPick: (LocalDate?) -> Unit) {
             lbl(title)
+            var current = initial
+            val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
             val b = Button(activity); b.isAllCaps = false
             b.text = initial?.format(F) ?: "Not set"
             b.setOnClickListener {
-                val base = initial ?: LocalDate.now(zone())
+                val base = current ?: LocalDate.now(zone())
                 android.app.DatePickerDialog(activity, { _, y, m, d ->
                     val picked = LocalDate.of(y, m + 1, d)
+                    current = picked
                     onPick(picked)
                     b.text = picked.format(F)
                 }, base.year, base.monthValue - 1, base.dayOfMonth).show()
             }
-            col.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (optional) row.addView(activity.button("Clear", Emphasis.TERTIARY) {
+                current = null
+                onPick(null)
+                b.text = "Not set"
+            }.apply { contentDescription = "Clear $title" })
+            col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         // label as a text field
         val labelF = EditText(activity).apply {
@@ -49,13 +59,13 @@ object AcademicCalendarEditor {
         col.addView(labelF, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
 
         // in the order they happen in the semester
-        dateRow("Teaching starts", teachStart) { teachStart = it }
-        dateRow("Mid-semester break starts", breakStart) { breakStart = it }
-        dateRow("Mid-semester break ends", breakEnd) { breakEnd = it }
-        dateRow("Teaching ends", teachEnd) { teachEnd = it }
-        dateRow("Exams start", examStart) { examStart = it }
-        dateRow("Exams end", examEnd) { examEnd = it }
-        dateRow("Semester ends", semEnd) { semEnd = it }
+        dateRow("Teaching starts", teachStart) { teachStart = it ?: teachStart }
+        dateRow("Mid-semester break starts", breakStart, optional = true) { breakStart = it }
+        dateRow("Mid-semester break ends", breakEnd, optional = true) { breakEnd = it }
+        dateRow("Teaching ends", teachEnd) { teachEnd = it ?: teachEnd }
+        dateRow("Exams start", examStart, optional = true) { examStart = it }
+        dateRow("Exams end", examEnd, optional = true) { examEnd = it }
+        dateRow("Semester ends", semEnd) { semEnd = it ?: semEnd }
         col.label(
             "During breaks and after teaching ends, class entries hide from the timetable, " +
                 "hero card and widgets — but Spectrum notifications keep coming.",
@@ -67,23 +77,46 @@ object AcademicCalendarEditor {
             ViewGroup.LayoutParams.MATCH_PARENT,
             (activity.resources.displayMetrics.heightPixels * 0.7).toInt().coerceAtLeast(dp(240)),
         )
-        AlertDialog.Builder(activity, Ui.dialogTheme)
+        /** What is wrong with the dates, in plain words, or null when they are in order. */
+        fun problem(): String? {
+            val bs = breakStart; val be = breakEnd; val xs = examStart; val xe = examEnd
+            return when {
+                teachEnd.isBefore(teachStart) -> "Teaching ends before it starts."
+                (bs == null) != (be == null) -> "Set both mid-semester break dates, or clear both."
+                bs != null && be != null && be.isBefore(bs) -> "The mid-semester break ends before it starts."
+                bs != null && be != null && (bs.isBefore(teachStart) || be.isAfter(teachEnd)) -> "The mid-semester break must be between teaching start and teaching end."
+                (xs == null) != (xe == null) -> "Set both exam dates, or clear both."
+                xs != null && xe != null && xe.isBefore(xs) -> "Exams end before they start."
+                xs != null && xs.isBefore(teachEnd) -> "Exams start before teaching ends."
+                semEnd.isBefore(xe ?: teachEnd) -> "The semester ends before " + (if (xe != null) "exams end." else "teaching ends.")
+                else -> null
+            }
+        }
+        // the reason a save was refused, shown in the dialog so nothing you entered is lost
+        val error = col.label("", Type.LABEL, Ui.RED, 12).apply { visibility = android.view.View.GONE }
+
+        val dialog = AlertDialog.Builder(activity, Ui.dialogTheme)
             .setTitle("Semester dates")
             .setView(scroll)
-            .setPositiveButton("Save") { _, _ ->
-                val l = labelF.text.toString().trim().ifEmpty { "Semester" }
-                // sanity: end after start where both set
-                if (teachEnd.isBefore(teachStart)) {
-                    Toast.makeText(activity, "Teaching end must be after teaching start.", Toast.LENGTH_LONG).show()
-                    return@setPositiveButton
-                }
-                AcademicCalendar.save(activity, AcademicCalendar.Dates(
-                    l, teachStart, teachEnd, breakStart, breakEnd, examStart, examEnd, semEnd,
-                ))
-                Toast.makeText(activity, "Semester dates saved.", Toast.LENGTH_SHORT).show()
-                onChanged()
-            }
+            .setPositiveButton("Save", null)
             .setNegativeButton("Cancel", null)
             .show()
+        // set here, not in the builder, so a refused save keeps the dialog open
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val bad = problem()
+            if (bad != null) {
+                error.text = bad
+                error.visibility = android.view.View.VISIBLE
+                scroll.post { scroll.fullScroll(android.view.View.FOCUS_DOWN) }
+                return@setOnClickListener
+            }
+            val l = labelF.text.toString().trim().ifEmpty { "Semester" }
+            AcademicCalendar.save(activity, AcademicCalendar.Dates(
+                l, teachStart, teachEnd, breakStart, breakEnd, examStart, examEnd, semEnd,
+            ))
+            Toast.makeText(activity, "Semester dates saved.", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+            onChanged()
+        }
     }
 }

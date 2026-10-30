@@ -269,7 +269,9 @@ class NotificationsActivity : BaseActivity() {
 
     // ------------------------------------------------------------ one notification record
     private fun card(e: NotifyLog.Entry): View {
-        val done = NotifyLog.isDone(this, e.ts)
+        // a deadline reminder is done when its task is (marked here or on Home)
+        val task = Checker.reminderTaskName(e.title)
+        val done = NotifyLog.isDone(this, e.ts) || (task != null && Checker.isTaskDone(this, task))
         val cat = catOf(e)
         val col = Cat.color(cat)
         var open = e.ts == openTs
@@ -353,13 +355,15 @@ class NotificationsActivity : BaseActivity() {
             extraChips.add(Pair(if (done) "Mark as not done" else "Mark as done") {
                 if (done) {
                     NotifyLog.unmarkDone(this, e.ts)
+                    if (task != null) Checker.setTaskDone(this, task, false)
                     logStamp = -1L; recSig = ""; render()
                 } else {
                     AlertDialog.Builder(this, Ui.dialogTheme)
                         .setTitle("Mark as done?")
-                        .setMessage("The title stays on the list with a line through it, so you can still find it. Nothing is deleted, and you can undo with \"Mark as not done\".")
+                        .setMessage("The title stays on the list with a line through it, so you can still find it, and you get no more reminders for this task. Nothing is deleted, and you can undo with \"Mark as not done\".")
                         .setPositiveButton("Mark as done") { _, _ ->
                             NotifyLog.markDone(this, e.ts)
+                            if (task != null) Checker.setTaskDone(this, task, true)
                             logStamp = -1L; recSig = ""; render()
                         }
                         .setNegativeButton("Cancel", null)

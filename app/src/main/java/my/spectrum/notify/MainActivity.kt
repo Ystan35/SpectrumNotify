@@ -730,11 +730,14 @@ class MainActivity : BaseActivity() {
                 card.addView(pill("Log in", true) { startActivity(Intent(this, LoginWebActivity::class.java)) }, lp(WRAP, WRAP))
             } else {
                 val due = ov.due.firstOrNull()
-                val inBreak = !AcademicCalendar.inTeaching(this, java.time.LocalDate.now(zone()))
+                val today = java.time.LocalDate.now(zone())
+                val inBreak = !AcademicCalendar.inTeaching(this, today)
+                // say which part of the calendar it is (break, revision, exams…), not "semester break" for all of them
+                val period = AcademicCalendar.describe(this, today) ?: "No teaching today"
                 card.addView(label(if (inBreak) "HOLIDAY MODE" else "ALL CLEAR"))
                 card.addView(tv(
-                    if (inBreak) "Semester break — classes are hidden until teaching resumes" else "No classes coming up",
-                    24f, white, true,
+                    if (inBreak) "$period: classes are hidden until teaching resumes" else "No classes coming up",
+                    Type.HEADLINE, white, true,
                 ).apply { setPadding(0, dp(6), 0, 0) })
                 card.addView(tv(
                     if (due != null) "Next deadline: ${due.name} ${relIn(due.ts - now)}." else "Enjoy the free time. New updates will appear below.",
@@ -1074,10 +1077,9 @@ class MainActivity : BaseActivity() {
     }
 
     /** One task (deadline) in a bottom sheet, matching the course sheet's look. */
-    private fun dueSheet(d: Checker.DueItem, doneKey: String) {
+    private fun dueSheet(d: Checker.DueItem) {
         sheetDismiss()
-        val sp = getSharedPreferences("health", MODE_PRIVATE)
-        val isDone = sp.getBoolean(doneKey, false)
+        val isDone = Checker.isTaskDone(this, d.name, d.eventId, d.ts)
         val sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(20))
@@ -1109,19 +1111,22 @@ class MainActivity : BaseActivity() {
         if (d.url.isNotEmpty()) row("View task", d.url) { openUrl(d.url) }
         row(
             if (isDone) "Mark as not done" else "Mark as done",
-            if (isDone) "Puts it back on your active list" else "Keeps it on the list, struck through — you've handled it",
+            if (isDone) "Puts it back on your active list, with reminders" else "Keeps it on the list, struck through; no more reminders",
         ) {
-            sp.edit().putBoolean(doneKey, !isDone).apply()
+            Checker.setTaskDone(this, d.name, !isDone, d.eventId, d.ts)
             dueSig = ""
             render()
         }
         row("Hide this (wrong?)", "Removes it from Home, Notifications and reminders — you can undo right after") {
+            // by id, and by name so its reminders leave the Notifications list too
             if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId)
+            NotifyLog.hideEvent(this, Checker.hiddenNameKey(d.name))
             sheetDismiss()
             dueSig = ""
             render()
             undoBar("Deadline hidden") {
                 if (d.eventId != 0L) NotifyLog.unhideEvent(this, "dl:" + d.eventId)
+                NotifyLog.unhideEvent(this, Checker.hiddenNameKey(d.name))
                 dueSig = ""
                 render()
             }
@@ -1170,13 +1175,11 @@ class MainActivity : BaseActivity() {
 
     private fun renderDue() {
         val now = System.currentTimeMillis() / 1000
-        val health = getSharedPreferences("health", MODE_PRIVATE)
-        fun doneKey(d: Checker.DueItem) = "dueDone:" + d.eventId + ":" + d.ts
+        fun done(d: Checker.DueItem) = Checker.isTaskDone(this, d.name, d.eventId, d.ts)
         // finished ones move behind the open ones
-        val items = ov.due.filter { it.ts - now < 14 * 86400 }.take(8)
-            .sortedBy { health.getBoolean(doneKey(it), false) }
-        // the minute keeps "Due in …" current
-        val sig = items.joinToString("|") { "${it.ts}${it.name}" } + ":" + now / 60
+        val items = ov.due.filter { it.ts - now < 14 * 86400 }.take(8).sortedBy { done(it) }
+        // the minute keeps "Due in …" current; done state too (it can change on the Notifications tab)
+        val sig = items.joinToString("|") { "${it.ts}${it.name}${done(it)}" } + ":" + now / 60
         if (sig == dueSig) return
         dueSig = sig
         dueSection.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
@@ -1184,14 +1187,13 @@ class MainActivity : BaseActivity() {
         for (d in items) {
             val left = d.ts - now
             val col = if (left < 86400) Ui.RED else if (left < 3 * 86400) Ui.ORANGE else Ui.GREEN
-            val doneKey = doneKey(d)
-            val isDone = health.getBoolean(doneKey, false)
+            val isDone = done(d)
             val c = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
                 background = roundBg(Ui.BAR, if (isDone) Ui.CYAN else Ui.BORDER, this@MainActivity, Radius.MD)
                 isClickable = true
-                setOnClickListener { dueSheet(d, doneKey) }
+                setOnClickListener { dueSheet(d) }
             }
             // urgency stripe across the top edge: readable at a glance without the badge
             c.addView(View(this).apply {

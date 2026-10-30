@@ -119,13 +119,14 @@ object Scheduler {
         val p = Prefs(ctx)
         val st = State(ctx)
         val now = System.currentTimeMillis() / 1000
-        val cal = Checker.myCalendar(st, p)
-        // holiday mode: skip class reminder alarms outside teaching weeks
-        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now(zone()))
+        // without the classes you removed on the Timetable
+        val cal = Checker.activeCalendar(ctx, st, p)
         val codes = LinkedHashSet<Int>()
         for (e in cal) {
-            if (!classesActive || !Checker.isAttEvent(e)) continue
+            if (!Checker.isAttEvent(e)) continue
             val start = Checker.classTimes(ctx, e).first   // honours your Time Override
+            // holiday mode: no class alarms on days outside teaching weeks (decided by the class's own date)
+            if (!AcademicCalendar.inTeaching(ctx, localDt(start).toLocalDate())) continue
             val at = start - 590  // fires just inside the 10-minute window
             if (start + 20 <= now || at > now + 3 * 86400) continue
             val code = (e.optLong("id") * 31 + start).hashCode()

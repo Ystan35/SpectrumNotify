@@ -38,7 +38,8 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         Scheduler.ensurePolling(app)
-        Scheduler.scheduleEventReminders(app)
+        // class, summary and event alarms from the cached calendar right away: the check below waits for internet
+        try { Scheduler.scheduleAll(app) } catch (_: Exception) { Scheduler.scheduleEventReminders(app) }
         Scheduler.pollNow(app)
     }
 }

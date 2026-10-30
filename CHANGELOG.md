@@ -10,6 +10,13 @@ Fixes from checking 0.30.0 on a phone with large text.
 - **Hidden tasks stay hidden.** A deadline hidden with "Hide this (wrong?)" no longer shows up in the morning summary (it still came in from Spectrum's calendar). Hiding a deadline reminder on the Notifications tab now hides the task itself: its other reminders, its Home card and the morning summary, not only that one line.
 - **Home deadline cards** no longer repeat the course code on a second line ("GUL1001 · UMLEADER" then "GUL1001").
 - **Semester dates editor** lists the dates in the order they happen: teaching starts, mid-semester break, teaching ends, exams, semester ends.
+- **Removed classes stay removed.** A class taken off with "Remove from my timetable" no longer shows on the Home card or the widget, and gets no class, attendance or leave-by alerts and no line in the daily messages.
+- **Done means done.** Marking a task done (on Home or on the Notifications tab) stops its reminders and takes it out of the morning summary; it shows as done in both places. Hiding a task on Home also takes its reminders off the Notifications tab.
+- **Daily messages match Home:** the morning summary and afternoon check-in use your corrected class times, include the classes you added yourself (or from the UM timetable list), and leave out removed ones. Course names read "GUL1001 · UMLEADER" as in the app.
+- **Holiday mode by date:** whether a class is shown (and alarmed) now depends on that class's own date, so Monday's classes appear on the last day of a break. The empty Home card names the period ("Revision week", "Examination weeks", "Mid-semester break") instead of calling it all a semester break.
+- **Alarms after a restart:** class, summary and event alarms are set again as soon as the phone starts, without waiting for internet.
+- **Semester dates editor:** checks every date (break inside teaching, exams after teaching, semester end last, both dates of a pair set) and says what is wrong without closing, so nothing you entered is lost. Break and exam dates have Clear.
+- **Class alerts** name the course as the app does ("GUL1001 · UMLEADER"), not Spectrum's long name.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
 
 ## 0.30.0 (versionCode 94)
