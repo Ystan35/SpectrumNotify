@@ -7,6 +7,7 @@ Fixes from checking 0.30.0 on a phone with large text.
 - **Buttons no longer cut off** when their label wraps (Courses: "Refresh classes" / "Short names"; Online or in person: "In person" / "Online"). Labels are shorter too.
 - **Timetable:** the "+ Link" text button (which wrapped as "Li / nk") is now a round link icon next to Attendance / Join class. The line under each Spectrum class shows the course title, as Home does, instead of Spectrum's raw event name; your own classes keep your title.
 - **Walking times match Google Maps:** the estimate assumes a longer path (1.7× the straight line) at 70 m a minute, e.g. to the Faculty of Pharmacy 40 min / 2.8 km instead of 27 min / 2.1 km.
+- **Hidden tasks stay hidden.** A deadline hidden with "Hide this (wrong?)" no longer shows up in the morning summary (it still came in from Spectrum's calendar). Hiding a deadline reminder on the Notifications tab now hides the task itself: its other reminders, its Home card and the morning summary, not only that one line.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
 
 ## 0.30.0 (versionCode 94)

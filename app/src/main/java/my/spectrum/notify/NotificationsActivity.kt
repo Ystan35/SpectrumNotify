@@ -157,8 +157,11 @@ class NotificationsActivity : BaseActivity() {
         val st = NotifyLog.stamp(this)
         if (st != logStamp) {
             logStamp = st
+            val hiddenEvents = getSharedPreferences("health", MODE_PRIVATE).getStringSet("hiddenEvents", emptySet())!!
             entries = NotifyLog.entries(this).filter {
                 !NotifyLog.isHidden(this, it.ts) &&
+                // every reminder for a hidden task, not only the one that was hidden
+                Checker.reminderTaskName(it.title)?.let { n -> Checker.hiddenNameKey(n) in hiddenEvents } != true &&
                 !(it.kind == "sys" && it.title == "Check OK") &&
                 (p.debugLog || it.kind != "sys" || it.title.startsWith("Check failed") || it.title.startsWith("Last crash") ||
                  it.title.startsWith("Logged in") || it.title.startsWith("Logged out") || it.title.startsWith("Token"))
@@ -364,16 +367,9 @@ class NotificationsActivity : BaseActivity() {
                 }
             })
             extraChips.add(Pair("Hide this (wrong?)") {
-                val sp = getSharedPreferences("health", MODE_PRIVATE)
-                val keys = ArrayList<String>()
-                for (m in sp.getStringSet("dlTitleMap", emptySet()) ?: emptySet()) {
-                    val parts = m.split(":", limit = 2)
-                    if (parts.size == 2 && parts[0] == e.title.hashCode().toString()) {
-                        val ev = parts[1].split(":")
-                        if (ev.size >= 2) keys.add(ev[0] + ":" + ev[1])
-                        if (ev.size >= 3) keys.add(ev[0] + ":" + ev[1] + ":" + ev[2])
-                    }
-                }
+                // reminders carry only the task name ("Due in ~5h: Quiz 2"): hide that name everywhere
+                // (Home, reminders, morning summary), not just this one line
+                val keys = listOfNotNull(Checker.reminderTaskName(e.title)?.let { Checker.hiddenNameKey(it) })
                 keys.forEach { NotifyLog.hideEvent(this, it) }
                 NotifyLog.hide(this, e.ts)
                 logStamp = -1L

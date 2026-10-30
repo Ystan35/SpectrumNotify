@@ -117,10 +117,22 @@ object Checker {
     }
 
     // ------------------------------------------------------------ event helpers
-    /** A deadline the user hid on Home ("Hide this (wrong?)"): no card, no reminder. */
-    fun isHiddenDeadline(ctx: Context, eventId: Long): Boolean =
-        eventId != 0L && ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
-            .getStringSet("hiddenEvents", emptySet())!!.contains("dl:$eventId")
+    /**
+     * A deadline the user hid ("Hide this (wrong?)"): no card, no reminder, not in the morning summary.
+     * Hidden by id from Home, or by name from Notifications (reminders carry only the name).
+     */
+    fun isHiddenDeadline(ctx: Context, e: JSONObject): Boolean {
+        val hidden = ctx.getSharedPreferences("health", Context.MODE_PRIVATE).getStringSet("hiddenEvents", emptySet())!!
+        val id = e.optLong("id")
+        return (id != 0L && "dl:$id" in hidden) || hiddenNameKey(unesc(e.str("name"))) in hidden
+    }
+
+    /** "dn:<name>" key [NotificationsActivity] stores when a deadline reminder is hidden. */
+    fun hiddenNameKey(name: String): String = "dn:" + name.trim().lowercase()
+
+    /** The task name in a deadline reminder's title ("Due in ~5h: Quiz 2" -> "Quiz 2"), or null for other titles. */
+    fun reminderTaskName(title: String): String? =
+        Regex("""^Due in ~\d+h:\s*(.+)$""").find(title)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
 
     fun isAttEvent(e: JSONObject): Boolean = e.str("modulename") == "attendance" || ATT_RE.containsMatchIn(e.str("name"))
 
@@ -287,7 +299,7 @@ object Checker {
         }.filter { it.end > now }.sortedBy { it.start }
         val due = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().mapNotNull { e ->
             val ts = e.optLong("timesort")
-            if (ts <= now || isHiddenDeadline(ctx, e.optLong("id"))) return@mapNotNull null
+            if (ts <= now || isHiddenDeadline(ctx, e)) return@mapNotNull null
             val act = e.optJSONObject("action")
             DueItem(
                 unesc(e.str("name")).ifEmpty { "Deadline" },
@@ -637,7 +649,7 @@ object Checker {
             val ts = e.optLong("timesort")
             val remaining = ts - now
             if (remaining <= 0) continue
-            if (isHiddenDeadline(ctx, e.optLong("id"))) continue
+            if (isHiddenDeadline(ctx, e)) continue
             upcoming.add(e)
             val applicable = p.deadlineList.filter { remaining <= it * 3600L }
             if (applicable.isEmpty()) continue
@@ -823,7 +835,7 @@ object Checker {
         if (now.hour >= 12) return  // started late in the day: no "good morning"
 
         val nowS = now.toEpochSecond()
-        val todays = cal.filter { localDt(it.optLong("timestart")).toLocalDate() == now.toLocalDate() }
+        val todays = cal.filter { localDt(it.optLong("timestart")).toLocalDate() == now.toLocalDate() && (isAttEvent(it) || !isHiddenDeadline(ctx, it)) }
             .sortedBy { it.optLong("timestart") }
         val lines = arrayListOf("TODAY")
         val buttons = ArrayList<Pair<String, String>>()
@@ -857,7 +869,7 @@ object Checker {
         }
         for (e in cal) {
             val t = e.optLong("timestart")
-            if (e.str("eventtype") in setOf("due", "close") && t in nowS..horizon && e.optLong("id") !in seen) {
+            if (e.str("eventtype") in setOf("due", "close") && t in nowS..horizon && e.optLong("id") !in seen && !isHiddenDeadline(ctx, e)) {
                 pool.add(Pair(t, e)); seen.add(e.optLong("id"))
             }
         }
@@ -969,7 +981,7 @@ object Checker {
     private fun sendDue(ctx: Context, st: State, p: Prefs) {
         val now = ZonedDateTime.now(zone())
         val cal = myCalendar(st, p)
-        val dl = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().filter { !isHiddenDeadline(ctx, it.optLong("id")) }
+        val dl = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().filter { !isHiddenDeadline(ctx, it) }
         val links = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
         try { checkClassLinks(ctx, st, p, cal, links, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "class links: $e") }
         try { sendMorningSummary(ctx, st, p, cal, dl, now) } catch (e: Exception) { Log.w(TAG, "summary: $e") }
