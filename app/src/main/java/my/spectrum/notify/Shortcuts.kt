@@ -57,7 +57,9 @@ object Shortcuts {
         Link("Maya", "https://maya.um.edu.my/s/studentsignin", "person"),
         Link("ePay", "https://epay.um.edu.my/", "payment"),
         Link("STAREcs", "https://starecs.um.edu.my/", "grades"),
-        Link("MySiswa", "https://mysiswa.um.edu.my/", "school"),
+        Link("MySiswa", "https://mysis.um.edu.my/", "school"),
+        Link("Spectrum", "https://spectrum.um.edu.my/", "book"),
+        Link("SpectrumExam", "https://spectrumexam.um.edu.my/", "grades"),
     )
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences("shortcuts", Context.MODE_PRIVATE)
@@ -78,6 +80,25 @@ object Shortcuts {
             val u = o.optString("url").trim()
             if (n.isNotEmpty() && u.isNotEmpty()) out.add(Link(n, u, o.optString("icon").ifEmpty { guessIcon(n, u) }))
         }
+        return upgrade(ctx, out)
+    }
+
+    /**
+     * Once, for lists saved before 0.31: MySiswa moved to mysis.um.edu.my, and Spectrum and SpectrumExam
+     * join the defaults (only when no link to them is there already; your own edits stay).
+     */
+    private fun upgrade(ctx: Context, list: List<Link>): List<Link> {
+        if (sp(ctx).getBoolean("v031", false)) return list
+        val out = list.map { l ->
+            if (Uri.parse(l.url).host.equals("mysiswa.um.edu.my", true)) l.copy(url = "https://mysis.um.edu.my/") else l
+        }.toMutableList()
+        fun has(host: String) = out.any { Uri.parse(it.url).host.equals(host, true) }
+        for (d in defaults()) {
+            val host = Uri.parse(d.url).host ?: continue
+            if ((host == "spectrum.um.edu.my" || host == "spectrumexam.um.edu.my") && !has(host)) out.add(d)
+        }
+        save(ctx, out)
+        sp(ctx).edit().putBoolean("v031", true).apply()
         return out
     }
 

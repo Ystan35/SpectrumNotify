@@ -330,9 +330,10 @@ class SettingsActivity : BaseActivity() {
         val shPlaces = Shuttle.placesForPicker(this).filter { it.isStop }
         heading("Home stop", "Where your day starts, usually your residential college. Your first class of the day is planned from here; " +
             "later classes from the class before.")
-        val homeIdx = shPlaces.indexOfFirst { it.id == Shuttle.homeId(this) } + 1
-        target.addView(spinner(listOf("Not set") + shPlaces.map { it.name }, homeIdx) { i ->
-            Shuttle.setHomeId(this, if (i == 0) "" else shPlaces[i - 1].id)
+        // the same searchable picker as the Shuttle screen (short names like KK12), bus stops only
+        val homeNow = shPlaces.firstOrNull { it.id == Shuttle.homeId(this) }
+        target.addView(pickerField(homeNow?.label() ?: "Not set", "Home stop", only = { it.isStop }, none = "Not set") { id ->
+            Shuttle.setHomeId(this, id)
             Scheduler.scheduleAll(this)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         heading("Leave-by alert", "How long before you must set off (for the bus, or on foot) the alert comes.")

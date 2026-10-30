@@ -23,6 +23,8 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Dropdowns only act when you change them.** Opening Courses or Settings could clear a course's Occ (or reset your home stop) when the saved value was not in the list.
 - **Home class card:** tap the card, then "Mark in person" / "Mark online" switches that course right there (no meeting links and the room shown when in person), with Undo.
 - **Short names popup:** titled "Short names" like its button; each course shows its name without repeating the code, on up to two lines.
+- **Choosing a place works the same everywhere:** Settings → Home stop and the class editor's Nearest bus stop open the Shuttle screen's searchable list (grouped, with short names like "· KK12", "· FSKTM") instead of a long dropdown.
+- **UM links:** MySiswa opens mysis.um.edu.my (the old address had moved); Spectrum and SpectrumExam are added. Lists you already edited get the same update once; your own links stay.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
 
 ## 0.30.0 (versionCode 94)
