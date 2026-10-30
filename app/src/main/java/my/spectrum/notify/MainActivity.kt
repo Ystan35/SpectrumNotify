@@ -151,11 +151,11 @@ class MainActivity : BaseActivity() {
     private fun pendingOccAsks(): List<OccAsk> {
         val st = State(this)
         val seen = st.j.optJSONObject("occ_seen") ?: return emptyList()
-        val names = st.j.optJSONObject("occ_courses") ?: JSONObject()
-        val codes = Courses.all(this).associate { it.id to it.code.uppercase() }
+        val courses = Courses.all(this).associateBy { it.id }
         val asks = ArrayList<OccAsk>()
         for (cidS in seen.keys()) {
-            val code = codes[cidS.toLongOrNull() ?: -1L] ?: continue
+            val course = courses[cidS.toLongOrNull() ?: -1L] ?: continue
+            val code = course.code.uppercase()
             if (Prefs(this).occConfirmed(code)) continue
             // prediction = attendance/event-name learning (my_groups); options = ALL catalog occs,
             // falling back to predicted, then to availability-seen. Shown even when empty.
@@ -167,7 +167,8 @@ class MainActivity : BaseActivity() {
                         .mapNotNull { Regex("occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
                 }
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
-            asks.add(OccAsk(code, names.optString(cidS, code), occs, predictedNum))
+            // Spectrum's short name is only the code, so the name comes from the full course title
+            asks.add(OccAsk(code, Timetable.classTitle(course.code, course.name, ""), occs, predictedNum))
         }
         return asks
     }
@@ -213,9 +214,14 @@ class MainActivity : BaseActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, if (i == 0) 0 else dp(8), 0, 0)
             }
-            row.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", Type.LABEL, Ui.TEXT, true).apply {
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
+            // code, with the course name under it, so you can tell the courses apart
+            row.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(tv(a.code, Type.LABEL, Ui.TEXT, true))
+                if (a.cname.isNotEmpty()) addView(tv(a.cname, Type.CAPTION, Ui.DIM).apply {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                })
             }, LinearLayout.LayoutParams(0, WRAP, 1f))
             val hasPrediction = choices[i] >= 0
             val opts = when {

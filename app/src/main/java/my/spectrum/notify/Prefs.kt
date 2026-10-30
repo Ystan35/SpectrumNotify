@@ -178,7 +178,9 @@ class Prefs(ctx: Context) {
 
     /** Occ confirmed by the user in the startup dialog (per course code). */
     fun occConfirmed(code: String): Boolean = sp.getBoolean("occconf:$code", false)
-    fun setOccConfirmed(code: String) { sp.edit().putBoolean("occconf:$code", true).apply() }
+    fun setOccConfirmed(code: String, on: Boolean = true) {
+        sp.edit().apply { if (on) putBoolean("occconf:$code", true) else remove("occconf:$code") }.apply()
+    }
 
     /** An Occ just chosen that you have not checked on the Courses page yet ("Looks right" clears it). */
     fun occNeedsCheck(code: String): Boolean = sp.getBoolean("occcheck:" + code.uppercase(), false)

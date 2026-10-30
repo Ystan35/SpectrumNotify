@@ -42,9 +42,9 @@ object Sections {
     }
 
     /** Pages of a course as last seen. */
-    fun known(ctx: Context, cid: Long): List<Page> {
-        val arr = State(ctx).j.optJSONObject("sections")?.optJSONArray("$cid") ?: return emptyList()
-        return arr.objs().map { Page(it.str("id"), it.str("name"), it.str("parent")) }
+    fun known(ctx: Context, cid: Long, st: State = State(ctx)): List<Page> {
+        val arr = st.j.optJSONObject("sections")?.optJSONArray("$cid") ?: return emptyList()
+        return arr.objs().map { Page(it.str("id"), unesc(it.str("name")), it.str("parent")) }
     }
 
     /** Is page [key] off, by itself or because its main page ([parents]: sub-section -> main page) is off? */
@@ -52,8 +52,8 @@ object Sections {
         key in off || parents[key]?.let { it in off } == true
 
     /** "all pages on", or "2 pages off". */
-    fun summary(ctx: Context, cid: Long): String {
-        val known = known(ctx, cid).map { it.id }.toSet()
+    fun summary(ctx: Context, cid: Long, st: State = State(ctx)): String {
+        val known = known(ctx, cid, st).map { it.id }.toSet()
         val off = offSet(ctx, cid).count { it in known }
         return if (off == 0) "all pages on" else "$off page" + (if (off == 1) "" else "s") + " off"
     }

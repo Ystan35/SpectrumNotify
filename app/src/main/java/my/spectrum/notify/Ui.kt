@@ -699,6 +699,14 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
     }
     var dot: View? = null
     val activeIdx = tabs.indexOfFirst { it.cls == active }
+    // one label size for all tabs, reduced only as far as the longest label needs to fit (large text cut "Notifications")
+    val labelSp = Type.CAPTION * Ui.fontScale
+    val probe = android.text.TextPaint().apply {
+        textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, labelSp, resources.displayMetrics)
+        typeface = Typeface.DEFAULT_BOLD
+    }
+    val slot = (resources.displayMetrics.widthPixels - dp(8)) / tabs.size.toFloat()
+    val fit = minOf(1f, (slot - dp(2)) / tabs.maxOf { probe.measureText(it.label) })
     for ((idx, t) in tabs.withIndex()) {
         val isActive = t.cls == active
         val item = LinearLayout(this).apply {
@@ -748,7 +756,7 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
         item.addView(holder, LinearLayout.LayoutParams(dp(46), dp(28)).apply { gravity = Gravity.CENTER_HORIZONTAL })
         item.addView(TextView(this).apply {
             text = t.label
-            textSize = Type.CAPTION * Ui.fontScale
+            textSize = labelSp * fit
             setTextColor(if (isActive) Ui.CYAN else Ui.DIM)
             if (isActive) setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
@@ -826,6 +834,13 @@ fun Activity.attachPullToRefresh(sv: ScrollView, onRefresh: () -> Unit) {
                 if (pulling && !fired) {
                     if (sv.scrollY > 0) { pulling = false; hint?.let { (it.parent as? ViewGroup)?.removeView(it) }; return@setOnTouchListener false }
                     dist = ev.rawY - startY
+                    if (dist < 0) {
+                        // going up is a scroll, not a pull: hand it to the page (this used to freeze pages at the top)
+                        pulling = false
+                        hint?.let { (it.parent as? ViewGroup)?.removeView(it) }
+                        hint = null
+                        return@setOnTouchListener false
+                    }
                     if (dist > dp(24)) {
                         v.parent?.requestDisallowInterceptTouchEvent(true)
                         if (hint == null) {

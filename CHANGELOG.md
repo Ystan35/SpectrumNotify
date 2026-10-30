@@ -33,6 +33,12 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Shuttle: KK2 (Menara Budi RC) and KK6 (Ibnu Sina RC) added** as destinations, at their Google Maps Plus Code pins. Neither has a bus stop: trips go by bus to the nearest stop (Faculty of Engineering (West) for KK2; Faculty of Engineering, Jabatan Bioperubatan or KK1 for KK6) and walk from there. Colleges without a stop are listed under Residential colleges. More names to search by: "UMLib" / "Perpustakaan" (library), "UM Sentral", "Mosque", "Biomedical", and the Malay faculty names ("Fakulti Sains Komputer", "Fakulti Perubatan", …). New destinations: UM Medical Centre (UMMC / PPUM), Asia-Europe Institute, UM Arena and Rimba Ilmu (bus to the nearest stop, then walk); Kompleks Perdanasiswa (KPS) and the Chancellery are found by name at the library and DTC stops beside them.
 - **Join class picks your Occ's link more often:** a meeting link whose own name does not say the Occ ("Link for online classes") now takes it from the section it sits in ("DR. … (OCC 1 & 2)" › "Pautan MS Teams"), so the class alert and Home choose your Occ's link and leave out other Occs' ones.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
+- **Pages scroll from the top wherever your finger starts.** Pull to refresh swallowed upward swipes that began on plain text or empty space while a page was at the top.
+- **Text from Spectrum reads properly:** "Manifesto &#38; Time Capsule" and "(OCC 1 &amp; 2)" now show a plain &.
+- **Confirm your Occ shows each course name** under its code, not the code alone.
+- **Clearing an Occ** (Not set) means Confirm your Occ asks about that course again, and its card stays where it is on the Courses page.
+- **Large text:** the Notifications tab label fits; Notification pages no longer repeats the course code in its heading.
+- **Courses opens faster:** the saved data is read once for the page, not again for each course.
 
 ## 0.30.0 (versionCode 94)
 Design and accessibility pass across the whole app.

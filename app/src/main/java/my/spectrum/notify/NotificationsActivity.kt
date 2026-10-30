@@ -312,7 +312,7 @@ class NotificationsActivity : BaseActivity() {
         meta.addView(tv(Cat.label(cat), Type.CAPTION, col, true).apply { letterSpacing = 0.06f })
         meta.addView(tv("· ${ago(NotifyLog.atOf(e))}", Type.CAPTION, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
         col2.addView(meta)
-        val title = tv(e.title, Type.BODY_L, Ui.TEXT, true).apply {
+        val title = tv(unesc(e.title), Type.BODY_L, Ui.TEXT, true).apply {
             ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(3), 0, 0)
         }
@@ -320,7 +320,7 @@ class NotificationsActivity : BaseActivity() {
         col2.addView(title)
         var body: TextView? = null
         if (e.body.isNotEmpty()) {
-            body = tv(e.body.take(3000), Type.LABEL, Ui.DIM).apply {
+            body = tv(unesc(e.body.take(3000)), Type.LABEL, Ui.DIM).apply {
                 ellipsize = TextUtils.TruncateAt.END
                 setLinkTextColor(Ui.CYAN)
                 setPadding(0, dp(6), 0, 0)

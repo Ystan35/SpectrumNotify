@@ -115,8 +115,7 @@ object Groups {
     }
 
     /** Courses with their learned Occ numbers (from attendance event names), for the Settings chips. */
-    fun learnedPerCourse(ctx: android.content.Context): Map<String, List<String>> {
-        val st = State(ctx)
+    fun learnedPerCourse(ctx: android.content.Context, st: State = State(ctx)): Map<String, List<String>> {
         val out = LinkedHashMap<String, MutableList<String>>()
         val o = st.j.optJSONObject("my_groups") ?: return out
         for (k in o.keys()) {
