@@ -441,6 +441,7 @@ object Checker {
     private fun mt0Of(sec: JSONObject): Long = 0L
 
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
+                               kinds: MutableMap<String, FileKind>,
                                secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
                                attCmids: MutableMap<Long, HashMap<Long, MutableSet<String>>>, occSeen: MutableMap<Long, MutableSet<String>>,
                                st: State): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
@@ -467,6 +468,11 @@ object Checker {
                 val url = m.str("url")
                 snap[key] = Triple(name, url, sname)
                 secOf[key] = skey
+                // what it opens (slides, PDF, …) from its file name / type, or the address of a link
+                val file = contents.firstOrNull()
+                FileKind.of(if (m.str("modname") == "url") file?.str("fileurl") ?: url else url,
+                    "${file?.str("filename") ?: ""} ${file?.str("mimetype") ?: ""} ${m.str("modname").takeIf { it == "folder" } ?: ""}")
+                    ?.let { kinds[key] = it }
                 val desc = clean(m.str("description"), 300)
                 if (desc.isNotEmpty()) extra[key] = desc
                 if (m.str("modname") == "attendance" && m.optLong("id") != 0L) {
@@ -535,18 +541,23 @@ object Checker {
         return Pair(snap, dedupe(raw))
     }
 
-    private fun pushCourse(ctx: Context, site: String, c: JSONObject, items: List<Triple<String, String, String>>) {
+    private fun pushCourse(ctx: Context, site: String, c: JSONObject, items: List<Triple<String, String, String>>, kinds: List<FileKind?>) {
         val cname = c.str("fullname").ifEmpty { c.str("shortname") }
         val lines = ArrayList<String>()
-        for ((name, url, sec) in items.take(15)) {
-            var line = "- $name" + (if (sec.isNotEmpty()) " [$sec]" else "")
+        for ((i, item) in items.take(15).withIndex()) {
+            val (name, url, sec) = item
+            // "- Lecture 3 (slides) [Week 3]": what it is, before you open it
+            var line = "- $name" + (kinds.getOrNull(i)?.let { " (${it.word})" } ?: "") + (if (sec.isNotEmpty()) " [$sec]" else "")
             if (url.isNotEmpty()) line += "\n  $url"
             lines.add(line)
         }
         if (items.size > 15) lines.add("...and ${items.size - 15} more")
         val buttons = ArrayList<Pair<String, String>>()
         for ((i, it) in items.take(3).withIndex()) {
-            if (it.second.isNotEmpty()) buttons.add(Pair(if (items.size == 1) "Open" else "Open ${i + 1}", it.second))
+            // "Open slides" / "Slides 1", "PDF 2": the type on the button (its icon comes from the same word)
+            val k = kinds.getOrNull(i)
+            val label = if (items.size == 1) (if (k != null) "Open ${k.word}" else "Open") else "${k?.title ?: "Open"} ${i + 1}"
+            if (it.second.isNotEmpty()) buttons.add(Pair(label, it.second))
         }
         if (buttons.isEmpty()) buttons.add(Pair("Open course", "$site/course/view.php?id=${c.optLong("id")}"))
         Notifier.push(ctx, "$cname: ${items.size} new", lines.joinToString("\n"), false, buttons)
@@ -565,10 +576,11 @@ object Checker {
             if (Courses.isPast(c)) { prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }; continue }
             val ckey = "course$cid"
             val extra = HashMap<String, String>()
+            val kinds = HashMap<String, FileKind>()
             val secOf = HashMap<String, String>()
             val secNames = LinkedHashMap<String, String>()
             val result = try {
-                snapshotCourse(api, p.site, c, extra, secOf, secNames, attCmids, occSeen, st)
+                snapshotCourse(api, p.site, c, extra, kinds, secOf, secNames, attCmids, occSeen, st)
             } catch (e: Exception) {
                 Log.w(TAG, "course $cid skipped: $e")
                 prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }
@@ -617,7 +629,8 @@ object Checker {
                     val t = snap[k]
                     !Groups.isForeign("${t?.first ?: ""} ${t?.third ?: ""} ${extra[k] ?: ""}", mine)
                 }
-                if (fresh.isNotEmpty()) pushCourse(ctx, p.site, c, fresh.mapNotNull { snap[it] })
+                val freshItems = fresh.filter { snap[it] != null }
+                if (freshItems.isNotEmpty()) pushCourse(ctx, p.site, c, freshItems.map { snap[it]!! }, freshItems.map { kinds[it] })
                 if (inPages.size < newKeys.size) {
                     NotifyLog.sys(ctx, "Skipped ${newKeys.size - inPages.size} item(s) on pages switched off in $code")
                 }

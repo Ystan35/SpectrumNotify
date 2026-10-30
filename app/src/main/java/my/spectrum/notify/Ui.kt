@@ -204,6 +204,14 @@ fun Context.iconText(icon: Int, text: CharSequence, size: Float, color: Int, bol
         gravity = Gravity.CENTER_VERTICAL
     }
 
+/** A vector icon in front of a button's label, sized to the text and tinted like it. */
+fun TextView.leadingIcon(res: Int) {
+    val px = (textSize * 1.15f).toInt()
+    val d = context.getDrawable(res)?.mutate()?.apply { setBounds(0, 0, px, px); setTint(currentTextColor) } ?: return
+    setCompoundDrawablesRelative(d, null, null, null)
+    compoundDrawablePadding = context.dp(6)
+}
+
 /** The one section heading style: small bold capitals in DIM ("DUE SOON", "COURSES"). */
 fun Context.sectionLabel(text: String): TextView =
     tv(text.uppercase(), Type.LABEL, Ui.DIM, true).apply {

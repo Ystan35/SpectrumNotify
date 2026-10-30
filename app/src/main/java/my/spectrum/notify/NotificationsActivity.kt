@@ -396,6 +396,11 @@ class NotificationsActivity : BaseActivity() {
             }
             for ((i, b) in btns.withIndex()) {
                 val chip = button(b.first, if (i == 0) Emphasis.PRIMARY else Emphasis.SECONDARY, col) { openUrl(b.second) }
+                // a document / slides / sheet / PDF / folder / video gets its icon (Drive, OneDrive, Spectrum files)
+                FileKind.of(b.second, b.first)?.let { k ->
+                    chip.leadingIcon(k.icon)
+                    chip.contentDescription = "${b.first}, ${k.word}"
+                }
                 chips.add(chip)
                 chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
             }
