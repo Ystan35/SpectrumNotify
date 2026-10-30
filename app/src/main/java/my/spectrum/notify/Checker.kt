@@ -752,7 +752,7 @@ object Checker {
      * Leave-by alert, [Shuttle.leadMin] minutes before you must set off for a class: "Leave by 9:31 for WIX1003",
      * with the bus or the walk. Off when the lead is 0 (Settings → UM shuttle).
      */
-    private fun checkLeaveBy(ctx: Context, st: State, cal: List<JSONObject>, now: Long) {
+    private fun checkLeaveBy(ctx: Context, st: State, p: Prefs, cal: List<JSONObject>, now: Long) {
         val lead = Shuttle.leadMin(ctx)
         if (lead <= 0) return
         val sent = st.strings("leaveby_sent")
@@ -766,9 +766,15 @@ object Checker {
             val code = Timetable.courseCode(e.optJSONObject("course"))
             val buttons = ArrayList<Pair<String, String>>()
             Shuttle.walkUrl(t)?.let { buttons.add(Pair("Walking route", it)) }
+            // rain from setting off to the end of the class: say so (once, with this alert)
+            val day = localDt(leave).toLocalDate()
+            val endZ = localDt(classTimes(ctx, e).second)
+            val rain = if (!p.umbrellaAlert) null else Weather.rainBetween(ctx, day,
+                localDt(leave).let { it.hour * 60 + it.minute }, if (endZ.toLocalDate() == day) endZ.hour * 60 + endZ.minute else 24 * 60)
             Notifier.push(
                 ctx, "Leave by ${hhmm(leave)} for ${Shorts.display(ctx, code)}",
-                (Shuttle.line(ctx, t) ?: "") + "\nClass starts ${ShuttleModel.fmt(t.arriveBy)}.",
+                (Shuttle.line(ctx, t) ?: "") + "\nClass starts ${ShuttleModel.fmt(t.arriveBy)}." +
+                    (if (rain != null) "\n${rain.line()}: take an umbrella.\n\n${Weather.CREDIT}" else ""),
                 true, buttons,
             )
             sent.add(key)
@@ -868,6 +874,37 @@ object Checker {
         st.putStrings("links_sent", sent.toList().takeLast(300))
     }
 
+    // ------------------------------------------------------------ umbrella
+    /**
+     * Rain (Weather) from an hour before your first class of [date] (getting there) to the end of the last,
+     * or null: no classes, no rain, or no forecast.
+     */
+    private fun rainAroundClasses(ctx: Context, st: State, p: Prefs, date: java.time.LocalDate): Weather.Rain? {
+        val day = classItems(ctx, st, p).filter { localDt(it.start).toLocalDate() == date }
+        if (day.isEmpty()) return null
+        fun minuteOf(ts: Long) = localDt(ts).let { it.hour * 60 + it.minute }
+        val endMin = day.maxOf { c -> if (localDt(c.end).toLocalDate() == date) minuteOf(c.end) else 24 * 60 }
+        return Weather.rainBetween(ctx, date, day.minOf { minuteOf(it.start) } - 60, endMin)
+    }
+
+    /**
+     * "Bring an umbrella": at most ONE per day (whatever the forecast does later), from the morning-summary
+     * time (07:00 when that is off) until your last class starts, once the forecast shows rain around them.
+     */
+    private fun sendUmbrella(ctx: Context, st: State, p: Prefs, now: ZonedDateTime) {
+        if (!p.umbrellaAlert) return
+        val today = now.toLocalDate()
+        if (st.j.optString("umbrella_date") == today.toString()) return
+        val hm = parseHm(p.summaryTime) ?: Pair(7, 0)
+        if (now.isBefore(now.withHour(hm.first).withMinute(hm.second).withSecond(0).withNano(0))) return
+        val day = classItems(ctx, st, p).filter { localDt(it.start).toLocalDate() == today }
+        if (day.isEmpty() || now.toEpochSecond() > day.maxOf { it.start }) return
+        val rain = rainAroundClasses(ctx, st, p, today) ?: return
+        st.j.put("umbrella_date", today.toString())
+        Notifier.push(ctx, "Bring an umbrella",
+            "${rain.line()} at UM today, while you have classes (${hhmm(day.minOf { it.start })} – ${hhmm(day.maxOf { it.end })}).\n\n${Weather.CREDIT}")
+    }
+
     // ------------------------------------------------------------ morning summary
     private fun sendMorningSummary(ctx: Context, st: State, p: Prefs, cal: List<JSONObject>, deadlines: List<JSONObject>, now: ZonedDateTime) {
         if (p.summaryTime.isBlank()) return
@@ -900,7 +937,10 @@ object Checker {
             val code = Timetable.courseCode(e.optJSONObject("course"))
             todays.add(Pair(ts, "${hhmm(ts)}  " + (if (e.optJSONObject("course") != null) "${Shorts.display(ctx, code)}: " else "") + name))
         }
-        val lines = arrayListOf("TODAY")
+        val rain = if (p.umbrellaAlert) rainAroundClasses(ctx, st, p, now.toLocalDate()) else null
+        val lines = arrayListOf<String>()
+        if (rain != null) lines.addAll(listOf("UMBRELLA: ${rain.line()} around your classes.", ""))
+        lines.add("TODAY")
         if (todays.isNotEmpty()) todays.sortedBy { it.first }.forEach { lines.add(it.second) }
         else lines.add("No classes or events today.")
 
@@ -934,6 +974,7 @@ object Checker {
         } else {
             lines.add("Nothing due.")
         }
+        if (rain != null) lines.addAll(listOf("", Weather.CREDIT))
         if (buttons.size < 3) buttons.add(Pair("Open Spectrum", "${p.site}/my/"))
         val title = "Good morning - " + now.format(java.time.format.DateTimeFormatter.ofPattern("EEE dd MMM", java.util.Locale.ENGLISH))
         Notifier.push(ctx, title, lines.joinToString("\n"), false, buttons)
@@ -1030,8 +1071,9 @@ object Checker {
         try { checkClassLinks(ctx, st, p, cal, links, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "class links: $e") }
         try { sendMorningSummary(ctx, st, p, cal, dl, now) } catch (e: Exception) { Log.w(TAG, "summary: $e") }
         try { sendAfternoon(ctx, st, p, now) } catch (e: Exception) { Log.w(TAG, "afternoon: $e") }
+        try { sendUmbrella(ctx, st, p, now) } catch (e: Exception) { Log.w(TAG, "umbrella: $e") }
         try { checkAttendanceStart(ctx, st, p, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "attendance start: $e") }
-        try { checkLeaveBy(ctx, st, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "leave by: $e") }
+        try { checkLeaveBy(ctx, st, p, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "leave by: $e") }
     }
 
     /** Called by the alarm receiver: act on cached data, no network. */
@@ -1077,6 +1119,8 @@ object Checker {
                     try { Timetable.remember(st, p) } catch (e: Exception) { Log.w(TAG, "timetable: $e") }
                     try { Groups.learn(st, p) } catch (e: Exception) { Log.w(TAG, "groups: $e") }
                 } catch (e: Exception) { Log.w(TAG, "calendar: $e") }
+                // the rain forecast before the messages that use it (at most every 2 hours; quiet on failure)
+                try { Weather.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "weather: $e") }
                 sendDue(ctx, st, p)
                 st.save()
                 if (p.alerted) {

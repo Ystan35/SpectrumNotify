@@ -145,6 +145,10 @@ class Prefs(ctx: Context) {
     var textScale: Int
         get() = sp.getInt("textScale", 0)
         set(v) { sp.edit().putInt("textScale", v).apply() }
+    /** Umbrella reminder when rain is likely around your classes (Settings → Daily messages). */
+    var umbrellaAlert: Boolean
+        get() = sp.getBoolean("umbrellaAlert", true)
+        set(v) { sp.edit().putBoolean("umbrellaAlert", v).apply() }
     /** A second alert when a class starts, reminding you to sign attendance (Settings → Your classes). */
     var attStartAlert: Boolean
         get() = sp.getBoolean("attStartAlert", true)

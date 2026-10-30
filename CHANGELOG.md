@@ -2,8 +2,9 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
-## 0.30.1 (versionCode 95)
-Fixes from checking 0.30.0 on a phone with large text.
+## 0.31.0 (versionCode 95)
+Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text and a logic review.
+- **Umbrella reminder (new):** when rain is 60% likely or more at UM between an hour before your first class and the end of your last, the morning summary says so at the top, one "Bring an umbrella" notification comes that day (never a second one, even if the forecast changes), and the leave-by alert adds "Rain likely 3 – 5 pm: take an umbrella" when rain falls between setting off and the end of that class. Switch it off in Settings → Daily messages. Forecast by Open-Meteo.com (CC BY 4.0), credited under each rain message with a note that forecasts can be wrong.
 - **Buttons no longer cut off** when their label wraps (Courses: "Refresh classes" / "Short names"; Online or in person: "In person" / "Online"). Labels are shorter too.
 - **Timetable:** the "+ Link" text button (which wrapped as "Li / nk") is now a round link icon next to Attendance / Join class. The line under each Spectrum class shows the course title, as Home does, instead of Spectrum's raw event name; your own classes keep your title.
 - **Walking times match Google Maps:** the estimate assumes a longer path (1.7× the straight line) at 70 m a minute, e.g. to the Faculty of Pharmacy 40 min / 2.8 km instead of 27 min / 2.1 km.

@@ -210,10 +210,26 @@ class SettingsActivity : BaseActivity() {
 
         target = accordion(col, "DAILY MESSAGES",
             "Two short messages each day. Tap a time to change it; switch a message off if you do not want it.",
-            icon = R.drawable.ic_cat_news, contents = listOf("Morning summary", "Afternoon check-in"),
-            summary = "Morning " + p.summaryTime.ifEmpty { "off" } + "  ·  Afternoon " + p.afternoonTime.ifEmpty { "off" })
+            icon = R.drawable.ic_cat_news, contents = listOf("Morning summary", "Afternoon check-in", "Umbrella reminder"),
+            summary = "Morning " + p.summaryTime.ifEmpty { "off" } + "  ·  Afternoon " + p.afternoonTime.ifEmpty { "off" } +
+                (if (p.umbrellaAlert) "  ·  Umbrella" else ""))
         dailyPicker("Morning summary", "Sent once each morning with today's classes and deadlines.", p.summaryTime, "07:05") { p.summaryTime = it }
         dailyPicker("Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00") { p.afternoonTime = it }
+        heading("Umbrella reminder", "When rain is ${Weather.RAIN_PCT}% likely or more at UM around your classes: a line in the morning summary, " +
+            "one \"Bring an umbrella\" notification that day (never more than one), and a note in the leave-by alert.")
+        target.addView(android.widget.Switch(this).apply {
+            text = "Remind me to bring an umbrella"
+            textSize = Type.BODY * Ui.fontScale
+            setTextColor(Ui.TEXT)
+            minHeight = dp(Ui.touch(48))
+            isChecked = p.umbrellaAlert
+            setOnCheckedChangeListener { _, on -> p.umbrellaAlert = on }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        target.label(Weather.CREDIT + " The app only uses it as a hint; check the sky before you go.", Type.CAPTION, Ui.DIM, 4)
+        target.addView(button("Open-Meteo.com", Emphasis.TERTIARY) {
+            try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://open-meteo.com/"))) } catch (_: Exception) { }
+        }.apply { contentDescription = "Open the Open-Meteo website (weather data source)" },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(-12) })
 
         target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
             contents = listOf("My Occ", "Attendance reminder", "Classes to ignore", "Teams-recording courses"))
