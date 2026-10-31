@@ -24,7 +24,6 @@ class SettingsActivity : BaseActivity() {
     private var alarmHelp: View? = null
     private lateinit var profileStatus: TextView
     private lateinit var siteField: EditText
-    private lateinit var tokenField: EditText
     /** Settings → UM links list, redrawn when you come back (a course may have been added meanwhile). */
     private lateinit var linksBox: LinearLayout
 
@@ -125,7 +124,7 @@ class SettingsActivity : BaseActivity() {
         })
 
         target = accordion(col, "PROFILE", icon = R.drawable.ic_account,
-            contents = listOf("Site URL", "Log in / log out", "Token"),
+            contents = listOf("Site URL", "Log in / log out"),
             summary = if (p.token.isEmpty()) "Not logged in" else "Logged in" + (if (p.userName.isNotEmpty()) " as ${p.userName}" else ""))
         profileStatus = target.label("", Type.BODY_L, Ui.TEXT, 8)
         target.label("Spectrum site URL", Type.CAPTION, Ui.DIM, 12)
@@ -137,21 +136,6 @@ class SettingsActivity : BaseActivity() {
         target.btn("Log in with browser instead") {
             p.site = siteField.text.toString()
             Login.start(this)
-        }
-        target.label("Or paste a token manually", Type.LABEL, Ui.TEXT, 16)
-        tokenField = target.field("", "Token", true)
-        target.btn("Save token") {
-            val t = tokenField.text.toString().trim()
-            if (t.isNotEmpty()) {
-                p.site = siteField.text.toString()
-                tokenField.setText("")
-                Login.saveAndVerify(this, t) { msg ->
-                    runOnUiThread {
-                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-                        refreshProfile()
-                    }
-                }
-            }
         }
         target.btn("Log out") {
             p.clearToken()

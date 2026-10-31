@@ -34,6 +34,7 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Join class picks your Occ's link more often:** a meeting link whose own name does not say the Occ ("Link for online classes") now takes it from the section it sits in ("DR. … (OCC 1 & 2)" › "Pautan MS Teams"), so the class alert and Home choose your Occ's link and leave out other Occs' ones.
 - **Submitted work stays out of the morning summary:** an assignment you submitted or a quiz you finished is taken off your Spectrum to-do list by Spectrum itself; the summary also read the calendar, where its due date stays, so it could still list it. Now a due date that is no longer on your to-do list is left out.
 - **Quizzes that have not opened yet are listed:** they were left out of Home, reminders and the summary until their open time (Spectrum marks them "not actionable" until then).
+- **Settings → Profile:** the "paste a token manually" field is gone; log in with Spectrum (or the browser) as usual.
 - **Shuttle:** "Leave now" / "comes in ~…" has a timer icon instead of the ⏱ emoji; "Walking route in Maps" uses the app's normal button.
 
 ## 0.30.0 (versionCode 94)
