@@ -740,9 +740,11 @@ object Checker {
         ).optJSONArray("events")?.objs() ?: emptyList()
         val sent = st.strings("deadlines_sent")
         val upcoming = ArrayList<JSONObject>()
+        // Moodle leaves work you submitted (assignment) or finished (quiz attempt) or completed OUT of this list
+        // (mod_*_core_calendar_provide_event_action returns null), so it needs no check of its own here.
+        // "actionable" false only means not open yet (a quiz before its open time): still due, so still listed.
         for (e in events) {
             val act = e.optJSONObject("action")
-            if (act != null && !act.optBoolean("actionable", true)) continue
             val ts = e.optLong("timesort")
             val remaining = ts - now
             if (remaining <= 0) continue
@@ -978,6 +980,13 @@ object Checker {
         if (now.hour >= 12) return  // started late in the day: no "good morning"
 
         val nowS = now.toEpochSecond()
+        // an activity's due/close date in the calendar that is not on your to-do list (deadlines): Moodle took it off
+        // because you submitted, finished or completed it, so it is not due for you any more
+        // (only once the to-do list has been fetched: before that, nothing counts as done)
+        val todo = deadlines.map { it.optLong("id") }.toSet()
+        val todoKnown = st.j.has("deadlines")
+        fun doneOnSpectrum(e: JSONObject) = todoKnown &&
+            e.str("modulename").isNotEmpty() && e.str("eventtype") in setOf("due", "close") && e.optLong("id") !in todo
         // today's classes as Home shows them (your corrected times, your own entries, none you removed),
         // then the day's other calendar events (not hidden or done tasks), in time order
         val todays = ArrayList<Pair<Long, String>>()
@@ -995,7 +1004,7 @@ object Checker {
             val ts = e.optLong("timestart")
             if (isAttEvent(e) || localDt(ts).toLocalDate() != now.toLocalDate()) continue
             val name = unesc(e.str("name"))
-            if (isHiddenDeadline(ctx, e) || isTaskDone(ctx, name, e.optLong("id"), ts)) continue
+            if (isHiddenDeadline(ctx, e) || isTaskDone(ctx, name, e.optLong("id"), ts) || doneOnSpectrum(e)) continue
             val code = Timetable.courseCode(e.optJSONObject("course"))
             todays.add(Pair(ts, "${hhmm(ts)}  " + (if (e.optJSONObject("course") != null) "${Shorts.display(ctx, code)}: " else "") + name))
         }
@@ -1015,7 +1024,8 @@ object Checker {
         }
         for (e in cal) {
             val t = e.optLong("timestart")
-            if (e.str("eventtype") in setOf("due", "close") && t in nowS..horizon && e.optLong("id") !in seen && !isHiddenDeadline(ctx, e)) {
+            if (e.str("eventtype") in setOf("due", "close") && t in nowS..horizon && e.optLong("id") !in seen && !isHiddenDeadline(ctx, e) &&
+                !doneOnSpectrum(e)) {
                 pool.add(Pair(t, e)); seen.add(e.optLong("id"))
             }
         }
