@@ -339,9 +339,9 @@ class TimetableEditActivity : BaseActivity() {
         col.label("Nearest bus stop", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label("Where this course's classes are, for the UM shuttle on Home and the leave-by alert. Applies to every class of the course.", Type.CAPTION, Ui.DIM, 2)
         var picked = if (course.isNotEmpty()) Timetable.busStop(this, course) else ""
-        val names = listOf("Auto" + (guess?.let { " (${it.name})" } ?: " (not known)")) + places.map { it.name }
-        val sel = places.indexOfFirst { it.id == picked } + 1
-        col.addView(spinner(names, sel) { i -> picked = if (i == 0) "" else places[i - 1].id },
+        // the same searchable picker as the Shuttle screen (short names like FSKTM, KK12)
+        val auto = "Auto" + (guess?.let { " (${it.name})" } ?: " (not known)")
+        col.addView(pickerField(places.firstOrNull { it.id == picked }?.label() ?: auto, "Nearest bus stop", none = auto) { id -> picked = id },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         return { picked }
     }

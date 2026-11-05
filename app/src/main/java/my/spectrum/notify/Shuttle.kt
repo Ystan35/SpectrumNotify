@@ -41,6 +41,7 @@ object Shuttle {
 
     /** Downloads the current bus.json and keeps it when newer. Called from the background check; failures are quiet. */
     fun refresh(ctx: Context) {
+        if (!enabled(ctx)) return
         try {
             val conn = URL(REMOTE_URL).openConnection() as HttpURLConnection
             val text: String = try {
@@ -67,7 +68,11 @@ object Shuttle {
     fun setHomeId(ctx: Context, id: String) = prefs(ctx).edit().putString("home", id).apply()
 
     /** Minutes before you must set off that the leave-by alert comes; 0 = off. */
-    fun leadMin(ctx: Context): Int = prefs(ctx).getInt("lead", 10)
+    /** Off for anyone not at UM: no shuttle on Home, no leave-by alerts, no shuttle downloads, gone from the toolbox. */
+    fun enabled(ctx: Context): Boolean = prefs(ctx).getBoolean("on", true)
+    fun setEnabled(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("on", on).apply()
+
+    fun leadMin(ctx: Context): Int = if (enabled(ctx)) prefs(ctx).getInt("lead", 10) else 0
     fun setLeadMin(ctx: Context, m: Int) = prefs(ctx).edit().putInt("lead", m).apply()
 
     /** Your last trips planned on the Shuttle screen, newest first, as (from id, to id). */
@@ -107,6 +112,7 @@ object Shuttle {
      * no teaching that day, the place of either end is not known, or no home stop is set for the first class.
      */
     fun tripFor(ctx: Context, course: String, date: LocalDate, startMin: Int): TripInfo? {
+        if (!enabled(ctx)) return null
         if (Timetable.locationOf(ctx, course).startsWith("online:")) return null
         if (!AcademicCalendar.inTeaching(ctx, date)) return null
         val d = data(ctx)

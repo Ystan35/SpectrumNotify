@@ -214,89 +214,6 @@ class ShuttleActivity : BaseActivity() {
         }
     }
 
-    /** Looks like the app's dropdowns; opens [pickPlace]. */
-    private fun pickerField(text: String, title: String, onPick: (String) -> Unit): TextView =
-        iconText(0, text, Type.BODY, Ui.TEXT, trailing = R.drawable.ic_expand_more).apply {
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            minHeight = dp(Ui.touch(48))
-            gravity = Gravity.CENTER_VERTICAL
-            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            background = rippleBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, Radius.SM)
-            isClickable = true
-            contentDescription = "$title: $text. Tap to choose."
-            setOnClickListener { pickPlace(title, onPick) }
-        }
-
-    /** Which group a place is listed under in the picker. */
-    private fun groupOf(p: ShuttleModel.Place): Int {
-        val n = p.name.lowercase(Locale.ROOT)
-        return when {
-            !p.isStop || n.startsWith("faculty") || n.startsWith("academy") || n.startsWith("fakulti") || "pasum" in n -> 0
-            " rc" in "$n " || "residential" in n || "kolej kediaman" in n || "international house" in n -> 1
-            else -> 2
-        }
-    }
-
-    /** A searchable list of every place, grouped: faculties and buildings, residential colleges, other stops. */
-    private fun pickPlace(title: String, onPick: (String) -> Unit) {
-        val d = Shuttle.data(this)
-        val all = Shuttle.placesForPicker(this)
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0) }
-        val search = android.widget.EditText(this).apply {
-            hint = "Search, e.g. FSKTM, KK12, library"
-            setSingleLine()
-            textSize = Type.BODY_L * Ui.fontScale; setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM)
-            background = roundBg(Ui.BAR, Ui.BORDER, this@ShuttleActivity, Radius.SM)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-        }
-        col.addView(search, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = android.widget.ScrollView(this).apply { addView(list) }
-        col.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(380)).apply { topMargin = dp(8) })
-        val dlg = android.app.AlertDialog.Builder(this, Ui.dialogTheme)
-            .setTitle(title)
-            .setView(col)
-            .setNegativeButton("Cancel", null)
-            .create()
-        val home = Shuttle.homeId(this)
-        val heads = listOf("Faculties and buildings", "Residential colleges", "Bus stops")
-        fun fill(q: String) {
-            list.removeAllViews()
-            val words = q.lowercase(Locale.ROOT).split(" ").filter { it.isNotBlank() }
-            // each word matches the start of a word of the name ("api" finds "(API)", not "Rapid"), or the id
-            val hits = all.filter { p ->
-                val parts = p.name.lowercase(Locale.ROOT).split(Regex("[^a-z0-9']+")).filter { it.isNotEmpty() }
-                val akas = p.aka.flatMap { it.lowercase(Locale.ROOT).split(" ") }
-                words.all { w -> parts.any { it.startsWith(w) } || akas.any { it.startsWith(w) } || p.id.lowercase(Locale.ROOT).startsWith(w) }
-            }
-            // "Raja Dr Nazrin Shah RC · KK12": the short names that are not in the name already
-            fun row(p: ShuttleModel.Place, label: String = p.name + p.aka.filter { a -> !p.name.contains(a, true) && a.none { it == ' ' } }
-                .takeIf { it.isNotEmpty() }?.joinToString(", ", " · ").orEmpty()) {
-                list.addView(tv(label, Type.BODY_L, Ui.TEXT).apply {
-                    setPadding(dp(8), dp(12), dp(8), dp(12))
-                    background = rippleBg(Ui.BG, 0, this@ShuttleActivity, Radius.SM)
-                    isClickable = true
-                    setOnClickListener { dlg.dismiss(); onPick(p.id) }
-                })
-            }
-            if (words.isEmpty()) d.places[home]?.let { list.label("Your home stop", Type.CAPTION, Ui.CYAN, 8); row(it) }
-            for (g in 0..2) {
-                val inG = hits.filter { groupOf(it) == g }
-                if (inG.isEmpty()) continue
-                list.label(heads[g], Type.CAPTION, Ui.CYAN, 12).setTypeface(null, Typeface.BOLD)
-                inG.forEach { row(it) }
-            }
-            if (hits.isEmpty()) list.label("Nothing matches \"$q\".", Type.LABEL, Ui.DIM, 12)
-        }
-        search.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(e: android.text.Editable?) = fill(e?.toString() ?: "")
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-        })
-        fill("")
-        dlg.show()
-    }
-
     /** From / To, how to time it, recent trips and the journeys found. Returns the journey to draw on the map. */
     private fun renderPlanner(d: ShuttleModel.Data, today: LocalDate, now: Int): ShuttleModel.Journey? {
         val box = planBox
@@ -404,32 +321,32 @@ class ShuttleActivity : BaseActivity() {
             card.addView(tv(head, Type.BODY_L, Ui.TEXT, true))
             // roughly how long until the first bus comes, and until you have to set off (within the next day)
             val waitLine = waitText(j, java.time.temporal.ChronoUnit.DAYS.between(today, day) * 24 * 60 - now)
-            if (waitLine.isNotEmpty()) card.addView(tv(waitLine, Type.LABEL, Ui.CYAN, true).apply { setPadding(0, dp(4), 0, 0) })
+            if (waitLine.isNotEmpty()) card.addView(iconText(R.drawable.ic_timer, waitLine, Type.LABEL, Ui.CYAN, true).apply { setPadding(0, dp(4), 0, 0) })
             // the chosen journey step by step; the others in one line ("BA 14:09 → Rapid T789")
             if (on) for (leg in j.legs) card.addView(tv(legText(d, leg), Type.LABEL, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
             else card.addView(tv(if (j.walkOnly) "🚶 Walk all the way" else j.buses.joinToString(" → ") { b ->
                 "🚌 " + b.ride.route.label.removePrefix("Route ") + if (b.ride.route.frequent) "" else " " + ShuttleModel.fmt(b.ride.depart)
             } + " · tap for the steps", Type.LABEL, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
-            if (on && j.walkOnly) card.addView(chip("Walking route in Maps", false, size = Type.LABEL, padH = 12) { open(ShuttleModel.mapsWalkUrl(from, to)) },
+            if (on && j.walkOnly) card.addView(button("Walking route in Maps", Emphasis.SECONDARY) { open(ShuttleModel.mapsWalkUrl(from, to)) },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
-            card.contentDescription = head + ". " + waitLine.removePrefix("⏱ ").let { if (it.isEmpty()) "" else "$it. " } + j.legs.joinToString(". ") { legText(d, it).drop(2) } + if (on) ". Shown on the map." else ". Tap to show it on the map."
+            card.contentDescription = head + ". " + waitLine.let { if (it.isEmpty()) "" else "$it. " } + j.legs.joinToString(". ") { legText(d, it).drop(2) } + if (on) ". Shown on the map." else ". Tap to show it on the map."
             box.addView(card, lp())
         }
         if (list.any { j -> j.buses.any { it.ride.route.frequent } }) box.label("Rapid KL times count the longest wait.", Type.CAPTION, Ui.DIM, 4)
         return list.getOrNull(chosenJ)
     }
 
-    /** "⏱ AB comes in ~14 min · leave in 7 min"; [offset] = minutes from now to midnight of the planned day. */
+    /** "AB comes in ~14 min · leave in 7 min" (shown after a timer icon); [offset] = minutes from now to midnight of the planned day. */
     private fun waitText(j: ShuttleModel.Journey, offset: Long): String {
         fun dur(m: Long) = if (m < 60) "$m min" else "${m / 60} h" + (if (m % 60 > 0) " ${m % 60} min" else "")
         val leave = offset + j.depart
         if (leave < 0 || leave > 24 * 60) return ""
         val leaveS = if (leave <= 0) "leave now" else "leave in ${dur(leave)}"
-        val bus = j.buses.firstOrNull() ?: return "⏱ " + leaveS.replaceFirstChar { it.uppercase() }
+        val bus = j.buses.firstOrNull() ?: return leaveS.replaceFirstChar { it.uppercase() }
         val wait = offset + bus.ride.depart
         val name = bus.ride.route.label.removePrefix("Route ")
         val comes = if (wait <= 0) "$name is due now" else "$name comes in ~${dur(wait)}"
-        return "⏱ $comes" + if (leave < wait) " · $leaveS" else ""
+        return comes + if (leave < wait) " · $leaveS" else ""
     }
 
     private fun render() {

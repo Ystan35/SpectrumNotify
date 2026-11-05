@@ -204,6 +204,14 @@ fun Context.iconText(icon: Int, text: CharSequence, size: Float, color: Int, bol
         gravity = Gravity.CENTER_VERTICAL
     }
 
+/** A vector icon in front of a button's label, sized to the text and tinted like it. */
+fun TextView.leadingIcon(res: Int) {
+    val px = (textSize * 1.15f).toInt()
+    val d = context.getDrawable(res)?.mutate()?.apply { setBounds(0, 0, px, px); setTint(currentTextColor) } ?: return
+    setCompoundDrawablesRelative(d, null, null, null)
+    compoundDrawablePadding = context.dp(6)
+}
+
 /** The one section heading style: small bold capitals in DIM ("DUE SOON", "COURSES"). */
 fun Context.sectionLabel(text: String): TextView =
     tv(text.uppercase(), Type.LABEL, Ui.DIM, true).apply {
@@ -222,7 +230,8 @@ fun Context.button(label: String, emphasis: Emphasis, accent: Int = Ui.CYAN, onC
         gravity = Gravity.CENTER
         minHeight = c.dp(Ui.touch(48))
         minWidth = c.dp(Ui.touch(48))
-        setPadding(c.dp(if (emphasis == Emphasis.TERTIARY) 12 else 18), 0, c.dp(if (emphasis == Emphasis.TERTIARY) 12 else 18), 0)
+        // vertical padding so a label that wraps at large text sizes still fits inside the pill
+        setPadding(c.dp(if (emphasis == Emphasis.TERTIARY) 12 else 18), c.dp(6), c.dp(if (emphasis == Emphasis.TERTIARY) 12 else 18), c.dp(6))
         background = GradientDrawable().apply {
             cornerRadius = c.dp(Radius.PILL).toFloat()
             when (emphasis) {
@@ -690,6 +699,14 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
     }
     var dot: View? = null
     val activeIdx = tabs.indexOfFirst { it.cls == active }
+    // one label size for all tabs, reduced only as far as the longest label needs to fit (large text cut "Notifications")
+    val labelSp = Type.CAPTION * Ui.fontScale
+    val probe = android.text.TextPaint().apply {
+        textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, labelSp, resources.displayMetrics)
+        typeface = Typeface.DEFAULT_BOLD
+    }
+    val slot = (resources.displayMetrics.widthPixels - dp(8)) / tabs.size.toFloat()
+    val fit = minOf(1f, (slot - dp(2)) / tabs.maxOf { probe.measureText(it.label) })
     for ((idx, t) in tabs.withIndex()) {
         val isActive = t.cls == active
         val item = LinearLayout(this).apply {
@@ -739,7 +756,7 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
         item.addView(holder, LinearLayout.LayoutParams(dp(46), dp(28)).apply { gravity = Gravity.CENTER_HORIZONTAL })
         item.addView(TextView(this).apply {
             text = t.label
-            textSize = Type.CAPTION * Ui.fontScale
+            textSize = labelSp * fit
             setTextColor(if (isActive) Ui.CYAN else Ui.DIM)
             if (isActive) setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
@@ -785,8 +802,15 @@ fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit
     sp.background = roundBg(Ui.BAR, Ui.BORDER_STRONG, this)
     sp.setPopupBackgroundDrawable(roundBg(Ui.BAR, Ui.BORDER, this))
     sp.setSelection(selected, false)
+    // [onSelect] only for a real change: Android also reports the starting item once when the spinner is first
+    // laid out, which wrote a value nobody picked (wrong Occ saved, or an Occ cleared when it was not in the list)
+    var last = selected
     sp.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) = onSelect(position)
+        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+            if (position == last) return
+            last = position
+            onSelect(position)
+        }
         override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
     }
     return sp
@@ -810,6 +834,13 @@ fun Activity.attachPullToRefresh(sv: ScrollView, onRefresh: () -> Unit) {
                 if (pulling && !fired) {
                     if (sv.scrollY > 0) { pulling = false; hint?.let { (it.parent as? ViewGroup)?.removeView(it) }; return@setOnTouchListener false }
                     dist = ev.rawY - startY
+                    if (dist < 0) {
+                        // going up is a scroll, not a pull: hand it to the page (this used to freeze pages at the top)
+                        pulling = false
+                        hint?.let { (it.parent as? ViewGroup)?.removeView(it) }
+                        hint = null
+                        return@setOnTouchListener false
+                    }
                     if (dist > dp(24)) {
                         v.parent?.requestDisallowInterceptTouchEvent(true)
                         if (hint == null) {
@@ -926,7 +957,7 @@ fun Activity.attachToolbox(root: FrameLayout, scroll: ScrollView? = null) {
         gravity = Gravity.CENTER
         setTextColor(Ui.CYAN)
         background = rippleBg(Ui.BAR, Ui.CYAN, this@attachToolbox, Radius.PILL)
-        contentDescription = "Toolbox: appearance, UM links, academic calendar. Tap to open, hold and drag to move."
+        contentDescription = "Toolbox: appearance, links, semester dates. Tap to open, hold and drag to move."
         elevation = dp(6).toFloat()
     }
     val fabLp = FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48)), Gravity.BOTTOM or Gravity.END).apply {
@@ -1051,13 +1082,9 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
     }
 
     header("Go to")
-    row(R.drawable.lk_bus, "UM Shuttle", desc = "UM Shuttle: plan a trip, next buses and routes") {
+    if (Shuttle.enabled(this)) row(R.drawable.lk_bus, "UM Shuttle", desc = "UM Shuttle: plan a trip, next buses and routes") {
         closeQuickSheet(root)
         startActivity(Intent(this, ShuttleActivity::class.java))
-    }
-    row(R.drawable.lk_calendar, "Academic calendar", trailing = R.drawable.ic_open_new, desc = "Academic calendar 2026/2027, opens the PDF") {
-        closeQuickSheet(root)
-        startActivity(Intent(this, CalendarWebActivity::class.java))
     }
     row(R.drawable.ic_date_range, "Semester dates") {
         closeQuickSheet(root)
@@ -1065,7 +1092,7 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
     }
 
     // Edit sits in the heading: at the bottom of the list it was out of sight whenever the sheet had to scroll
-    header("UM links", action = "Edit", actionDesc = "Edit UM links") {
+    header("Links", action = "Edit", actionDesc = "Edit links") {
         closeQuickSheet(root)
         // the editor lives in Settings → UM links (icons, order, course pages)
         startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_OPEN, "umlinks"))

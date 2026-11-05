@@ -157,8 +157,11 @@ class NotificationsActivity : BaseActivity() {
         val st = NotifyLog.stamp(this)
         if (st != logStamp) {
             logStamp = st
+            val hiddenEvents = getSharedPreferences("health", MODE_PRIVATE).getStringSet("hiddenEvents", emptySet())!!
             entries = NotifyLog.entries(this).filter {
                 !NotifyLog.isHidden(this, it.ts) &&
+                // every reminder for a hidden task, not only the one that was hidden
+                Checker.reminderTaskName(it.title)?.let { n -> Checker.hiddenNameKey(n) in hiddenEvents } != true &&
                 !(it.kind == "sys" && it.title == "Check OK") &&
                 (p.debugLog || it.kind != "sys" || it.title.startsWith("Check failed") || it.title.startsWith("Last crash") ||
                  it.title.startsWith("Logged in") || it.title.startsWith("Logged out") || it.title.startsWith("Token"))
@@ -266,7 +269,9 @@ class NotificationsActivity : BaseActivity() {
 
     // ------------------------------------------------------------ one notification record
     private fun card(e: NotifyLog.Entry): View {
-        val done = NotifyLog.isDone(this, e.ts)
+        // a deadline reminder is done when its task is (marked here or on Home)
+        val task = Checker.reminderTaskName(e.title)
+        val done = NotifyLog.isDone(this, e.ts) || (task != null && Checker.isTaskDone(this, task))
         val cat = catOf(e)
         val col = Cat.color(cat)
         var open = e.ts == openTs
@@ -307,7 +312,7 @@ class NotificationsActivity : BaseActivity() {
         meta.addView(tv(Cat.label(cat), Type.CAPTION, col, true).apply { letterSpacing = 0.06f })
         meta.addView(tv("· ${ago(NotifyLog.atOf(e))}", Type.CAPTION, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
         col2.addView(meta)
-        val title = tv(e.title, Type.BODY_L, Ui.TEXT, true).apply {
+        val title = tv(unesc(e.title), Type.BODY_L, Ui.TEXT, true).apply {
             ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(3), 0, 0)
         }
@@ -315,7 +320,7 @@ class NotificationsActivity : BaseActivity() {
         col2.addView(title)
         var body: TextView? = null
         if (e.body.isNotEmpty()) {
-            body = tv(e.body.take(3000), Type.LABEL, Ui.DIM).apply {
+            body = tv(unesc(e.body.take(3000)), Type.LABEL, Ui.DIM).apply {
                 ellipsize = TextUtils.TruncateAt.END
                 setLinkTextColor(Ui.CYAN)
                 setPadding(0, dp(6), 0, 0)
@@ -350,13 +355,15 @@ class NotificationsActivity : BaseActivity() {
             extraChips.add(Pair(if (done) "Mark as not done" else "Mark as done") {
                 if (done) {
                     NotifyLog.unmarkDone(this, e.ts)
+                    if (task != null) Checker.setTaskDone(this, task, false)
                     logStamp = -1L; recSig = ""; render()
                 } else {
                     AlertDialog.Builder(this, Ui.dialogTheme)
                         .setTitle("Mark as done?")
-                        .setMessage("The title stays on the list with a line through it, so you can still find it. Nothing is deleted, and you can undo with \"Mark as not done\".")
+                        .setMessage("The title stays on the list with a line through it, so you can still find it, and you get no more reminders for this task. Nothing is deleted, and you can undo with \"Mark as not done\".")
                         .setPositiveButton("Mark as done") { _, _ ->
                             NotifyLog.markDone(this, e.ts)
+                            if (task != null) Checker.setTaskDone(this, task, true)
                             logStamp = -1L; recSig = ""; render()
                         }
                         .setNegativeButton("Cancel", null)
@@ -364,16 +371,9 @@ class NotificationsActivity : BaseActivity() {
                 }
             })
             extraChips.add(Pair("Hide this (wrong?)") {
-                val sp = getSharedPreferences("health", MODE_PRIVATE)
-                val keys = ArrayList<String>()
-                for (m in sp.getStringSet("dlTitleMap", emptySet()) ?: emptySet()) {
-                    val parts = m.split(":", limit = 2)
-                    if (parts.size == 2 && parts[0] == e.title.hashCode().toString()) {
-                        val ev = parts[1].split(":")
-                        if (ev.size >= 2) keys.add(ev[0] + ":" + ev[1])
-                        if (ev.size >= 3) keys.add(ev[0] + ":" + ev[1] + ":" + ev[2])
-                    }
-                }
+                // reminders carry only the task name ("Due in ~5h: Quiz 2"): hide that name everywhere
+                // (Home, reminders, morning summary), not just this one line
+                val keys = listOfNotNull(Checker.reminderTaskName(e.title)?.let { Checker.hiddenNameKey(it) })
                 keys.forEach { NotifyLog.hideEvent(this, it) }
                 NotifyLog.hide(this, e.ts)
                 logStamp = -1L
@@ -396,6 +396,11 @@ class NotificationsActivity : BaseActivity() {
             }
             for ((i, b) in btns.withIndex()) {
                 val chip = button(b.first, if (i == 0) Emphasis.PRIMARY else Emphasis.SECONDARY, col) { openUrl(b.second) }
+                // a document / slides / sheet / PDF / folder / video gets its icon (Drive, OneDrive, Spectrum files)
+                FileKind.of(b.second, b.first)?.let { k ->
+                    chip.leadingIcon(k.icon)
+                    chip.contentDescription = "${b.first}, ${k.word}"
+                }
                 chips.add(chip)
                 chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
             }

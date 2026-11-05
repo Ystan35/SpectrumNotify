@@ -11,7 +11,11 @@ import java.util.UUID
 /** Spectrum login through the browser (Moodle mobile launch flow) plus token verification. */
 object Login {
     fun start(activity: Activity) {
-        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(launchUrl(Prefs(activity)))))
+        try {
+            activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(launchUrl(Prefs(activity)))))
+        } catch (_: android.content.ActivityNotFoundException) {
+            android.widget.Toast.makeText(activity, "No browser found to open the login page.", android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     /**

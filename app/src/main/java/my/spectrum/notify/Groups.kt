@@ -69,6 +69,16 @@ object Groups {
     }
 
     /**
+     * Your groups for one course only when you set or confirmed them (Courses / Confirm your Occ / Settings),
+     * not guessed from attendance names: whole pages are muted for another Occ only when this is sure.
+     */
+    fun mineSure(p: Prefs, code: String): Set<String> {
+        if (p.groupsOff) return emptySet()
+        val up = code.uppercase(Locale.ROOT)
+        return manual(p).filter { it.code.isEmpty() || it.code == up }.flatMap { it.tokens }.toSet()
+    }
+
+    /**
      * The single best-guess Occ per course, for prefilling the confirm dialog.
      * Priority: attendance-event occ token (your own events name your Occ) >
      * availability-detected occ (pages you can see). Returns code -> occ number, only when
@@ -105,8 +115,7 @@ object Groups {
     }
 
     /** Courses with their learned Occ numbers (from attendance event names), for the Settings chips. */
-    fun learnedPerCourse(ctx: android.content.Context): Map<String, List<String>> {
-        val st = State(ctx)
+    fun learnedPerCourse(ctx: android.content.Context, st: State = State(ctx)): Map<String, List<String>> {
         val out = LinkedHashMap<String, MutableList<String>>()
         val o = st.j.optJSONObject("my_groups") ?: return out
         for (k in o.keys()) {

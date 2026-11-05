@@ -117,11 +117,11 @@ object ClassModeEditor {
             }
         }
         // the two switches side by side, then what each one does
-        val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(activity.button("Mark in person", Emphasis.PRIMARY) { switch(true) }.apply {
+        val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; isBaselineAligned = false }
+        row.addView(activity.button("In person", Emphasis.PRIMARY) { switch(true) }.apply {
             contentDescription = "Mark ticked courses as in person"
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(activity.button("Mark online", Emphasis.SECONDARY) { switch(false) }.apply {
+        row.addView(activity.button("Online", Emphasis.SECONDARY) { switch(false) }.apply {
             contentDescription = "Mark ticked courses as online"
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = activity.dp(8) })
         box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dp(14) })

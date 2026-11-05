@@ -58,11 +58,11 @@ object EventsUi {
                 background = rippleBg(Ui.BAR, Ui.BORDER, activity, Radius.MD)
                 setOnClickListener { editor(activity, e, onChanged) }
             }
-            card.addView(tv(activity, "${fmtDate(d)} · ${fmt(min)}–${fmt(e.endTime)}", Type.LABEL, Ui.CYAN, true))
+            card.addView(tv(activity, whenLabel(e, d), Type.LABEL, e.tint(), true))
             card.addView(tv(activity, e.title, Type.BODY_L, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0) })
             val meta = ArrayList<String>()
             if (e.repeat == Events.REPEAT_WEEKLY) meta.add("repeats weekly")
-            if (e.reminderMin > 0) meta.add("reminds ${e.reminderMin} min before")
+            if (e.reminders.isNotEmpty()) meta.add(Events.remindSummary(e))
             if (e.note.isNotEmpty()) meta.add(e.note)
             if (meta.isNotEmpty()) card.addView(tv(activity, meta.joinToString(" · "), Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(3), 0, 0); maxLines = 2 })
             box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
@@ -70,7 +70,14 @@ object EventsUi {
         box.btn("Add an event") { editor(activity, null, onChanged) }
     }
 
-    /** Add/edit dialog: title, note, date, start/end, repeat chip, reminder chip. */
+    /** "Tomorrow · 10:00–11:00", "Mon 2 Nov · All day", or "Mon 2 Nov – Thu 5 Nov · All day" for occurrence [d]. */
+    fun whenLabel(e: Events.Event, d: LocalDate): String =
+        fmtDate(d) + (if (e.days > 1) " – " + fmtDate(d.plusDays(e.days - 1L)) else "") + " · " + timeRange(e)
+
+    /** "All day", or "10:00–11:00". */
+    fun timeRange(e: Events.Event): String = if (e.allDay) "All day" else "${fmt(e.startTime)}–${fmt(e.endTime)}"
+
+    /** Add/edit dialog: title, note, date, all day or start/end, repeat, reminders, label colour. */
     fun editor(activity: Activity, existing: Events.Event?, onChanged: () -> Unit, prefillDate: LocalDate? = null) {
         val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
         val col = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(10), dp(24), 0) }
@@ -89,23 +96,70 @@ object EventsUi {
         lbl("Title"); col.addView(titleFieldRow(activity, titleF))
 
         var date: LocalDate = existing?.date ?: prefillDate ?: LocalDate.now(zone())
+        var endDate: LocalDate? = existing?.endDate
+        var length = (existing?.days ?: 1) - 1L
+        var drawEnd: () -> Unit = {}
         lateinit var dateBtn: Button
         dateBtn = col.btn(dateLabel(date)) {
             val parts = date.toString().split("-").map { it.toInt() }
             android.app.DatePickerDialog(activity, { _, y, m, d ->
                 date = LocalDate.of(y, m + 1, d)
                 dateBtn.text = dateLabel(date)
+                // the last day moves with the first, so the length stays the same
+                if (endDate != null) endDate = date.plusDays(length)
+                drawEnd()
             }, parts[0], parts[1] - 1, parts[2]).show()
         }
 
         // time pickers, like the class editor; moving the start keeps the end after it
         lateinit var endF: TimeField
-        val startF = TimeField(activity, existing?.startTime ?: 10 * 60) { st ->
+        val timed = existing?.takeIf { !it.allDay }
+        val startF = TimeField(activity, timed?.startTime ?: 10 * 60) { st ->
             if (endF.minutes <= st) endF.set(minOf(24 * 60 - 1, st + 60))
         }
-        endF = TimeField(activity, existing?.endTime ?: 11 * 60) { }
-        lbl("Starts"); col.addView(startF.view)
-        lbl("Ends"); col.addView(endF.view)
+        endF = TimeField(activity, timed?.endTime ?: 11 * 60) { }
+        var allDay = existing?.allDay ?: false
+        val times = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; visibility = if (allDay) View.GONE else View.VISIBLE }
+        lateinit var drawReminders: () -> Unit
+        val reminders = LinkedHashSet<Int>().apply { addAll(existing?.reminders ?: listOf(30)) }
+        col.addView(android.widget.Switch(activity).apply {
+            text = "All day"; setTextColor(Ui.TEXT); textSize = Type.BODY_L * Ui.fontScale
+            minHeight = dp(Ui.touch(48)); isChecked = allDay
+            setOnCheckedChangeListener { _, on ->
+                allDay = on
+                times.visibility = if (on) View.GONE else View.VISIBLE
+                drawEnd()
+                // minutes and hours mean nothing without a start time
+                if (on) {
+                    reminders.removeAll(reminders.filter { it % DAY != 0 }.toSet())
+                    if (reminders.isEmpty()) reminders.add(0)
+                }
+                drawReminders()
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        // all-day events can run over several days; events with a time stay within one
+        val endBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(endBox)
+        lateinit var endBtn: Button
+        endBox.label("Last day", Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
+        endBtn = endBox.btn("") {
+            val cur = endDate ?: date
+            android.app.DatePickerDialog(activity, { _, y, m, d ->
+                val picked = LocalDate.of(y, m + 1, d)
+                endDate = picked.takeIf { it.isAfter(date) }
+                length = endDate?.let { java.time.temporal.ChronoUnit.DAYS.between(date, it) } ?: 0L
+                drawEnd()
+            }, cur.year, cur.monthValue - 1, cur.dayOfMonth).apply { datePicker.minDate = date.atStartOfDay(zone()).toInstant().toEpochMilli() }.show()
+        }
+        drawEnd = {
+            endBox.visibility = if (allDay) View.VISIBLE else View.GONE
+            val end = endDate
+            endBtn.text = if (end == null) "Same day" else dateLabel(end) + " (${length + 1} days)"
+        }
+        drawEnd()
+        times.label("Starts", Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD); times.addView(startF.view)
+        times.label("Ends", Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD); times.addView(endF.view)
+        col.addView(times)
 
         lbl("Repeat")
         val repeats = listOf("Does not repeat" to Events.REPEAT_NONE, "Every week" to Events.REPEAT_WEEKLY)
@@ -114,12 +168,45 @@ object EventsUi {
             repeat = repeats.getOrNull(sel.firstOrNull() ?: 0)?.second ?: Events.REPEAT_NONE
         }
 
-        lbl("Remind me before")
-        val opts = listOf("No reminder" to 0, "10 min before" to 10, "30 min before" to 30, "1 hour before" to 60, "1 day before" to 1440)
-        var remind = existing?.reminderMin ?: 30
-        col.chips(opts.map { it.first }, setOf(opts.indexOfFirst { it.second == remind }.coerceAtLeast(0)), false) { sel ->
-            remind = opts.getOrNull(sel.firstOrNull() ?: 0)?.second ?: 0
+        lbl("Remind me (pick any)")
+        val reminderBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(reminderBox)
+        drawReminders = {
+            reminderBox.removeAllViews()
+            val presets = if (allDay) listOf(0, DAY, 2 * DAY, 3 * DAY, 4 * DAY, 7 * DAY, 14 * DAY)
+                else listOf(0, 10, 30, 60, DAY, 3 * DAY, 4 * DAY, 7 * DAY)
+            val tags = (presets + reminders.filter { it !in presets }.sorted()).map { min ->
+                val label = when {
+                    min > 0 -> Events.remindLabel(min)
+                    allDay -> "On the day"
+                    else -> "At start"
+                }
+                activity.chip(label, min in reminders, size = Type.LABEL, padH = 2) {
+                    if (!reminders.remove(min)) reminders.add(min)
+                    drawReminders()
+                }
+            } + activity.chip("+ Custom", false, size = Type.LABEL, padH = 2) {
+                customReminder(activity, allDay) { min -> reminders.add(min); drawReminders() }
+            }
+            val perLine = if (Ui.fontScale > 1.1f) 2 else 3
+            tags.chunked(perLine).forEach { line ->
+                reminderBox.addView(LinearLayout(activity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    line.forEachIndexed { i, c -> addView(c, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (i > 0) leftMargin = dp(6) }) }
+                    repeat(perLine - line.size) { addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f).apply { leftMargin = dp(6) }) }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+            }
+            reminderBox.label(when {
+                reminders.isEmpty() -> "No reminder."
+                allDay -> "All-day reminders go off at 09:00."
+                else -> "Before the start time."
+            }, Type.CAPTION, Ui.DIM, 6)
         }
+        drawReminders()
+
+        lbl("Label colour")
+        var colour = existing?.color ?: -1
+        col.swatches(colour) { colour = it }
 
         lbl("Note (optional)")
         val noteF = field("What to bring, where to go…", existing?.note ?: "", single = false)
@@ -145,11 +232,12 @@ object EventsUi {
             val en = endF.minutes
             when {
                 title.isEmpty() -> { titleF.error = "Give the event a name"; titleF.requestFocus() }
-                en <= st -> Toast.makeText(activity, "The end time must be after the start time.", Toast.LENGTH_LONG).show()
+                !allDay && en <= st -> Toast.makeText(activity, "The end time must be after the start time.", Toast.LENGTH_LONG).show()
                 else -> {
                     Events.save(activity, Events.Event(
                         existing?.id ?: Events.newId(), title, noteF.text.toString().trim(),
-                        date, st, en, repeat, remind,
+                        date, if (allDay) 0 else st, if (allDay) DAY else en, repeat, reminders.sorted(), allDay, colour,
+                        endDate.takeIf { allDay },
                     ))
                     Toast.makeText(activity, "Event saved.", Toast.LENGTH_SHORT).show()
                     dialog.dismiss()
@@ -171,6 +259,39 @@ object EventsUi {
                 .show()
         }
     }
+
+    /** "+ Custom": a number and a unit, e.g. 5 days. Minutes and hours only make sense with a start time. */
+    private fun customReminder(activity: Activity, allDay: Boolean, onPick: (Int) -> Unit) {
+        val dp = { n: Int -> (n * activity.resources.displayMetrics.density).toInt() }
+        val units = (if (allDay) emptyList() else listOf("minutes" to 1, "hours" to 60)) + listOf("days" to DAY, "weeks" to 7 * DAY)
+        var unit = units.indexOfFirst { it.first == "days" }
+        val col = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
+        val number = EditText(activity).apply {
+            hint = "How many"; inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            textSize = Type.BODY_L * Ui.fontScale; setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM); setSingleLine()
+            background = roundBg(Ui.BAR, Ui.BORDER, activity, Radius.SM)
+            setPadding(dp(12), dp(10), dp(12), dp(10)); minHeight = dp(Ui.touch(48))
+        }
+        col.addView(number, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        col.chips(units.map { it.first }, setOf(unit), false) { sel -> unit = sel.firstOrNull() ?: unit }
+        val d = AlertDialog.Builder(activity, Ui.dialogTheme)
+            .setTitle("Remind me before")
+            .setView(col)
+            .setPositiveButton("Add", null)
+            .setNegativeButton("Cancel", null)
+            .show()
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val min = (number.text.toString().toLongOrNull() ?: 0L) * units[unit].second
+            when {
+                min <= 0 -> number.error = "Enter a number"
+                min > MAX_REMIND -> number.error = "Up to 1 year before"
+                else -> { onPick(min.toInt()); d.dismiss() }
+            }
+        }
+    }
+
+    private const val DAY = 24 * 60
+    private const val MAX_REMIND = 365 * DAY
 
     private fun titleFieldRow(activity: Activity, f: EditText): LinearLayout =
         LinearLayout(activity).apply {

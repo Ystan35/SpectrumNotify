@@ -41,7 +41,6 @@
         </activity>
 
         <activity android:name=".SettingsActivity" android:exported="false" />
-        <activity android:name=".CalendarWebActivity" android:exported="false" />
         <activity android:name=".NotificationsActivity" android:exported="false" android:launchMode="singleTop" />
         <activity android:name=".TimetableActivity" android:exported="false" />
         <activity android:name=".CoursesActivity" android:exported="false" />
@@ -55,13 +54,21 @@
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
 
-        <receiver android:name=".NextClassWidget" android:exported="false">
+        <receiver android:name=".NextClassWidget" android:exported="false" android:label="Next class">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/next_class_widget_info" />
+        </receiver>
+        <receiver android:name=".UmLinksWidget" android:exported="false" android:label="Links">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/um_links_widget_info" />
         </receiver>
         <receiver android:name=".PollAlarmReceiver" android:exported="false" />
         <receiver android:name=".EventAlarmReceiver" android:exported="false" />

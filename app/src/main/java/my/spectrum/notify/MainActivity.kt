@@ -123,7 +123,17 @@ class MainActivity : BaseActivity() {
         ovAt = 0L
         handler.post(ticker)
         if (refreshing) handler.post(refreshWatch)
-        confirmOccDialog()
+        // the Occ dialog was still open when the screen was rebuilt (you switched apps): bring it back, picks kept
+        if (getSharedPreferences("health", MODE_PRIVATE).getBoolean(semFlag("occDialogOpen"), false)) confirmOccDialog(manual = true)
+        else confirmOccDialog()
+    }
+
+    override fun onDestroy() {
+        // the screen is going (e.g. rebuilt while you were in another app): close the Occ dialog quietly, without
+        // counting it as answered, so onResume of the new screen reopens it with your picks
+        occDialog?.let { it.setOnDismissListener(null); it.dismiss() }
+        occDialog = null
+        super.onDestroy()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -133,6 +143,7 @@ class MainActivity : BaseActivity() {
     }
 
     private var occDialogShown = false
+    private var occDialog: android.app.AlertDialog? = null
 
     private data class OccAsk(val code: String, val cname: String, val occs: List<String>, val predicted: String?)
 
@@ -140,11 +151,11 @@ class MainActivity : BaseActivity() {
     private fun pendingOccAsks(): List<OccAsk> {
         val st = State(this)
         val seen = st.j.optJSONObject("occ_seen") ?: return emptyList()
-        val names = st.j.optJSONObject("occ_courses") ?: JSONObject()
-        val codes = Courses.all(this).associate { it.id to it.code.uppercase() }
+        val courses = Courses.all(this).associateBy { it.id }
         val asks = ArrayList<OccAsk>()
         for (cidS in seen.keys()) {
-            val code = codes[cidS.toLongOrNull() ?: -1L] ?: continue
+            val course = courses[cidS.toLongOrNull() ?: -1L] ?: continue
+            val code = course.code.uppercase()
             if (Prefs(this).occConfirmed(code)) continue
             // prediction = attendance/event-name learning (my_groups); options = ALL catalog occs,
             // falling back to predicted, then to availability-seen. Shown even when empty.
@@ -156,7 +167,8 @@ class MainActivity : BaseActivity() {
                         .mapNotNull { Regex("occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
                 }
                 .distinct().sortedBy { it.toIntOrNull() ?: 999 }
-            asks.add(OccAsk(code, names.optString(cidS, code), occs, predictedNum))
+            // Spectrum's short name is only the code, so the name comes from the full course title
+            asks.add(OccAsk(code, Timetable.classTitle(course.code, course.name, ""), occs, predictedNum))
         }
         return asks
     }
@@ -172,17 +184,28 @@ class MainActivity : BaseActivity() {
         val flags = getSharedPreferences("health", MODE_PRIVATE)
         if (!manual && flags.getBoolean(semFlag("occAutoAsked"), false)) return
         val asks = pendingOccAsks()
-        if (asks.isEmpty()) return
+        if (asks.isEmpty()) {
+            // nothing left to confirm (done elsewhere meanwhile): no dialog to bring back
+            flags.edit().putBoolean(semFlag("occDialogOpen"), false).remove(semFlag("occDraft")).apply()
+            return
+        }
         occDialogShown = true
-        flags.edit().putBoolean(semFlag("occAutoAsked"), true).apply()
+        // "occDialogOpen" stays set until you answer (Save all / Later / Back), so a rebuilt screen reopens it
+        flags.edit().putBoolean(semFlag("occAutoAsked"), true).putBoolean(semFlag("occDialogOpen"), true).apply()
+        // your picks so far (kept while you look things up in another app): course code -> Occ
+        val draft = try { JSONObject(flags.getString(semFlag("occDraft"), "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
+        fun saveDraft() = flags.edit().putString(semFlag("occDraft"), draft.toString()).apply()
+        fun closeDialog() = flags.edit().putBoolean(semFlag("occDialogOpen"), false).remove(semFlag("occDraft")).apply()
 
         // one dialog with the My-classes layout: scrollable content (last courses reachable),
         // sized below the app header
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(10), dp(24), 0) }
         val box = ScrollView(this).apply { addView(content) }
-        // prefill from the attendance-learning prediction, mapped into the full option list
+        // prefill: what you already picked (draft), else the attendance-learning prediction, in the full option list
         val choices = IntArray(asks.size) { i ->
-            asks[i].predicted?.let { pnum -> asks[i].occs.indexOf(pnum) } ?: -1
+            val picked = draft.optString(asks[i].code, "")
+            if (picked.isNotEmpty() && picked in asks[i].occs) asks[i].occs.indexOf(picked)
+            else asks[i].predicted?.let { pnum -> asks[i].occs.indexOf(pnum) } ?: -1
         }
         asks.forEachIndexed { i, a ->
             // single-line row: code·name on the left, occ dropdown on the right
@@ -191,9 +214,14 @@ class MainActivity : BaseActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, if (i == 0) 0 else dp(8), 0, 0)
             }
-            row.addView(tv(a.code + if (a.cname != a.code) " · ${a.cname}" else "", Type.LABEL, Ui.TEXT, true).apply {
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
+            // code, with the course name under it, so you can tell the courses apart
+            row.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(tv(a.code, Type.LABEL, Ui.TEXT, true))
+                if (a.cname.isNotEmpty()) addView(tv(a.cname, Type.CAPTION, Ui.DIM).apply {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                })
             }, LinearLayout.LayoutParams(0, WRAP, 1f))
             val hasPrediction = choices[i] >= 0
             val opts = when {
@@ -201,17 +229,25 @@ class MainActivity : BaseActivity() {
                 hasPrediction -> a.occs.map { it }
                 else -> listOf("?") + a.occs.map { it }
             }
+            // with a "?" first, position 1 is the first Occ; without it, position 0 is (this used to be off by one)
+            val offset = if (opts.firstOrNull() == "?") 1 else 0
             val spinnerSel = if (hasPrediction) choices[i] else 0
-            val sp = spinner(opts, spinnerSel) { pos -> choices[i] = pos - 1 }
+            val sp = spinner(opts, spinnerSel) { pos ->
+                if (a.occs.isEmpty()) return@spinner
+                choices[i] = pos - offset
+                if (choices[i] >= 0) draft.put(a.code, a.occs[choices[i]]) else draft.remove(a.code)
+                saveDraft()
+            }
             sp.layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
             row.addView(sp, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
             content.addView(row, LinearLayout.LayoutParams(MATCH, WRAP))
         }
-        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
+        occDialog = android.app.AlertDialog.Builder(this, Ui.dialogTheme)
             .setTitle("Confirm your Occ")
             .setMessage("Prefilled from your attendance and materials — please confirm each. Unlisted courses keep working without a filter.")
             .setView(box)
             .setPositiveButton("Save all") { _, _ ->
+                closeDialog()
                 val notInCatalog = ArrayList<String>()
                 asks.forEachIndexed { i, a ->
                     val v = choices[i]
@@ -221,6 +257,8 @@ class MainActivity : BaseActivity() {
                         val keep = p.myGroups.split(",").map { it.trim() }
                             .filter { it.isNotEmpty() && !it.startsWith("${a.code}:", true) }
                         p.myGroups = (keep + "${a.code}:occ${a.occs[v]}").joinToString(", ")
+                        // flag it: you are asked to check this Occ against the class times on the Courses page
+                        p.setOccNeedsCheck(a.code, true)
                         val setup = Timetable.autoSetup(this, a.code, a.occs[v])
                         if (!setup) notInCatalog.add(a.code)
                     }
@@ -232,10 +270,14 @@ class MainActivity : BaseActivity() {
                 }
                 ovAt = 0L
             }
-            .setNegativeButton("Later", null)
+            .setNegativeButton("Later") { _, _ -> closeDialog() }
+            .setOnCancelListener { closeDialog() }   // Back = Later
             // the next steps (check times, short names) are on the "Get set up" card, not more dialogs
-            .setOnDismissListener { occDialogShown = false; setupSig = ""; render() }
-            .show()
+            .setOnDismissListener { occDialogShown = false; occDialog = null; setupSig = ""; render() }
+            .create()
+        // a stray tap outside must not throw away your picks
+        occDialog?.setCanceledOnTouchOutside(false)
+        occDialog?.show()
     }
 
     // ------------------------------------------------------------ "Get set up" card
@@ -270,7 +312,7 @@ class MainActivity : BaseActivity() {
             SetupStep("Allow notifications", "Class links, deadlines and new materials arrive as notifications.", notifOk, "Allow") {
                 requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
             },
-            SetupStep("Log in to Spectrum", "Uses your normal UM sign-in. Your login stays on this phone.", loggedIn, "Log in") {
+            SetupStep("Log in to Spectrum", "Uses your normal university sign-in. Your login stays on this phone.", loggedIn, "Log in") {
                 startActivity(Intent(this, LoginWebActivity::class.java))
             },
             SetupStep("Allow exact alarms", "So the class reminder arrives about 10 minutes before class, not late.", Scheduler.canExact(this), "Allow") {
@@ -291,6 +333,14 @@ class MainActivity : BaseActivity() {
             SetupStep("Confirm your Occ",
                 if (!checked) "Your Occ (class group) is detected after the first check." else "Your Occ is your class group, e.g. Occ 2. It decides which links and posts are yours.",
                 loggedIn && checked && !occPending, "Confirm", go = if (occPending) ({ confirmOccDialog(manual = true) }) else null),
+            // after confirming: check each chosen Occ on the Courses page (its class times must match your UM timetable)
+            p.occChecksPending().let { pend ->
+                SetupStep("Verify Occ selection",
+                    if (pend.isEmpty()) "Class times match your Occ."
+                    else "Check on Courses: " + pend.joinToString(", ") { Shorts.display(this, it) },
+                    loggedIn && checked && !occPending && pend.isEmpty(), "Open",
+                    go = if (pend.isNotEmpty()) ({ startActivity(Intent(this, CoursesActivity::class.java)) }) else null)
+            },
             SetupStep("Check your class times", "Open the timetable once and tap any class whose time looks wrong to fix it.",
                 flags.getBoolean(semFlag("setupReviewed"), false), "Open") {
                 flags.edit().putBoolean(semFlag("setupReviewed"), true).apply()
@@ -730,11 +780,14 @@ class MainActivity : BaseActivity() {
                 card.addView(pill("Log in", true) { startActivity(Intent(this, LoginWebActivity::class.java)) }, lp(WRAP, WRAP))
             } else {
                 val due = ov.due.firstOrNull()
-                val inBreak = !AcademicCalendar.inTeaching(this, java.time.LocalDate.now(zone()))
+                val today = java.time.LocalDate.now(zone())
+                val inBreak = !AcademicCalendar.inTeaching(this, today)
+                // say which part of the calendar it is (break, revision, exams…), not "semester break" for all of them
+                val period = AcademicCalendar.describe(this, today) ?: "No teaching today"
                 card.addView(label(if (inBreak) "HOLIDAY MODE" else "ALL CLEAR"))
                 card.addView(tv(
-                    if (inBreak) "Semester break — classes are hidden until teaching resumes" else "No classes coming up",
-                    24f, white, true,
+                    if (inBreak) "$period: classes are hidden until teaching resumes" else "No classes coming up",
+                    Type.HEADLINE, white, true,
                 ).apply { setPadding(0, dp(6), 0, 0) })
                 card.addView(tv(
                     if (due != null) "Next deadline: ${due.name} ${relIn(due.ts - now)}." else "Enjoy the free time. New updates will appear below.",
@@ -998,6 +1051,35 @@ class MainActivity : BaseActivity() {
         if (Timetable.attMode(this, c.course) == "manual") row("Attendance", "Taken in class by the lecturer — no link needed", null)
         else if (att.isNotEmpty()) row("Attendance", att, att)
         if (meeting.isNotEmpty()) row("Join class — meeting link", meeting, meeting)
+        // switch the course between online and in person here (same as Settings → Online or in person)
+        val modeCode = c.code.ifEmpty { c.course }
+        val wasInPerson = Timetable.inPerson(this, modeCode)
+        val modeName = Shorts.display(this, modeCode)
+        fun setMode(inPerson: Boolean) {
+            Timetable.setInPerson(this, listOf(modeCode), inPerson)
+            Scheduler.scheduleAll(this)
+            try { NextClassWidget.updateAll(this) } catch (_: Exception) { }
+            ovAt = 0L; heroSig = ""; render()
+        }
+        sheet.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
+            addView(iconText(if (wasInPerson) R.drawable.ic_laptop else R.drawable.ic_place,
+                if (wasInPerson) "Mark online" else "Mark in person", Type.BODY_L, Ui.TEXT, true))
+            addView(tv(
+                if (wasInPerson) "In person now. Online: Join class and meeting links come back for $modeName."
+                else "No Join class or meeting links for $modeName; the room is shown instead.",
+                Type.CAPTION, Ui.DIM,
+            ).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
+            isClickable = true
+            contentDescription = if (wasInPerson) "Mark $modeName as online" else "Mark $modeName as in person"
+            setOnClickListener {
+                sheetDismiss()
+                setMode(!wasInPerson)
+                undoBar(if (wasInPerson) "$modeName is online again" else "$modeName is in person") { setMode(wasInPerson) }
+            }
+        }, lp(MATCH, WRAP).apply { topMargin = dp(8) })
         // edit this class entry: find the real slot (the editor finish()es silently otherwise)
         val day = localDt(c.start).dayOfWeek.value
         val startMin = localDt(c.start).let { it.hour * 60 + it.minute }
@@ -1074,10 +1156,9 @@ class MainActivity : BaseActivity() {
     }
 
     /** One task (deadline) in a bottom sheet, matching the course sheet's look. */
-    private fun dueSheet(d: Checker.DueItem, doneKey: String) {
+    private fun dueSheet(d: Checker.DueItem) {
         sheetDismiss()
-        val sp = getSharedPreferences("health", MODE_PRIVATE)
-        val isDone = sp.getBoolean(doneKey, false)
+        val isDone = Checker.isTaskDone(this, d.name, d.eventId, d.ts)
         val sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(20))
@@ -1109,19 +1190,22 @@ class MainActivity : BaseActivity() {
         if (d.url.isNotEmpty()) row("View task", d.url) { openUrl(d.url) }
         row(
             if (isDone) "Mark as not done" else "Mark as done",
-            if (isDone) "Puts it back on your active list" else "Keeps it on the list, struck through — you've handled it",
+            if (isDone) "Puts it back on your active list, with reminders" else "Keeps it on the list, struck through; no more reminders",
         ) {
-            sp.edit().putBoolean(doneKey, !isDone).apply()
+            Checker.setTaskDone(this, d.name, !isDone, d.eventId, d.ts)
             dueSig = ""
             render()
         }
         row("Hide this (wrong?)", "Removes it from Home, Notifications and reminders — you can undo right after") {
+            // by id, and by name so its reminders leave the Notifications list too
             if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId)
+            NotifyLog.hideEvent(this, Checker.hiddenNameKey(d.name))
             sheetDismiss()
             dueSig = ""
             render()
             undoBar("Deadline hidden") {
                 if (d.eventId != 0L) NotifyLog.unhideEvent(this, "dl:" + d.eventId)
+                NotifyLog.unhideEvent(this, Checker.hiddenNameKey(d.name))
                 dueSig = ""
                 render()
             }
@@ -1160,7 +1244,7 @@ class MainActivity : BaseActivity() {
                 isClickable = true
                 setOnClickListener { EventsUi.editor(this@MainActivity, e, { dueSig = ""; render() }) }
             }
-            row.addView(tv(EventsUi.fmtDate(d) + " · " + EventsUi.fmtMin(min), Type.CAPTION, Ui.CYAN, true))
+            row.addView(tv(if (e.allDay) EventsUi.whenLabel(e, d) else EventsUi.fmtDate(d) + " · " + EventsUi.fmtMin(min), Type.CAPTION, e.tint(), true))
             row.addView(tv(e.title, Type.BODY, Ui.TEXT, true).apply {
                 setPadding(0, dp(4), 0, 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             })
@@ -1170,13 +1254,11 @@ class MainActivity : BaseActivity() {
 
     private fun renderDue() {
         val now = System.currentTimeMillis() / 1000
-        val health = getSharedPreferences("health", MODE_PRIVATE)
-        fun doneKey(d: Checker.DueItem) = "dueDone:" + d.eventId + ":" + d.ts
+        fun done(d: Checker.DueItem) = Checker.isTaskDone(this, d.name, d.eventId, d.ts)
         // finished ones move behind the open ones
-        val items = ov.due.filter { it.ts - now < 14 * 86400 }.take(8)
-            .sortedBy { health.getBoolean(doneKey(it), false) }
-        // the minute keeps "Due in …" current
-        val sig = items.joinToString("|") { "${it.ts}${it.name}" } + ":" + now / 60
+        val items = ov.due.filter { it.ts - now < 14 * 86400 }.take(8).sortedBy { done(it) }
+        // the minute keeps "Due in …" current; done state too (it can change on the Notifications tab)
+        val sig = items.joinToString("|") { "${it.ts}${it.name}${done(it)}" } + ":" + now / 60
         if (sig == dueSig) return
         dueSig = sig
         dueSection.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
@@ -1184,14 +1266,13 @@ class MainActivity : BaseActivity() {
         for (d in items) {
             val left = d.ts - now
             val col = if (left < 86400) Ui.RED else if (left < 3 * 86400) Ui.ORANGE else Ui.GREEN
-            val doneKey = doneKey(d)
-            val isDone = health.getBoolean(doneKey, false)
+            val isDone = done(d)
             val c = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
                 background = roundBg(Ui.BAR, if (isDone) Ui.CYAN else Ui.BORDER, this@MainActivity, Radius.MD)
                 isClickable = true
-                setOnClickListener { dueSheet(d, doneKey) }
+                setOnClickListener { dueSheet(d) }
             }
             // urgency stripe across the top edge: readable at a glance without the badge
             c.addView(View(this).apply {
@@ -1207,9 +1288,10 @@ class MainActivity : BaseActivity() {
                 setPadding(0, dp(10), 0, 0)
                 if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
             })
-            val shortName = Shorts.display(this, d.course)
-            if (d.course.isNotEmpty()) c.addView(tv(shortName, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
-            if (d.course.isNotEmpty() && !shortName.equals(d.course, true)) c.addView(tv(d.course, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 1 })
+            // "GUL1001 · UMLEADER": the code is already in it, so no second line repeating the code
+            if (d.course.isNotEmpty()) c.addView(tv(Shorts.display(this, d.course), Type.CAPTION, Ui.DIM).apply {
+                setPadding(0, dp(2), 0, 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            })
             c.contentDescription = "${d.name}, due in ${relShort(left)}" + (if (isDone) ", marked done" else "")
             dueRow.addView(c, lp(dp(172), WRAP).apply { rightMargin = dp(10) })
         }

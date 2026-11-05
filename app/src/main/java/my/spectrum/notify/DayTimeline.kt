@@ -22,6 +22,7 @@ import java.util.Locale
 /**
  * One day as a vertical agenda: times on the left, a rail with a dot per class (◆ for your events),
  * and a card per item — title "CODE · Course name", second line "Type · Room/Online · Occ".
+ * All-day events sit above the rail as filled banners in their label colour.
  * Gaps of 30 min or more read "Free 11:00–13:00"; today gets a "now" line. Tapping a class opens
  * Join class / Attendance / Course page right on the card. Used by the month view and its day pop-up.
  */
@@ -101,7 +102,30 @@ object DayTimeline {
     ): View {
         val dp = { n: Int -> activity.dp(n) }
         val col = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-        val items = (slots.map { Item(it.start, it.end, it, null) } + events.map { Item(it.startTime, it.endTime, null, it) })
+        for (ev in events.filter { it.allDay }) {
+            val tint = ev.tint()
+            col.addView(LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(10), dp(14), dp(12))
+                background = rippleBg(tint, 0, activity, Radius.MD)
+                isClickable = true
+                contentDescription = "All day event ${ev.title}. Tap to edit."
+                setOnClickListener { onEvent(ev) }
+                addView(TextView(activity).apply {
+                    text = "ALL DAY" + (if (ev.days > 1) " · DAY ${ev.dayNumber(date)} OF ${ev.days}" else ""); textSize = Type.CAPTION * Ui.fontScale; letterSpacing = 0.08f
+                    setTextColor(onAccent()); setTypeface(typeface, Typeface.BOLD)
+                })
+                addView(TextView(activity).apply {
+                    text = ev.title; textSize = Type.BODY_L * Ui.fontScale; setTextColor(onAccent()); setTypeface(typeface, Typeface.BOLD)
+                    maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+                })
+                if (ev.note.isNotEmpty()) addView(TextView(activity).apply {
+                    text = ev.note; textSize = Type.CAPTION * Ui.fontScale; setTextColor(onAccent())
+                    maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+                })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) })
+        }
+        val items = (slots.map { Item(it.start, it.end, it, null) } + events.filter { !it.allDay }.map { Item(it.startTime, it.endTime, null, it) })
             .sortedWith(compareBy<Item>({ it.start }, { it.end }))
         if (items.isEmpty()) return col
         val colours = Timetable.colours(activity, slots.map { it.course }.toSet())
@@ -161,7 +185,7 @@ object DayTimeline {
             }
             val s = it.slot
             val ev = it.event
-            val tint = if (s != null) colours[s.course] ?: Ui.CYAN else Ui.PURPLE
+            val tint = if (s != null) colours[s.course] ?: Ui.CYAN else ev?.tint() ?: Ui.PURPLE
             card.background = rippleBg(if (live) Ui.tint(tint, 0x22) else Ui.BAR, if (live) tint else Ui.BORDER, activity, Radius.MD)
             card.isClickable = true
             if (live) card.addView(TextView(activity).apply {

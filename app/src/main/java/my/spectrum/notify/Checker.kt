@@ -47,6 +47,32 @@ object Checker {
         return out
     }
 
+    // a title, or initials in brackets as in "Emran Mohd Tamil (EMT)"
+    private val LECTURER_RE = Regex("""\b(?:[Dd][Rr]|[Pp][Rr][Oo][Ff]|[Ee][Nn]|[Ee]ncik|[Pp][Nn]|[Pp]uan|[Mm]dm)\b|\([A-Z]{2,4}\)""")
+
+    /**
+     * Most courses are one flat list: an Occ heading ("6. Dr. Wong OCC 6 & 10") then that lecturer's pages ("Week 1"),
+     * with nothing from Spectrum saying they belong together. Sections in order -> page to the heading it sits under.
+     * Guessed from the order, so it stays careful: pages after the last Occ heading may be for everyone and stay on
+     * their own, and a lecturer heading with no Occ ends the group before it.
+     */
+    fun occParents(sections: List<Pair<String, String>>): Map<String, String> {
+        val out = HashMap<String, String>()
+        var head = ""
+        var occs = emptySet<String>()
+        val under = ArrayList<String>()
+        fun close() { for (id in under) out[id] = head; under.clear() }
+        for ((id, name) in sections) {
+            val t = groupTokens(name).filter { it.startsWith("occ") }.toSet()
+            when {
+                t.isEmpty() && LECTURER_RE.containsMatchIn(unesc(name)) -> { close(); head = ""; occs = emptySet() }
+                t.isEmpty() || (head.isNotEmpty() && occs.containsAll(t)) -> if (head.isNotEmpty()) under.add(id)
+                else -> { close(); head = id; occs = t }
+            }
+        }
+        return out
+    }
+
     /** "lec", "tut", "both" (e.g. "T&L") or "other", from an attendance title. */
     fun attKind(name: String): String {
         val lec = LEC_RE.containsMatchIn(name)
@@ -117,10 +143,22 @@ object Checker {
     }
 
     // ------------------------------------------------------------ event helpers
-    /** A deadline the user hid on Home ("Hide this (wrong?)"): no card, no reminder. */
-    fun isHiddenDeadline(ctx: Context, eventId: Long): Boolean =
-        eventId != 0L && ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
-            .getStringSet("hiddenEvents", emptySet())!!.contains("dl:$eventId")
+    /**
+     * A deadline the user hid ("Hide this (wrong?)"): no card, no reminder, not in the morning summary.
+     * Hidden by id from Home, or by name from Notifications (reminders carry only the name).
+     */
+    fun isHiddenDeadline(ctx: Context, e: JSONObject): Boolean {
+        val hidden = ctx.getSharedPreferences("health", Context.MODE_PRIVATE).getStringSet("hiddenEvents", emptySet())!!
+        val id = e.optLong("id")
+        return (id != 0L && "dl:$id" in hidden) || hiddenNameKey(unesc(e.str("name"))) in hidden
+    }
+
+    /** "dn:<name>" key [NotificationsActivity] stores when a deadline reminder is hidden. */
+    fun hiddenNameKey(name: String): String = "dn:" + name.trim().lowercase()
+
+    /** The task name in a deadline reminder's title ("Due in ~5h: Quiz 2" -> "Quiz 2"), or null for other titles. */
+    fun reminderTaskName(title: String): String? =
+        Regex("""^Due in ~\d+h:\s*(.+)$""").find(title)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
 
     fun isAttEvent(e: JSONObject): Boolean = e.str("modulename") == "attendance" || ATT_RE.containsMatchIn(e.str("name"))
 
@@ -143,6 +181,36 @@ object Checker {
     fun myCalendar(st: State, p: Prefs): List<JSONObject> =
         (st.j.optJSONArray("cal") ?: JSONArray()).objs().filter { !isSkipped(it, p) }
 
+    /**
+     * [myCalendar] without the classes you removed on the Timetable ("Remove from my timetable"): what Home, the
+     * widget, the alerts and the daily messages use. (The Timetable itself learns from [myCalendar] and hides them.)
+     */
+    fun activeCalendar(ctx: Context, st: State, p: Prefs): List<JSONObject> {
+        val removed = Timetable.removedKeys(ctx)
+        if (removed.isEmpty()) return myCalendar(st, p)
+        return myCalendar(st, p).filter { e -> !isAttEvent(e) || Timetable.slotKeyOf(e) !in removed }
+    }
+
+    // ------------------------------------------------------------ tasks marked done
+    // One "done" for a task wherever you mark it (Home or Notifications), keyed by its name because
+    // reminders in the Notifications list carry only the name. A done task gets no more reminders.
+    private fun doneKey(name: String) = name.trim().lowercase()
+
+    fun isTaskDone(ctx: Context, name: String, eventId: Long = 0L, ts: Long = 0L): Boolean {
+        val h = ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
+        return doneKey(name) in h.getStringSet("doneTasks", emptySet())!! ||
+            (eventId != 0L && h.getBoolean("dueDone:$eventId:$ts", false))   // marked on Home before 0.30.1
+    }
+
+    fun setTaskDone(ctx: Context, name: String, done: Boolean, eventId: Long = 0L, ts: Long = 0L) {
+        val h = ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
+        val set = h.getStringSet("doneTasks", emptySet())!!.toMutableSet()
+        if (done) set.add(doneKey(name)) else set.remove(doneKey(name))
+        val ed = h.edit().putStringSet("doneTasks", set)
+        if (!done && eventId != 0L) ed.remove("dueDone:$eventId:$ts")
+        ed.apply()
+    }
+
     /** manual = attendance by Teams recording (Settings → Your classes); own = from your timetable, not Spectrum. */
     data class ClassItem(
         val name: String, val course: String, val full: String,
@@ -152,6 +220,8 @@ object Checker {
         val own: Boolean = false,
         /** Your own entries for this course hidden because this Spectrum class overlaps them, e.g. "12:00–13:00". */
         val hiddenOwn: String = "",
+        /** The class's attendance page (Spectrum's event link, or the one found for your own entry); "" = none. */
+        val attUrl: String = "",
     )
     data class DueItem(val name: String, val course: String, val ts: Long, val url: String, val eventId: Long = 0L)
     class Overview(val classes: List<ClassItem>, val due: List<DueItem>)
@@ -266,11 +336,32 @@ object Checker {
         val p = Prefs(ctx)
         val st = State(ctx)
         val now = System.currentTimeMillis() / 1000
-        val cal = myCalendar(st, p)
+        val classes = classItems(ctx, st, p).filter { it.end > now }
+        val due = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().mapNotNull { e ->
+            val ts = e.optLong("timesort")
+            if (ts <= now || isHiddenDeadline(ctx, e)) return@mapNotNull null
+            val act = e.optJSONObject("action")
+            DueItem(
+                unesc(e.str("name")).ifEmpty { "Deadline" },
+                e.optJSONObject("course")?.str("shortname") ?: "",
+                ts,
+                e.str("url").ifEmpty { act?.str("url") ?: "" },
+                e.optLong("id"),
+            )
+        }.sortedBy { it.ts }
+        return Overview(classes, due)
+    }
+
+    /**
+     * Every class from today for two weeks, finished ones included: Spectrum's (your corrected times, minus the
+     * ones you removed) and your own entries, merged so a class never shows twice. Only on teaching days of each
+     * class's own date (holiday mode). Home, the widget and the daily messages all use this one list.
+     */
+    private fun classItems(ctx: Context, st: State, p: Prefs): List<ClassItem> {
+        val cal = activeCalendar(ctx, st, p)
         val links = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
-        // holiday mode: outside teaching weeks the hero/widget suppress class entries
-        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now(zone()))
-        val classes = if (!classesActive) emptyList() else cal.filter { isAttEvent(it) }.map { e ->
+        val today = java.time.LocalDate.now(zone())
+        val classes = cal.filter { isAttEvent(it) && AcademicCalendar.inTeaching(ctx, localDt(it.optLong("timestart")).toLocalDate()) }.map { e ->
             val c = e.optJSONObject("course")
             val short = c?.str("shortname") ?: ""
             val full = c?.str("fullname") ?: ""
@@ -283,25 +374,14 @@ object Checker {
                 if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site,
                 isManual(e, p), cid,
                 code = Timetable.courseCode(c),
+                attUrl = e.str("url"),
             )
-        }.filter { it.end > now }.sortedBy { it.start }
-        val due = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().mapNotNull { e ->
-            val ts = e.optLong("timesort")
-            if (ts <= now || isHiddenDeadline(ctx, e.optLong("id"))) return@mapNotNull null
-            val act = e.optJSONObject("action")
-            DueItem(
-                unesc(e.str("name")).ifEmpty { "Deadline" },
-                e.optJSONObject("course")?.str("shortname") ?: "",
-                ts,
-                e.str("url").ifEmpty { act?.str("url") ?: "" },
-                e.optLong("id"),
-            )
-        }.sortedBy { it.ts }
+        }.filter { !localDt(it.end).toLocalDate().isBefore(today) }
         // manual timetable entries (user-added or catalog auto-setup) belong on the hero too;
         // links resolved the same way every other screen resolves them
         val zoneId = zone()
-        val manualClasses = if (!classesActive) emptyList() else Timetable.manual(ctx).flatMap { slot ->
-            (0..13L).map { off -> java.time.LocalDate.now(zoneId).plusDays(off) }
+        val manualClasses = Timetable.manual(ctx).flatMap { slot ->
+            (0..13L).map { off -> today.plusDays(off) }
                 .filter { dd -> dd.dayOfWeek.value == slot.day }
                 // your own entries only in their own semester's teaching days
                 .filter { dd -> Timetable.inSem(slot, AcademicCalendar.labelFor(ctx, dd)) && AcademicCalendar.inTeaching(ctx, dd) }
@@ -309,7 +389,7 @@ object Checker {
                     val dayStart = dd.atStartOfDay(zoneId).toEpochSecond()
                     Triple(slot, dayStart + slot.start * 60L, dayStart + slot.end * 60L)
                 }
-        }.filter { (_, _, end) -> end > now }.map { (slot, start, end) ->
+        }.map { (slot, start, end) ->
             val cid = courseIdForCode(ctx, slot.course)
             val (meeting, att, coursePage) = linksForCourse(ctx, slot.course, cid)
             ClassItem(
@@ -321,6 +401,8 @@ object Checker {
                 // "Attendance for this course is by Teams recording" for any class you added
                 p.manualList.any { slot.course.lowercase().contains(it) }, cid,
                 code = slot.course.uppercase(), own = true,
+                // a pasted attendance link can hold several, one per line: the first one
+                attUrl = att.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty(),
             )
         }
         // the same class must not show twice: Spectrum's wins over your own entry for that course when their
@@ -332,10 +414,9 @@ object Checker {
             val hidden = manualClasses.filter { m -> overlap(c, m) }
             if (hidden.isEmpty()) c else c.copy(hiddenOwn = hidden.joinToString(", ") { "${hhmm(it.start)}–${hhmm(it.end)}" })
         }
-        val merged = (shown + ownKept)
+        return (shown + ownKept)
             .distinctBy { "${it.course}:${it.start / 900}" }
             .sortedBy { it.start }
-        return Overview(merged, due)
     }
 
     private fun courseId(e: JSONObject): Long = e.optJSONObject("course")?.optLong("id", 0L) ?: 0L
@@ -386,22 +467,50 @@ object Checker {
     private fun mt0Of(sec: JSONObject): Long = 0L
 
     private fun snapshotCourse(api: Moodle, site: String, c: JSONObject, extra: MutableMap<String, String>,
+                               kinds: MutableMap<String, FileKind>,
                                secOf: MutableMap<String, String>, secNames: MutableMap<String, String>,
+                               secParent: MutableMap<String, String>, pub: MutableSet<String>,
                                attCmids: MutableMap<Long, HashMap<Long, MutableSet<String>>>, occSeen: MutableMap<Long, MutableSet<String>>,
                                st: State): Pair<Map<String, Triple<String, String, String>>, List<Link>> {
         val snap = LinkedHashMap<String, Triple<String, String, String>>()
         val raw = ArrayList<Triple<String, String, Long>>()
         val cid = c.optLong("id")
         val occSets = ArrayList<Set<String>>()
-        for (sec in api.arr("core_course_get_contents", mapOf("courseid" to cid)).objs()) {
+        val sections = api.arr("core_course_get_contents", mapOf("courseid" to cid)).objs()
+        // Sub-sections (Moodle 4.5+): a "subsection" module in a main page stands for a page of its own, which
+        // Spectrum lists separately (component "mod_subsection", itemid = that module; its link names the page).
+        // Remember which main page each sits in, so the pages list nests them and switching a main page off covers them.
+        val parentByCm = HashMap<Long, String>()
+        val parentBySec = HashMap<String, String>()
+        for (sec in sections) for (m in (sec.optJSONArray("modules") ?: JSONArray()).objs()) {
+            if (m.str("modname") != "subsection") continue
+            parentByCm[m.optLong("id")] = sec.optLong("id").toString()
+            Regex("""section\.php\?id=(\d+)""").find(m.str("url"))?.let { parentBySec[it.groupValues[1]] = sec.optLong("id").toString() }
+        }
+        for (sec in sections) {
+            val k = sec.optLong("id").toString()
+            val parent = (if (sec.str("component") == "mod_subsection") parentByCm[sec.optLong("itemid")] else null) ?: parentBySec[k]
+            if (parent != null && parent != k) secParent[k] = parent
+        }
+        // no sub-sections on the course: its pages still sit under Occ headings
+        if (secParent.isEmpty()) secParent.putAll(occParents(sections.map { it.optLong("id").toString() to it.str("name") }))
+        val nameById = sections.associate { it.optLong("id").toString() to it.str("name") }
+        for (sec in sections) {
             val sname = sec.str("name")
             val skey = sec.optLong("id").toString()
+            // A link's own name often does not say whose it is ("Link for online classes"), but the section it sits in
+            // does ("DR. FAEZAH KASSIM (OCC 1 & 2)" › "Pautan MS Teams"): when the section or its main section names a
+            // group, that goes into the link's label, so its Occ is matched like one in the name
+            val where = listOf(sname, secParent[skey]?.let { nameById[it] } ?: "").filter { it.isNotBlank() }
+                .joinToString(" › ")
+            val inGroup = if (groupTokens(where).isNotEmpty()) " [" + clean(where, 60) + "]" else ""
             // section descriptions often hold the weekly meeting links (e.g. "Online Lecture Link …: <href>")
             // (Moodle sends "summary" as a plain HTML string; scan all of it, links can sit past 2000 chars)
             val secDesc = sec.optJSONObject("summary")?.optString("text") ?: sec.optString("summary", "")
-            for (u in findLinks(secDesc)) raw.add(Triple(u, "section: " + clean(sname, 50), mt0Of(sec)))
+            for (u in findLinks(secDesc)) raw.add(Triple(u, "section: " + clean(sname, 50) + inGroup, mt0Of(sec)))
             val mods = (sec.optJSONArray("modules") ?: JSONArray()).objs()
-            if (mods.isNotEmpty()) {
+            // an empty Occ heading is still listed: its pages nest under it and are muted with it
+            if (mods.isNotEmpty() || skey in secParent.values) {
                 secNames[skey] = sname.ifEmpty { if (sec.optInt("section") == 0) "General" else "Page ${sec.optInt("section")}" }
             }
             for (m in mods) {
@@ -410,10 +519,19 @@ object Checker {
                 val key = "mod:${m.optLong("id")}:$mt"
                 val name = m.str("name")
                 val url = m.str("url")
-                snap[key] = Triple(name, url, sname)
-                secOf[key] = skey
+                // a sub-section entry is a page, not material: its own files are what notify you
+                val isSub = m.str("modname") == "subsection"
+                if (!isSub) snap[key] = Triple(name, url, sname)
+                // forums are for everyone in the course: never muted for another Occ
+                if (m.str("modname") in setOf("forum", "hsuforum")) pub.add(key)
+                if (!isSub) secOf[key] = skey
+                // what it opens (slides, PDF, …) from its file name / type, or the address of a link
+                val file = contents.firstOrNull()
+                if (!isSub) FileKind.of(if (m.str("modname") == "url") file?.str("fileurl") ?: url else url,
+                    "${file?.str("filename") ?: ""} ${file?.str("mimetype") ?: ""} ${m.str("modname").takeIf { it == "folder" } ?: ""}")
+                    ?.let { kinds[key] = it }
                 val desc = clean(m.str("description"), 300)
-                if (desc.isNotEmpty()) extra[key] = desc
+                if (desc.isNotEmpty() && !isSub) extra[key] = desc
                 if (m.str("modname") == "attendance" && m.optLong("id") != 0L) {
                     // Spectrum can list one attendance module PER OCC (e.g. "Attendance Occ 2",
                     // "Attendance Occ 4"). Remember every one with its group tokens so the
@@ -440,12 +558,12 @@ object Checker {
                     if (occs.isNotEmpty()) occSets.add(occs)
                 }
                 if (m.str("modname") in MEETING_MODS && m.optBoolean("uservisible", true) && url.isNotEmpty()) {
-                    raw.add(Triple(url, clean(name), mt))
+                    raw.add(Triple(url, clean(name) + inGroup, mt))
                 }
-                for (u in findLinks(m.str("description"))) raw.add(Triple(u, "page: " + clean(name, 50), mt))
+                for (u in findLinks(m.str("description"))) raw.add(Triple(u, "page: " + clean(name, 50) + inGroup, mt))
                 if (m.str("modname") == "url") {
                     for (f in contents) for (u in findLinks(f.str("fileurl"))) {
-                        raw.add(Triple(u, clean(name), f.optLong("timemodified", 0L)))
+                        raw.add(Triple(u, clean(name) + inGroup, f.optLong("timemodified", 0L)))
                     }
                 }
             }
@@ -480,18 +598,26 @@ object Checker {
         return Pair(snap, dedupe(raw))
     }
 
-    private fun pushCourse(ctx: Context, site: String, c: JSONObject, items: List<Triple<String, String, String>>) {
+    /** Items no longer listed that a course's seen list still remembers. */
+    private const val SEEN_KEEP = 400
+
+    private fun pushCourse(ctx: Context, site: String, c: JSONObject, items: List<Triple<String, String, String>>, kinds: List<FileKind?>) {
         val cname = c.str("fullname").ifEmpty { c.str("shortname") }
         val lines = ArrayList<String>()
-        for ((name, url, sec) in items.take(15)) {
-            var line = "- $name" + (if (sec.isNotEmpty()) " [$sec]" else "")
+        for ((i, item) in items.take(15).withIndex()) {
+            val (name, url, sec) = item
+            // "- Lecture 3 (slides) [Week 3]": what it is, before you open it
+            var line = "- $name" + (kinds.getOrNull(i)?.let { " (${it.word})" } ?: "") + (if (sec.isNotEmpty()) " [$sec]" else "")
             if (url.isNotEmpty()) line += "\n  $url"
             lines.add(line)
         }
         if (items.size > 15) lines.add("...and ${items.size - 15} more")
         val buttons = ArrayList<Pair<String, String>>()
         for ((i, it) in items.take(3).withIndex()) {
-            if (it.second.isNotEmpty()) buttons.add(Pair(if (items.size == 1) "Open" else "Open ${i + 1}", it.second))
+            // "Open slides" / "Slides 1", "PDF 2": the type on the button (its icon comes from the same word)
+            val k = kinds.getOrNull(i)
+            val label = if (items.size == 1) (if (k != null) "Open ${k.word}" else "Open") else "${k?.title ?: "Open"} ${i + 1}"
+            if (it.second.isNotEmpty()) buttons.add(Pair(label, it.second))
         }
         if (buttons.isEmpty()) buttons.add(Pair("Open course", "$site/course/view.php?id=${c.optLong("id")}"))
         Notifier.push(ctx, "$cname: ${items.size} new", lines.joinToString("\n"), false, buttons)
@@ -510,17 +636,20 @@ object Checker {
             if (Courses.isPast(c)) { prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }; continue }
             val ckey = "course$cid"
             val extra = HashMap<String, String>()
+            val kinds = HashMap<String, FileKind>()
             val secOf = HashMap<String, String>()
             val secNames = LinkedHashMap<String, String>()
+            val secParent = HashMap<String, String>()
+            val pub = HashSet<String>()
             val result = try {
-                snapshotCourse(api, p.site, c, extra, secOf, secNames, attCmids, occSeen, st)
+                snapshotCourse(api, p.site, c, extra, kinds, secOf, secNames, secParent, pub, attCmids, occSeen, st)
             } catch (e: Exception) {
                 Log.w(TAG, "course $cid skipped: $e")
                 prevLinks["$cid"]?.let { linksByCourse["$cid"] = it }
                 continue
             }
             val snap = result.first
-            Sections.remember(st, cid, secNames)
+            Sections.remember(st, cid, secNames, secParent)
             attCmids[cid]?.let { perCid ->
                 // store ALL attendance cmids for this course keyed by "cid:cmid" -> tokens JSON
                 val am = st.j.optJSONObject("attcmids") ?: JSONObject()
@@ -556,13 +685,26 @@ object Checker {
                 // pages you switched off, then items that name another group (Occ / tutorial); both still count as seen
                 val code = Timetable.courseCode(c)
                 val off = Sections.offSet(ctx, cid)
-                val inPages = newKeys.filter { k -> secOf[k]?.let { it in off } != true }
+                // a page switched off also covers its sub-sections
+                val kept = Sections.keptOnSet(ctx, cid)
+                val inPages = newKeys.filter { k -> secOf[k]?.let { Sections.isOff(off, secParent, it, kept) } != true }
                 val mine = Groups.mine(st, p, code)
+                val sure = Groups.mineSure(p, code)
                 val fresh = inPages.filter { k ->
+                    // announcements and forums are public: always notify
+                    if (k.startsWith("ann:") || k in pub) return@filter true
+                    // a page you switched back on: yours, whichever Occ it names
+                    if (secOf[k]?.let { Sections.isKeptOn(kept, off, secParent, it) } == true) return@filter true
                     val t = snap[k]
-                    !Groups.isForeign("${t?.first ?: ""} ${t?.third ?: ""} ${extra[k] ?: ""}", mine)
+                    // a page (or the main page it sits in, "Tutorial Occ 3" › "Week 2") for another Occ: muted, but only
+                    // when your Occ is one you set or confirmed; not sure = it stays on
+                    val mainPage = secOf[k]?.let { secParent[it] }?.let { secNames[it] } ?: ""
+                    if (Groups.isForeign("${t?.third ?: ""} $mainPage", sure)) return@filter false
+                    // the item itself names another group ("Occ 3 slides")
+                    !Groups.isForeign("${t?.first ?: ""} ${extra[k] ?: ""}", mine)
                 }
-                if (fresh.isNotEmpty()) pushCourse(ctx, p.site, c, fresh.mapNotNull { snap[it] })
+                val freshItems = fresh.filter { snap[it] != null }
+                if (freshItems.isNotEmpty()) pushCourse(ctx, p.site, c, freshItems.map { snap[it]!! }, freshItems.map { kinds[it] })
                 if (inPages.size < newKeys.size) {
                     NotifyLog.sys(ctx, "Skipped ${newKeys.size - inPages.size} item(s) on pages switched off in $code")
                 }
@@ -570,7 +712,11 @@ object Checker {
                     NotifyLog.sys(ctx, "Skipped ${inPages.size - fresh.size} item(s) for other groups in $code")
                 }
             }
-            st.putStrings(ckey, snap.keys)
+            // seen only ever grows: replacing it with this check's list forgot everything a failed fetch left out
+            // (the forum call fails quietly), and the next good check announced those old posts as new
+            st.putStrings(ckey, (old.filter { it !in snap }.takeLast(SEEN_KEEP) + snap.keys))
+            // saved now, not at the end of the check: a check stopped halfway would send this course again
+            if (known && newKeys.isNotEmpty()) st.save()
         }
         st.j.put("links", linksToJson(linksByCourse))
     }
@@ -606,7 +752,9 @@ object Checker {
             val text = n.str("subject") + " " + n.str("smallmessage").ifEmpty { n.str("fullmessage") }
             val code = Groups.codeIn(text)
             val mine = if (code.isNotEmpty()) Groups.mine(st, p, code) else Groups.mineAnywhere(st, p)
-            if (Groups.isForeign(text, mine)) {
+            // forum posts and announcements are public: never skipped for another group
+            val public = n.str("component") == "mod_forum" || "/mod/forum/" in n.str("contexturl")
+            if (!public && Groups.isForeign(text, mine)) {
                 NotifyLog.sys(ctx, "Skipped a notification for another group: ${clean(n.str("subject"), 60)}")
                 continue
             }
@@ -631,14 +779,17 @@ object Checker {
         ).optJSONArray("events")?.objs() ?: emptyList()
         val sent = st.strings("deadlines_sent")
         val upcoming = ArrayList<JSONObject>()
+        // Moodle leaves work you submitted (assignment) or finished (quiz attempt) or completed OUT of this list
+        // (mod_*_core_calendar_provide_event_action returns null), so it needs no check of its own here.
+        // "actionable" false only means not open yet (a quiz before its open time): still due, so still listed.
         for (e in events) {
             val act = e.optJSONObject("action")
-            if (act != null && !act.optBoolean("actionable", true)) continue
             val ts = e.optLong("timesort")
             val remaining = ts - now
             if (remaining <= 0) continue
-            if (isHiddenDeadline(ctx, e.optLong("id"))) continue
+            if (isHiddenDeadline(ctx, e)) continue
             upcoming.add(e)
+            if (isTaskDone(ctx, unesc(e.str("name")), e.optLong("id"), ts)) continue
             val applicable = p.deadlineList.filter { remaining <= it * 3600L }
             if (applicable.isEmpty()) continue
             val keys = applicable.map { "dl:${e.optLong("id")}:$ts:$it" }
@@ -696,7 +847,7 @@ object Checker {
      * Leave-by alert, [Shuttle.leadMin] minutes before you must set off for a class: "Leave by 9:31 for WIX1003",
      * with the bus or the walk. Off when the lead is 0 (Settings → UM shuttle).
      */
-    private fun checkLeaveBy(ctx: Context, st: State, cal: List<JSONObject>, now: Long) {
+    private fun checkLeaveBy(ctx: Context, st: State, p: Prefs, cal: List<JSONObject>, now: Long) {
         val lead = Shuttle.leadMin(ctx)
         if (lead <= 0) return
         val sent = st.strings("leaveby_sent")
@@ -710,9 +861,15 @@ object Checker {
             val code = Timetable.courseCode(e.optJSONObject("course"))
             val buttons = ArrayList<Pair<String, String>>()
             Shuttle.walkUrl(t)?.let { buttons.add(Pair("Walking route", it)) }
+            // rain from setting off to the end of the class: say so (once, with this alert)
+            val day = localDt(leave).toLocalDate()
+            val endZ = localDt(classTimes(ctx, e).second)
+            val rain = if (!p.umbrellaAlert) null else Weather.rainBetween(ctx, day,
+                localDt(leave).let { it.hour * 60 + it.minute }, if (endZ.toLocalDate() == day) endZ.hour * 60 + endZ.minute else 24 * 60)
             Notifier.push(
-                ctx, "Leave by ${hhmm(leave)} for $code",
-                (Shuttle.line(ctx, t) ?: "") + "\nClass starts ${ShuttleModel.fmt(t.arriveBy)}.",
+                ctx, "Leave by ${hhmm(leave)} for ${Shorts.display(ctx, code)}",
+                (Shuttle.line(ctx, t) ?: "") + "\nClass starts ${ShuttleModel.fmt(t.arriveBy)}." +
+                    (if (rain != null) "\n${rain.line()}: take an umbrella.\n\n${Weather.CREDIT}" else ""),
                 true, buttons,
             )
             sent.add(key)
@@ -732,8 +889,12 @@ object Checker {
         for (e in cal) {
             if (!isAttEvent(e)) continue
             val (start, end) = classTimes(ctx, e)
-            if (now < start || now > minOf(end, start + 15 * 60)) continue
-            val key = "attstart:${e.optLong("id")}:$start"
+            // signing only works during class: once when it starts, and a last chance 10 minutes before it ends
+            // (not for a class of 25 minutes or less, where the two would come almost together)
+            val atStart = now >= start && now <= minOf(end, start + 15 * 60)
+            val lastChance = end - start > 25 * 60 && now >= end - 10 * 60 - 60 && now < end
+            if (!atStart && !lastChance) continue
+            val key = (if (atStart) "attstart:" else "attend:") + "${e.optLong("id")}:$start"
             if (key in sent) continue
             val c = e.optJSONObject("course")
             val code = Timetable.courseCode(c)
@@ -749,13 +910,60 @@ object Checker {
             att.ifEmpty { coursePage }.takeIf { it.isNotEmpty() }?.let { buttons.add(Pair("Sign attendance", it)) }
             if (meeting.isNotEmpty()) buttons.add(Pair("Join class", meeting))
             Notifier.push(
-                ctx, "$code has started: sign your attendance",
-                "$name\nStarted ${hhmm(start)}. Open the attendance page and mark yourself present.",
+                ctx, if (atStart) "${Shorts.display(ctx, code)} has started: sign your attendance"
+                    else "${Shorts.display(ctx, code)}: signed your attendance?",
+                if (atStart) "$name\nStarted ${hhmm(start)}. Open the attendance page and mark yourself present (until ${hhmm(end)})."
+                    else "$name\nClass ends at ${hhmm(end)}. If you have not signed yet, do it now; it closes when class ends.",
+                true, buttons,
+            )
+            sent.add(key)
+        }
+        // classes on your timetable that Spectrum's calendar has no attendance entry for get the same alerts
+        val today = localDt(now).toLocalDate()
+        for (s in slotsWithoutAttEvent(ctx, p, cal, today)) {
+            val start = today.atTime(s.start / 60, s.start % 60).atZone(zone()).toEpochSecond()
+            val end = today.atTime(s.end / 60, s.end % 60).atZone(zone()).toEpochSecond()
+            val atStart = now >= start && now <= minOf(end, start + 15 * 60)
+            val lastChance = end - start > 25 * 60 && now >= end - 10 * 60 - 60 && now < end
+            if (!atStart && !lastChance) continue
+            val key = (if (atStart) "attstart:" else "attend:") + "${s.key}:$start"
+            if (key in sent) continue
+            val cid = Courses.all(ctx).firstOrNull { it.code.equals(s.course, true) }?.id ?: 0L
+            val (meeting, att, coursePage) = linksForCourse(
+                ctx, s.course, cid, groupTokens(s.title), preferLecOf(s.title),
+                day = s.day, startMin = s.start, endMin = s.end,
+            )
+            val buttons = ArrayList<Pair<String, String>>()
+            att.ifEmpty { coursePage }.takeIf { it.isNotEmpty() }?.let { buttons.add(Pair("Sign attendance", it)) }
+            if (meeting.isNotEmpty()) buttons.add(Pair("Join class", meeting))
+            Notifier.push(
+                ctx, if (atStart) "${Shorts.display(ctx, s.course)} has started: sign your attendance"
+                    else "${Shorts.display(ctx, s.course)}: signed your attendance?",
+                if (atStart) "${s.title}\nStarted ${hhmm(start)}. Open the attendance page and mark yourself present (until ${hhmm(end)})."
+                    else "${s.title}\nClass ends at ${hhmm(end)}. If you have not signed yet, do it now; it closes when class ends.",
                 true, buttons,
             )
             sent.add(key)
         }
         st.putStrings("att_sent", sent.toList().takeLast(200))
+    }
+
+    /**
+     * Your timetable's classes on [date] with no attendance entry on Spectrum's calendar at about that time (some
+     * lecturers never add one), leaving out courses where attendance is taken in class. The window is wide because
+     * Spectrum's time can be off from the real class ("Attendance Tutorial 11-1pm" listed at 10:00).
+     */
+    fun slotsWithoutAttEvent(ctx: Context, p: Prefs, cal: List<JSONObject>, date: java.time.LocalDate): List<Slot> {
+        if (!AcademicCalendar.inTeaching(ctx, date)) return emptyList()
+        return Timetable.on(Timetable.all(ctx, AcademicCalendar.labelFor(ctx, date)), date).filter { s ->
+            Timetable.attMode(ctx, s.course) != "manual" &&
+                p.manualList.none { s.course.lowercase().contains(it) } &&
+                cal.none { e ->
+                    if (!isAttEvent(e) || !Timetable.courseCode(e.optJSONObject("course")).equals(s.course, true)) return@none false
+                    val z = localDt(classTimes(ctx, e).first)
+                    z.toLocalDate() == date && kotlin.math.abs(z.hour * 60 + z.minute - s.start) <= 120
+                }
+        }
     }
 
     private fun checkClassLinks(ctx: Context, st: State, p: Prefs, cal: List<JSONObject>, links: Map<String, List<Link>>, now: Long) {
@@ -769,47 +977,80 @@ object Checker {
             val kno = "linkno:$eid:$start"
             if (kok in sent) continue
             val c = e.optJSONObject("course")
-            val cname = listOf(c?.str("shortname"), c?.str("fullname")).firstOrNull { !it.isNullOrEmpty() } ?: "Class"
+            val cname = Shorts.display(ctx, Timetable.courseCode(c))
             val name = unesc(e.str("name"))
             val mins = maxOf(0L, Math.round((start - now) / 60.0))
             val whenS = fmtTime(start)
             val note = if (isManual(e, p)) "\nAttendance for this class is via Teams record." else ""
             val code = Timetable.courseCode(c)
+            // attendance can only be signed in class time: the notice says when, the sign alerts come then
+            val classEnd = classTimes(ctx, e).second
+            val signLine = if (!p.attStartAlert || isManual(e, p) || Timetable.attMode(ctx, code) == "manual") ""
+                else "\nAttendance: sign from ${hhmm(start)} to ${hhmm(classEnd)}. You'll get a reminder when class starts."
             if (Timetable.inPerson(ctx, code)) {
-                // in person: a plain reminder with the room, and the attendance page when there is one
+                // in person: a plain notice with the room (no attendance button: signing opens when class starts)
                 if (kok in sent) continue
                 val room = Timetable.locationOf(ctx, code).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
                 val cid = courseId(e)
-                val att = attendanceUrl(ctx, cid)
                 val buttons = ArrayList<Pair<String, String>>()
-                if (att.isNotEmpty() && !isManual(e, p)) buttons.add(Pair("Attendance", att))
                 if (cid != 0L) buttons.add(Pair("Course page", "${p.site}/course/view.php?id=$cid"))
-                Notifier.push(ctx, "Class in ~$mins min: $cname · in person",
-                    "$name\nStarts $whenS" + (if (room.isNotEmpty()) " · $room" else "") + ".$note", true, buttons)
+                Notifier.push(ctx, "Upcoming class in ~$mins min: $cname · in person",
+                    "$name\nStarts $whenS" + (if (room.isNotEmpty()) " · $room" else "") + ".$note" + signLine, true, buttons)
                 sent.add(kok)
                 sent.add(kno)
                 continue
             }
             val ls = linksForEvent(ctx, e, cal, links)
             if (ls.isNotEmpty()) {
-                val body = "$name\nStarts $whenS.$note\n\nOnline link:" +
+                val body = "$name\nStarts $whenS.$note$signLine\n\nOnline link:" +
                     ls.take(3).joinToString("") { "\n  ${it.first}  (${it.second})" }
                 val buttons = ls.take(3).mapIndexed { i, l -> Pair(if (i == 0) "Join class" else "Link ${i + 1}", l.first) }
-                val title = if (kno in sent) "Online link posted: $cname" else "Class in ~$mins min: $cname"
+                val title = if (kno in sent) "Online link posted: $cname" else "Upcoming class in ~$mins min: $cname"
                 Notifier.push(ctx, title, body, true, buttons)
                 sent.add(kok)
                 sent.add(kno)
             } else if (kno !in sent) {
                 val cid = courseId(e)
                 val courseUrl = if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site
-                val body = "$name\nStarts $whenS.$note\n\nNo online link found yet in the calendar event, " +
+                val body = "$name\nStarts $whenS.$note$signLine\n\nNo online link found yet in the calendar event, " +
                     "course page or announcements. It may be in person, or not posted yet. " +
                     "I'll keep checking until the class starts.\n  $courseUrl"
-                Notifier.push(ctx, "Class in ~$mins min: $cname (no link yet)", body, true, listOf(Pair("Open course", courseUrl)))
+                Notifier.push(ctx, "Upcoming class in ~$mins min: $cname (no link yet)", body, true, listOf(Pair("Open course", courseUrl)))
                 sent.add(kno)
             }
         }
         st.putStrings("links_sent", sent.toList().takeLast(300))
+    }
+
+    // ------------------------------------------------------------ umbrella
+    /**
+     * Rain (Weather) from an hour before your first class of [date] (getting there) to the end of the last,
+     * or null: no classes, no rain, or no forecast.
+     */
+    private fun rainAroundClasses(ctx: Context, st: State, p: Prefs, date: java.time.LocalDate): Weather.Rain? {
+        val day = classItems(ctx, st, p).filter { localDt(it.start).toLocalDate() == date }
+        if (day.isEmpty()) return null
+        fun minuteOf(ts: Long) = localDt(ts).let { it.hour * 60 + it.minute }
+        val endMin = day.maxOf { c -> if (localDt(c.end).toLocalDate() == date) minuteOf(c.end) else 24 * 60 }
+        return Weather.rainBetween(ctx, date, day.minOf { minuteOf(it.start) } - 60, endMin)
+    }
+
+    /**
+     * "Bring an umbrella": at most ONE per day (whatever the forecast does later), from the morning-summary
+     * time (07:00 when that is off) until your last class starts, once the forecast shows rain around them.
+     */
+    private fun sendUmbrella(ctx: Context, st: State, p: Prefs, now: ZonedDateTime) {
+        if (!p.umbrellaAlert) return
+        val today = now.toLocalDate()
+        if (st.j.optString("umbrella_date") == today.toString()) return
+        val hm = parseHm(p.summaryTime) ?: Pair(7, 0)
+        if (now.isBefore(now.withHour(hm.first).withMinute(hm.second).withSecond(0).withNano(0))) return
+        val day = classItems(ctx, st, p).filter { localDt(it.start).toLocalDate() == today }
+        if (day.isEmpty() || now.toEpochSecond() > day.maxOf { it.start }) return
+        val rain = rainAroundClasses(ctx, st, p, today) ?: return
+        st.j.put("umbrella_date", today.toString())
+        Notifier.push(ctx, "Bring an umbrella",
+            "${rain.line()} at UM today, while you have classes (${hhmm(day.minOf { it.start })} – ${hhmm(day.maxOf { it.end })}).\n\n${Weather.CREDIT}")
     }
 
     // ------------------------------------------------------------ morning summary
@@ -823,30 +1064,40 @@ object Checker {
         if (now.hour >= 12) return  // started late in the day: no "good morning"
 
         val nowS = now.toEpochSecond()
-        val todays = cal.filter { localDt(it.optLong("timestart")).toLocalDate() == now.toLocalDate() }
-            .sortedBy { it.optLong("timestart") }
-        val lines = arrayListOf("TODAY")
+        // an activity's due/close date in the calendar that is not on your to-do list (deadlines): Moodle took it off
+        // because you submitted, finished or completed it, so it is not due for you any more
+        // (only once the to-do list has been fetched: before that, nothing counts as done)
+        val todo = deadlines.map { it.optLong("id") }.toSet()
+        val todoKnown = st.j.has("deadlines")
+        fun doneOnSpectrum(e: JSONObject) = todoKnown &&
+            e.str("modulename").isNotEmpty() && e.str("eventtype") in setOf("due", "close") && e.optLong("id") !in todo
+        // today's classes as Home shows them (your corrected times, your own entries, none you removed),
+        // then the day's other calendar events (not hidden or done tasks), in time order
+        val todays = ArrayList<Pair<Long, String>>()
         val buttons = ArrayList<Pair<String, String>>()
-        if (todays.isNotEmpty()) {
-            for (e in todays.take(10)) {
-                val c = e.optJSONObject("course")?.str("shortname") ?: ""
-                val name = unesc(e.str("name"))
-                val ts = e.optLong("timestart")
-                val t = hhmm(ts)
-                val manual = isAttEvent(e) && isManual(e, p)
-                val url = if (manual) "" else e.str("url")
-                lines.add(
-                    "$t  ${if (c.isNotEmpty()) "$c: " else ""}$name" +
-                        (if (url.isNotEmpty()) "\n  $url" else "") +
-                        (if (manual) "\n  (attendance via Teams record)" else "")
-                )
-                if (isAttEvent(e) && !manual && url.isNotEmpty() && buttons.size < 3 && ts >= nowS - 3600) {
-                    buttons.add(Pair("Attendance $t", url))
-                }
-            }
-        } else {
-            lines.add("No classes or events in the calendar.")
+        for (c in classItems(ctx, st, p).filter { localDt(it.start).toLocalDate() == now.toLocalDate() }.take(10)) {
+            val t = hhmm(c.start)
+            val url = if (c.manual) "" else c.attUrl
+            todays.add(Pair(c.start,
+                "$t  ${Shorts.display(ctx, c.code.ifEmpty { c.course })}: ${c.name}" +
+                    (if (url.isNotEmpty()) "\n  $url" else "") +
+                    (if (c.manual) "\n  (attendance via Teams record)" else "")))
+            if (url.isNotEmpty() && buttons.size < 3 && c.start >= nowS - 3600) buttons.add(Pair("Attendance $t", url))
         }
+        for (e in cal) {
+            val ts = e.optLong("timestart")
+            if (isAttEvent(e) || localDt(ts).toLocalDate() != now.toLocalDate()) continue
+            val name = unesc(e.str("name"))
+            if (isHiddenDeadline(ctx, e) || isTaskDone(ctx, name, e.optLong("id"), ts) || doneOnSpectrum(e)) continue
+            val code = Timetable.courseCode(e.optJSONObject("course"))
+            todays.add(Pair(ts, "${hhmm(ts)}  " + (if (e.optJSONObject("course") != null) "${Shorts.display(ctx, code)}: " else "") + name))
+        }
+        val rain = if (p.umbrellaAlert) rainAroundClasses(ctx, st, p, now.toLocalDate()) else null
+        val lines = arrayListOf<String>()
+        if (rain != null) lines.addAll(listOf("UMBRELLA: ${rain.line()} around your classes.", ""))
+        lines.add("TODAY")
+        if (todays.isNotEmpty()) todays.sortedBy { it.first }.forEach { lines.add(it.second) }
+        else lines.add("No classes or events today.")
 
         val horizon = nowS + 7 * 86400
         val pool = ArrayList<Pair<Long, JSONObject>>()
@@ -857,16 +1108,19 @@ object Checker {
         }
         for (e in cal) {
             val t = e.optLong("timestart")
-            if (e.str("eventtype") in setOf("due", "close") && t in nowS..horizon && e.optLong("id") !in seen) {
+            if (e.str("eventtype") in setOf("due", "close") && t in nowS..horizon && e.optLong("id") !in seen && !isHiddenDeadline(ctx, e) &&
+                !doneOnSpectrum(e)) {
                 pool.add(Pair(t, e)); seen.add(e.optLong("id"))
             }
         }
+        // tasks you marked done are not due any more
+        pool.removeAll { (t, e) -> isTaskDone(ctx, unesc(e.str("name")), e.optLong("id"), t) }
         pool.sortBy { it.first }
         lines.add("")
         lines.add("DUE THIS WEEK")
         if (pool.isNotEmpty()) {
             for ((t, e) in pool.take(8)) {
-                val c = e.optJSONObject("course")?.str("shortname") ?: ""
+                val c = e.optJSONObject("course")?.let { Shorts.display(ctx, Timetable.courseCode(it)) } ?: ""
                 val url = e.str("url").ifEmpty { e.optJSONObject("action")?.str("url") ?: "" }
                 lines.add(
                     "${fmtTime(t)}  ${unesc(e.str("name")).ifEmpty { "Deadline" }}" +
@@ -876,6 +1130,7 @@ object Checker {
         } else {
             lines.add("Nothing due.")
         }
+        if (rain != null) lines.addAll(listOf("", Weather.CREDIT))
         if (buttons.size < 3) buttons.add(Pair("Open Spectrum", "${p.site}/my/"))
         val title = "Good morning - " + now.format(java.time.format.DateTimeFormatter.ofPattern("EEE dd MMM", java.util.Locale.ENGLISH))
         Notifier.push(ctx, title, lines.joinToString("\n"), false, buttons)
@@ -901,7 +1156,7 @@ object Checker {
         "Remember to eat something and drink water, you deserve a little break.",
     )
 
-    private fun sendAfternoon(ctx: Context, st: State, p: Prefs, cal: List<JSONObject>, now: ZonedDateTime) {
+    private fun sendAfternoon(ctx: Context, st: State, p: Prefs, now: ZonedDateTime) {
         if (p.afternoonTime.isBlank()) return
         val today = now.toLocalDate().toString()
         if (st.j.optString("afternoon_date") == today) return
@@ -912,10 +1167,10 @@ object Checker {
         st.j.put("afternoon_date", today)
 
         val nowS = now.toEpochSecond()
-        val classes = cal.filter { isAttEvent(it) && localDt(it.optLong("timestart")).toLocalDate() == now.toLocalDate() }
-            .sortedBy { it.optLong("timestart") }
+        // today's classes as Home shows them: your corrected times and your own entries too
+        val classes = classItems(ctx, st, p).filter { localDt(it.start).toLocalDate() == now.toLocalDate() }
         if (classes.isEmpty()) return
-        val left = classes.filter { it.optLong("timestart") > nowS }
+        val left = classes.filter { it.start > nowS }
         val n = left.size
         val title: String
         val head: String
@@ -947,14 +1202,12 @@ object Checker {
         if (left.isNotEmpty()) {
             lines.add("")
             lines.add("NEXT UP")
-            for (e in left.take(6)) {
-                val c = e.optJSONObject("course")?.str("shortname") ?: ""
-                val name = unesc(e.str("name"))
-                val t = hhmm(e.optLong("timestart"))
-                val manual = isManual(e, p)
-                val url = if (manual) "" else e.str("url")
+            for (c in left.take(6)) {
+                val t = hhmm(c.start)
+                val manual = c.manual
+                val url = if (manual) "" else c.attUrl
                 lines.add(
-                    "$t  ${if (c.isNotEmpty()) "$c: " else ""}$name" +
+                    "$t  ${Shorts.display(ctx, c.code.ifEmpty { c.course })}: ${c.name}" +
                         (if (url.isNotEmpty()) "\n  $url" else "") +
                         (if (manual) "\n  (attendance via Teams record)" else "")
                 )
@@ -968,14 +1221,15 @@ object Checker {
     /** Uses the cached calendar/links, so it also works from an alarm with no network. */
     private fun sendDue(ctx: Context, st: State, p: Prefs) {
         val now = ZonedDateTime.now(zone())
-        val cal = myCalendar(st, p)
-        val dl = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().filter { !isHiddenDeadline(ctx, it.optLong("id")) }
+        val cal = activeCalendar(ctx, st, p)
+        val dl = (st.j.optJSONArray("deadlines") ?: JSONArray()).objs().filter { !isHiddenDeadline(ctx, it) }
         val links = linksFromJson(st.j.optJSONObject("links") ?: JSONObject())
         try { checkClassLinks(ctx, st, p, cal, links, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "class links: $e") }
         try { sendMorningSummary(ctx, st, p, cal, dl, now) } catch (e: Exception) { Log.w(TAG, "summary: $e") }
-        try { sendAfternoon(ctx, st, p, cal, now) } catch (e: Exception) { Log.w(TAG, "afternoon: $e") }
+        try { sendAfternoon(ctx, st, p, now) } catch (e: Exception) { Log.w(TAG, "afternoon: $e") }
+        try { sendUmbrella(ctx, st, p, now) } catch (e: Exception) { Log.w(TAG, "umbrella: $e") }
         try { checkAttendanceStart(ctx, st, p, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "attendance start: $e") }
-        try { checkLeaveBy(ctx, st, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "leave by: $e") }
+        try { checkLeaveBy(ctx, st, p, cal, now.toEpochSecond()) } catch (e: Exception) { Log.w(TAG, "leave by: $e") }
     }
 
     /** Called by the alarm receiver: act on cached data, no network. */
@@ -1021,6 +1275,8 @@ object Checker {
                     try { Timetable.remember(st, p) } catch (e: Exception) { Log.w(TAG, "timetable: $e") }
                     try { Groups.learn(st, p) } catch (e: Exception) { Log.w(TAG, "groups: $e") }
                 } catch (e: Exception) { Log.w(TAG, "calendar: $e") }
+                // the rain forecast before the messages that use it (at most every 2 hours; quiet on failure)
+                try { Weather.refresh(ctx) } catch (e: Exception) { Log.w(TAG, "weather: $e") }
                 sendDue(ctx, st, p)
                 st.save()
                 if (p.alerted) {

@@ -24,7 +24,6 @@ class SettingsActivity : BaseActivity() {
     private var alarmHelp: View? = null
     private lateinit var profileStatus: TextView
     private lateinit var siteField: EditText
-    private lateinit var tokenField: EditText
     /** Settings → UM links list, redrawn when you come back (a course may have been added meanwhile). */
     private lateinit var linksBox: LinearLayout
 
@@ -125,12 +124,12 @@ class SettingsActivity : BaseActivity() {
         })
 
         target = accordion(col, "PROFILE", icon = R.drawable.ic_account,
-            contents = listOf("Site URL", "Log in / log out", "Token"),
+            contents = listOf("Site URL", "Log in / log out"),
             summary = if (p.token.isEmpty()) "Not logged in" else "Logged in" + (if (p.userName.isNotEmpty()) " as ${p.userName}" else ""))
         profileStatus = target.label("", Type.BODY_L, Ui.TEXT, 8)
         target.label("Spectrum site URL", Type.CAPTION, Ui.DIM, 12)
         siteField = target.field(p.site)
-        target.btn("Log in with Spectrum") {
+        target.btn("Log in with Spectrum", Emphasis.PRIMARY) {
             p.site = siteField.text.toString()
             startActivity(Intent(this, LoginWebActivity::class.java))
         }
@@ -138,26 +137,15 @@ class SettingsActivity : BaseActivity() {
             p.site = siteField.text.toString()
             Login.start(this)
         }
-        target.label("Or paste a token manually", Type.LABEL, Ui.TEXT, 16)
-        tokenField = target.field("", "Token", true)
-        target.btn("Save token") {
-            val t = tokenField.text.toString().trim()
-            if (t.isNotEmpty()) {
-                p.site = siteField.text.toString()
-                tokenField.setText("")
-                Login.saveAndVerify(this, t) { msg ->
-                    runOnUiThread {
-                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-                        refreshProfile()
-                    }
-                }
-            }
-        }
         target.btn("Log out") {
             p.clearToken()
             CookieManager.getInstance().removeAllCookies(null)
             NotifyLog.sys(this, "Logged out")
             refreshProfile()
+        }.apply {
+            // red, so it never reads as another way in
+            setTextColor(Ui.RED)
+            background = rippleBg(Ui.BAR, Ui.RED, this@SettingsActivity, Radius.PILL)
         }
 
         // pickers, switches and chips save the moment you change them — nothing to type, nothing to get wrong
@@ -210,17 +198,33 @@ class SettingsActivity : BaseActivity() {
 
         target = accordion(col, "DAILY MESSAGES",
             "Two short messages each day. Tap a time to change it; switch a message off if you do not want it.",
-            icon = R.drawable.ic_cat_news, contents = listOf("Morning summary", "Afternoon check-in"),
-            summary = "Morning " + p.summaryTime.ifEmpty { "off" } + "  ·  Afternoon " + p.afternoonTime.ifEmpty { "off" })
+            icon = R.drawable.ic_cat_news, contents = listOf("Morning summary", "Afternoon check-in", "Umbrella reminder"),
+            summary = "Morning " + p.summaryTime.ifEmpty { "off" } + "  ·  Afternoon " + p.afternoonTime.ifEmpty { "off" } +
+                (if (p.umbrellaAlert) "  ·  Umbrella" else ""))
         dailyPicker("Morning summary", "Sent once each morning with today's classes and deadlines.", p.summaryTime, "07:05") { p.summaryTime = it }
         dailyPicker("Afternoon check-in", "Sent in the afternoon about the rest of today's classes.", p.afternoonTime, "14:00") { p.afternoonTime = it }
+        heading("Umbrella reminder", "When rain is ${Weather.RAIN_PCT}% likely or more at UM around your classes: a line in the morning summary, " +
+            "one \"Bring an umbrella\" notification that day (never more than one), and a note in the leave-by alert.")
+        target.addView(android.widget.Switch(this).apply {
+            text = "Remind me to bring an umbrella"
+            textSize = Type.BODY * Ui.fontScale
+            setTextColor(Ui.TEXT)
+            minHeight = dp(Ui.touch(48))
+            isChecked = p.umbrellaAlert
+            setOnCheckedChangeListener { _, on -> p.umbrellaAlert = on }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        target.label(Weather.CREDIT + " The app only uses it as a hint; check the sky before you go.", Type.CAPTION, Ui.DIM, 4)
+        target.addView(button("Open-Meteo.com", Emphasis.TERTIARY) {
+            try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://open-meteo.com/"))) } catch (_: Exception) { }
+        }.apply { contentDescription = "Open the Open-Meteo website (weather data source)" },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(-12) })
 
         target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
             contents = listOf("My Occ", "Attendance reminder", "Classes to ignore", "Teams-recording courses"))
-        heading("Attendance reminder", "A second alert when each class starts, with a Sign attendance button, so you do not forget. " +
+        heading("Attendance reminder", "Sign attendance alerts during class, when signing works: when it starts, and 10 minutes before it ends. " +
             "Not sent for classes where the lecturer takes attendance in class or attendance is by Teams recording.")
         target.addView(android.widget.Switch(this).apply {
-            text = "Remind me when a class starts"
+            text = "Remind me to sign attendance"
             textSize = Type.BODY * Ui.fontScale
             setTextColor(Ui.TEXT)
             minHeight = dp(Ui.touch(48))
@@ -310,13 +314,22 @@ class SettingsActivity : BaseActivity() {
         target = accordion(col, "UM SHUTTLE",
             "Home shows which shuttle to take to your next class, or when walking is quicker, and an alert tells you when to leave.",
             key = "shuttle", icon = R.drawable.lk_bus,
-            contents = listOf("Home stop", "Leave-by alert", "Shuttle times"))
+            contents = listOf("Use UM shuttle", "Home stop", "Leave-by alert", "Shuttle times"),
+            summary = if (Shuttle.enabled(this)) "" else "Off")
+        val shuttleSwitch = android.widget.Switch(this).apply {
+            text = "Use the UM shuttle"; setTextColor(Ui.TEXT); textSize = Type.BODY_L * Ui.fontScale
+            minHeight = dp(Ui.touch(48)); isChecked = Shuttle.enabled(this@SettingsActivity)
+        }
+        target.addView(shuttleSwitch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val shuttleBox = target
+        val shuttleFrom = shuttleBox.childCount
         val shPlaces = Shuttle.placesForPicker(this).filter { it.isStop }
         heading("Home stop", "Where your day starts, usually your residential college. Your first class of the day is planned from here; " +
             "later classes from the class before.")
-        val homeIdx = shPlaces.indexOfFirst { it.id == Shuttle.homeId(this) } + 1
-        target.addView(spinner(listOf("Not set") + shPlaces.map { it.name }, homeIdx) { i ->
-            Shuttle.setHomeId(this, if (i == 0) "" else shPlaces[i - 1].id)
+        // the same searchable picker as the Shuttle screen (short names like KK12), bus stops only
+        val homeNow = shPlaces.firstOrNull { it.id == Shuttle.homeId(this) }
+        target.addView(pickerField(homeNow?.label() ?: "Not set", "Home stop", only = { it.isStop }, none = "Not set") { id ->
+            Shuttle.setHomeId(this, id)
             Scheduler.scheduleAll(this)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         heading("Leave-by alert", "How long before you must set off (for the bus, or on foot) the alert comes.")
@@ -326,10 +339,14 @@ class SettingsActivity : BaseActivity() {
         }
         target.label("Which stop each course uses is guessed from its code; change it in the class editor (Timetable → a class → Edit).", Type.CAPTION, Ui.DIM, 10)
         target.btn("Open shuttle times") { startActivity(Intent(this, ShuttleActivity::class.java)) }
+        // not at UM: off hides the rest of this section, the toolbox entry, Home's bus line and the leave-by alerts
+        fun showShuttle(on: Boolean) { for (i in shuttleFrom until shuttleBox.childCount) shuttleBox.getChildAt(i).visibility = if (on) View.VISIBLE else View.GONE }
+        showShuttle(shuttleSwitch.isChecked)
+        shuttleSwitch.setOnCheckedChangeListener { _, on -> Shuttle.setEnabled(this, on); showShuttle(on); Scheduler.scheduleAll(this) }
 
-        target = accordion(col, "UM LINKS",
+        target = accordion(col, "LINKS",
             "Your shortcuts in the toolbox (the Aa button). Pick an icon, rename, change the address, " +
-                "reorder with the up and down arrows, or add a Spectrum course page.",
+                "drag the handle to reorder, or add a Spectrum course page.",
             key = "umlinks", icon = R.drawable.lk_link,
             contents = listOf("Shortcuts", "Icons", "Add link", "Reorder", "Course pages", "Reset"))
         linksBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

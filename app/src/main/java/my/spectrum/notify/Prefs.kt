@@ -41,8 +41,18 @@ class Prefs(ctx: Context) {
         set(v) { health.edit().putString("userName", v).apply() }
 
     var site: String
-        get() = (sp.getString("site", "https://spectrum.um.edu.my") ?: "").trim().trimEnd('/')
-        set(v) { sp.edit().putString("site", v.trim().trimEnd('/')).apply() }
+        get() = siteUrl(sp.getString("site", null) ?: "")
+        set(v) { sp.edit().putString("site", siteUrl(v)).apply() }
+
+    /**
+     * The Moodle address as typed ("elearning.usm.my", "http://…") made usable: https:// in front, no trailing
+     * slash. Without a scheme the checks failed ("no protocol") and the login page crashed or loaded over http,
+     * which Android blocks. Empty means the UM default.
+     */
+    private fun siteUrl(raw: String): String {
+        val s = raw.trim().trimEnd('/').ifEmpty { return "https://spectrum.um.edu.my" }
+        return "https://" + s.replace(Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://"), "")
+    }
     var quietStart: Int
         get() = sp.getInt("quietStart", 1)
         set(v) { sp.edit().putInt("quietStart", v).apply() }
@@ -145,6 +155,10 @@ class Prefs(ctx: Context) {
     var textScale: Int
         get() = sp.getInt("textScale", 0)
         set(v) { sp.edit().putInt("textScale", v).apply() }
+    /** Umbrella reminder when rain is likely around your classes (Settings → Daily messages). */
+    var umbrellaAlert: Boolean
+        get() = sp.getBoolean("umbrellaAlert", true)
+        set(v) { sp.edit().putBoolean("umbrellaAlert", v).apply() }
     /** A second alert when a class starts, reminding you to sign attendance (Settings → Your classes). */
     var attStartAlert: Boolean
         get() = sp.getBoolean("attStartAlert", true)
@@ -174,7 +188,19 @@ class Prefs(ctx: Context) {
 
     /** Occ confirmed by the user in the startup dialog (per course code). */
     fun occConfirmed(code: String): Boolean = sp.getBoolean("occconf:$code", false)
-    fun setOccConfirmed(code: String) { sp.edit().putBoolean("occconf:$code", true).apply() }
+    fun setOccConfirmed(code: String, on: Boolean = true) {
+        sp.edit().apply { if (on) putBoolean("occconf:$code", true) else remove("occconf:$code") }.apply()
+    }
+
+    /** An Occ just chosen that you have not checked on the Courses page yet ("Looks right" clears it). */
+    fun occNeedsCheck(code: String): Boolean = sp.getBoolean("occcheck:" + code.uppercase(), false)
+    fun setOccNeedsCheck(code: String, on: Boolean) {
+        val k = "occcheck:" + code.uppercase()
+        if (on) sp.edit().putBoolean(k, true).apply() else sp.edit().remove(k).apply()
+    }
+    /** Courses still waiting for that check. */
+    fun occChecksPending(): List<String> =
+        sp.all.keys.filter { it.startsWith("occcheck:") && sp.getBoolean(it, false) }.map { it.removePrefix("occcheck:") }
 
     /** Attendance duplicate labels per course, e.g. attlabel:WIX1003 = "0=Lecture,1=Tutorial". */
     fun attendanceLabel(course: String): String? =

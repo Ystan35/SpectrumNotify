@@ -404,6 +404,20 @@ object Timetable {
 
     fun hiddenCount(ctx: Context): Int = hiddenKeys(ctx).size
 
+    /** Keys of the learned classes you removed ("Remove from my timetable"). */
+    fun removedKeys(ctx: Context): Set<String> = hiddenKeys(ctx)
+
+    /** The learned-slot key of a Spectrum class event ("WIX1003|1|600|720"), from Spectrum's own times as [fromCalendar] keys it. */
+    fun slotKeyOf(e: JSONObject): String? {
+        val ts = e.optLong("timestart")
+        if (ts <= 0L) return null
+        val z = localDt(ts)
+        val dur = e.optLong("timeduration")
+        val start = z.hour * 60 + z.minute
+        val end = minOf(24 * 60, start + (if (dur > 0L) (dur / 60).toInt() else 60))
+        return "${courseCode(e.optJSONObject("course"))}|${z.dayOfWeek.value}|$start|$end"
+    }
+
     fun hide(ctx: Context, key: String) {
         val h = hiddenKeys(ctx)
         h.add(key)

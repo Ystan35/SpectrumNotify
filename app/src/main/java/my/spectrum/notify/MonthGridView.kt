@@ -24,16 +24,16 @@ object MonthGridView {
 
     /** Your events that fall on [date] (one-off or weekly). */
     private fun eventsFor(activity: Activity, date: LocalDate): List<Events.Event> =
-        Events.all(activity).filter { e -> e.upcoming(date, 0).any { it.first == date } }
+        Events.all(activity).filter { it.occursOn(date) }
 
     /** Occurrences of your events per date within [month]. */
     private fun eventsIn(activity: Activity, month: YearMonth): Map<LocalDate, List<Events.Event>> {
         val out = HashMap<LocalDate, MutableList<Events.Event>>()
         val start = month.atDay(1)
         for (e in Events.all(activity)) {
-            for ((d, _) in e.upcoming(start, month.lengthOfMonth() - 1L)) {
-                if (YearMonth.from(d) != month) continue
-                out.getOrPut(d) { ArrayList() }.add(e)
+            for (n in 0L until month.lengthOfMonth()) {
+                val d = start.plusDays(n)
+                if (e.occursOn(d)) out.getOrPut(d) { ArrayList() }.add(e)
             }
         }
         return out

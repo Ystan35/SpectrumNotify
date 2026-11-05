@@ -14,10 +14,24 @@ fun JSONArray.strs(): List<String> = (0 until length()).map { optString(it) }
 fun jarr(items: Collection<String>): JSONArray = JSONArray().also { a -> items.forEach { a.put(it) } }
 fun jobjs(items: List<JSONObject>): JSONArray = JSONArray().also { a -> items.forEach { a.put(it) } }
 
-fun unesc(s: String?): String = (s ?: "")
-    .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"")
-    .replace("&#39;", "'").replace("&#x27;", "'").replace("&nbsp;", " ")
-    .replace("&amp;", "&")
+private val ENTITY = Regex("&(?:#(\\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|(amp|lt|gt|quot|apos|nbsp));")
+
+/** Decodes HTML entities from Spectrum, named and numeric ("&#38;" -> "&"), in one pass so nothing is decoded twice. */
+fun unesc(s: String?): String = ENTITY.replace(s ?: "") { m ->
+    val (dec, hex, name) = m.destructured
+    when {
+        dec.isNotEmpty() || hex.isNotEmpty() -> {
+            val cp = if (dec.isNotEmpty()) dec.toInt() else hex.toInt(16)
+            if (cp == 0xA0) " " else if (Character.isValidCodePoint(cp) && cp != 0) String(Character.toChars(cp)) else m.value
+        }
+        name == "amp" -> "&"
+        name == "lt" -> "<"
+        name == "gt" -> ">"
+        name == "quot" -> "\""
+        name == "apos" -> "'"
+        else -> " "
+    }
+}
 
 fun clean(text: String?, n: Int = 60): String {
     val t = unesc((text ?: "").replace(Regex("\\s+"), " ")).trim()

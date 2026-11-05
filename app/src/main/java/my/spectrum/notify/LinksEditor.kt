@@ -14,7 +14,7 @@ import android.widget.TextView
 
 /**
  * Settings → UM links: the shortcut list shown in the floating toolbox. Each link has a line icon,
- * a name and a web address. Tap a link to edit it, the up/down arrows to reorder; removing or resetting offers Undo.
+ * a name and a web address. Tap a link to edit it, drag its handle to reorder; removing or resetting offers Undo.
  */
 object LinksEditor {
 
@@ -28,6 +28,49 @@ object LinksEditor {
         importantForAccessibility = ImageView.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
+    /** The handle of row [from]: the row follows your finger, the others make room, and [onDrop] gets the new position. */
+    private fun dragger(row: LinearLayout, from: Int, rows: List<LinearLayout>, onDrop: (Int) -> Unit) = object : android.view.View.OnTouchListener {
+        private var startY = 0f
+        private var to = from
+        private fun slot() = row.height + ((row.layoutParams as? ViewGroup.MarginLayoutParams)?.topMargin ?: 0)
+
+        private fun settle() {
+            rows.forEach { it.animate().cancel(); it.translationY = 0f; it.translationZ = 0f }
+        }
+
+        override fun onTouch(v: android.view.View, ev: android.view.MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    v.parent.requestDisallowInterceptTouchEvent(true)
+                    startY = ev.rawY
+                    to = from
+                    row.translationZ = row.context.dp(6).toFloat()
+                    row.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dy = (ev.rawY - startY).coerceIn(-(from * slot()).toFloat(), ((rows.size - 1 - from) * slot()).toFloat())
+                    row.translationY = dy
+                    val next = (from + Math.round(dy / slot())).coerceIn(0, rows.size - 1)
+                    if (next != to) {
+                        to = next
+                        rows.forEachIndexed { i, r ->
+                            if (r === row) return@forEachIndexed
+                            val shift = when {
+                                i in (from + 1)..to -> -slot()
+                                i in to until from -> slot()
+                                else -> 0
+                            }
+                            r.animate().translationY(shift.toFloat()).setDuration(120).start()
+                        }
+                    }
+                }
+                android.view.MotionEvent.ACTION_UP -> { settle(); onDrop(to) }
+                android.view.MotionEvent.ACTION_CANCEL -> settle()
+            }
+            return true
+        }
+    }
+
     /** Fills [box] with the list and its buttons; redraws itself after every change. */
     fun renderSection(activity: Activity, box: LinearLayout) {
         box.removeAllViews()
@@ -35,7 +78,8 @@ object LinksEditor {
         fun redraw() = renderSection(activity, box)
         fun saveAndRedraw(list: List<Shortcuts.Link>) { Shortcuts.save(activity, list); redraw() }
 
-        if (links.isEmpty()) box.label("No links yet. Add one below, or reset to the UM defaults.", Type.LABEL, Ui.DIM, 8)
+        val rows = ArrayList<LinearLayout>()
+        if (links.isEmpty()) box.label("No links yet. Add one below, or reset to the defaults.", Type.LABEL, Ui.DIM, 8)
         links.forEachIndexed { i, l ->
             val row = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -58,22 +102,34 @@ object LinksEditor {
                 textSize = Type.CAPTION * Ui.fontScale; setTextColor(Ui.DIM); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             })
             row.addView(text, LinearLayout.LayoutParams(0, WRAP, 1f))
-            fun move(up: Boolean, to: Int, enabled: Boolean) = android.widget.ImageView(activity).apply {
-                setImageResource(R.drawable.ic_expand_more)
-                rotation = if (up) 180f else 0f
-                setColorFilter(if (enabled) Ui.CYAN else Ui.tint(Ui.DIM, 0x55))
-                scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            fun moveTo(to: Int) {
+                val m = links.toMutableList()
+                m.add(to, m.removeAt(i))
+                saveAndRedraw(m)
+            }
+            row.addView(ImageView(activity).apply {
+                setImageResource(R.drawable.ic_drag_handle)
+                setColorFilter(Ui.DIM)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
                 minimumWidth = activity.dp(Ui.touch(48)); minimumHeight = activity.dp(Ui.touch(48))
-                isEnabled = enabled; isClickable = enabled
-                contentDescription = "Move ${l.name} " + (if (to < i) "up" else "down")
-                setOnClickListener {
-                    val m = links.toMutableList()
-                    m.add(to, m.removeAt(i))
-                    saveAndRedraw(m)
+                importantForAccessibility = ImageView.IMPORTANT_FOR_ACCESSIBILITY_NO
+                setOnTouchListener(dragger(row, i, rows) { to -> if (to != i) moveTo(to) })
+            })
+            // dragging is no use to a screen reader: the same moves as actions on the row
+            val upId = 0x7f0b0001; val downId = 0x7f0b0002
+            row.accessibilityDelegate = object : android.view.View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(host: android.view.View, info: android.view.accessibility.AccessibilityNodeInfo) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    if (i > 0) info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(upId, "Move ${l.name} up"))
+                    if (i < links.size - 1) info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(downId, "Move ${l.name} down"))
+                }
+                override fun performAccessibilityAction(host: android.view.View, action: Int, args: android.os.Bundle?): Boolean = when (action) {
+                    upId -> { moveTo(i - 1); true }
+                    downId -> { moveTo(i + 1); true }
+                    else -> super.performAccessibilityAction(host, action, args)
                 }
             }
-            row.addView(move(true, i - 1, i > 0))
-            row.addView(move(false, i + 1, i < links.size - 1))
+            rows.add(row)
             box.addView(row, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = activity.dp(8) })
         }
 
@@ -92,10 +148,10 @@ object LinksEditor {
                     .show()
             }
         }
-        box.action("Reset to UM defaults", "Puts back Maya, ePay, STAREcs and MySiswa and removes your other links. You can undo right after.") {
+        box.action("Reset to defaults", "Puts back Spectrum, SpectrumExam, Maya, ePay, MySiswa, STAREcs and the academic calendar, and removes your other links. You can undo right after.") {
             val before = Shortcuts.all(activity)
             saveAndRedraw(Shortcuts.defaults())
-            activity.undoBar("UM links reset") { saveAndRedraw(before) }
+            activity.undoBar("Links reset") { saveAndRedraw(before) }
         }
     }
 
@@ -105,6 +161,8 @@ object LinksEditor {
         val old = index?.let { list.getOrNull(it) }
         val dp = { n: Int -> activity.dp(n) }
         var chosen = old?.icon ?: ""
+        // an icon you tapped stays; otherwise it follows what you type (a Drive slides link gets the slides icon)
+        var pickedByHand = old != null
         val col = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
 
         col.label("Icon", Type.LABEL, Ui.TEXT, 4).setTypeface(null, Typeface.BOLD)
@@ -122,7 +180,7 @@ object LinksEditor {
                     setImageResource(res)
                     scaleType = ImageView.ScaleType.CENTER
                     isClickable = true
-                    setOnClickListener { chosen = key; paint() }
+                    setOnClickListener { chosen = key; pickedByHand = true; paint() }
                 }
                 cells.add(Pair(key, v))
                 r.addView(v, LinearLayout.LayoutParams(0, dp(Ui.touch(48)), 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
@@ -147,6 +205,17 @@ object LinksEditor {
         val urlF = field("e.g. umlib.um.edu.my", old?.url ?: "", true)
         col.addView(urlF, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
         col.label("https:// is added for you if you leave it out.", Type.CAPTION, Ui.DIM, 4)
+        val follow = object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) {
+                if (pickedByHand) return
+                chosen = Shortcuts.guessIcon(nameF.text.toString(), urlF.text.toString())
+                paint()
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        }
+        nameF.addTextChangedListener(follow)
+        urlF.addTextChangedListener(follow)
 
         val scroll = android.widget.ScrollView(activity).apply { addView(col) }
         val b = AlertDialog.Builder(activity, Ui.dialogTheme)

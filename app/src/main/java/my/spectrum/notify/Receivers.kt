@@ -38,16 +38,21 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         Scheduler.ensurePolling(app)
-        Scheduler.scheduleEventReminders(app)
+        // class, summary and event alarms from the cached calendar right away: the check below waits for internet
+        try { Scheduler.scheduleAll(app) } catch (_: Exception) { Scheduler.scheduleEventReminders(app) }
         Scheduler.pollNow(app)
     }
 }
 
-/** Fires [reminderMin] before a user-created event: pushes the reminder, re-arms the rest. */
+/** Fires for each reminder of a user-created event: pushes it, re-arms the rest. */
 class EventAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val title = intent.getStringExtra("title") ?: return
-        val dateLabel = intent.getStringExtra("dateLabel") ?: ""
+        // worked out now, not when the alarm was set: "Tomorrow" could be today by then
+        val dateLabel = listOfNotNull(
+            intent.getStringExtra("date")?.let { EventsUi.fmtDate(java.time.LocalDate.parse(it)) },
+            intent.getStringExtra("time"),
+        ).joinToString(", ")
         Notifier.push(
             context,
             "Upcoming: $title",

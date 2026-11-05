@@ -45,8 +45,16 @@ class CoursesActivity : BaseActivity() {
         }
     }
 
+    /** Card order while this screen is open: a card stays put when its Occ changes, instead of jumping out of view. */
+    private val order = LinkedHashMap<String, Int>()
+
     private fun render() {
-        val list = Courses.all(this)
+        val fresh = Courses.all(this)
+        for (c in fresh) if (c.code !in order) order[c.code] = order.size
+        val list = fresh.sortedBy { order[it.code] }
+        // read once for the whole page: state.json is large, and every read parses all of it
+        val st = State(this)
+        val learned = Groups.learnedPerCourse(this, st)
         box.removeAllViews()
         if (list.isEmpty()) {
             val loggedIn = Prefs(this).token.isNotEmpty()
@@ -69,9 +77,11 @@ class CoursesActivity : BaseActivity() {
         val colours = Timetable.colours(this, list.map { it.code }.toSet())
         box.label("${list.size} course" + (if (list.size == 1) "" else "s"), Type.BODY, Ui.DIM, 8)
         // page actions: two equal SECONDARY buttons, then a quiet text action (none outshouts the courses)
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(button("Refresh my classes", Emphasis.SECONDARY) { refreshClasses() }, LinearLayout.LayoutParams(0, WRAP, 1f))
-        actions.addView(button("Set short names", Emphasis.SECONDARY) { batchShorts(list) }.apply {
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; isBaselineAligned = false }
+        actions.addView(button("Refresh classes", Emphasis.SECONDARY) { refreshClasses() }.apply {
+            contentDescription = "Refresh my classes from Spectrum"
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        actions.addView(button("Short names", Emphasis.SECONDARY) { batchShorts(list) }.apply {
             contentDescription = "Set short names for all courses"
         }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(8) })
         box.addView(actions, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
@@ -79,11 +89,11 @@ class CoursesActivity : BaseActivity() {
             startActivity(Intent(this, CatalogActivity::class.java))
         }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(4) })
         for (c in list) {
-            box.addView(card(c, colours[c.code] ?: Ui.CYAN), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+            box.addView(card(c, colours[c.code] ?: Ui.CYAN, learned[c.code.uppercase()] ?: emptyList(), st), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
         }
     }
 
-    private fun card(c: Courses.Course, colour: Int): View {
+    private fun card(c: Courses.Course, colour: Int, learned: List<String>, st: State): View {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             background = roundBg(Ui.BAR, Ui.BORDER, this@CoursesActivity, Radius.MD)
@@ -103,7 +113,7 @@ class CoursesActivity : BaseActivity() {
 
         // header: code (and your short form) small in the course colour, the course name big and bold under it
         val short = Shorts.get(this, c.code)
-        // short names are set for all courses at once (Set short names, above); tapping this line changes just this one
+        // short names are set for all courses at once (Short names, above); tapping this line changes just this one
         col.addView(tv(c.code.uppercase() + if (short.isNotEmpty()) "  ·  $short" else "", Type.LABEL, colour, true).apply {
             letterSpacing = 0.06f
             isClickable = true
@@ -139,7 +149,6 @@ class CoursesActivity : BaseActivity() {
         // your Occ for this course: a compact dropdown, changed in place
         val pp = Prefs(this)
         val catOccs = Catalog.find(this, c.code)?.occs() ?: emptyList()
-        val learned = Groups.learnedPerCourse(this)[c.code.uppercase()] ?: emptyList()
         val occs = if (catOccs.isNotEmpty()) catOccs else learned
         val current = Regex(Regex.escape(c.code) + ":occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE)
             .find(pp.myGroups)?.groupValues?.get(1) ?: ""
@@ -184,6 +193,23 @@ class CoursesActivity : BaseActivity() {
                 "If that is your class, your Occ may be wrong.", Type.CAPTION, Ui.ORANGE, 4)
         }
 
+        // just chosen (Confirm your Occ, or the dropdown above): ask you to check it against the class times
+        if (current.isNotEmpty() && pp.occNeedsCheck(c.code)) {
+            val note = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(4))
+                background = roundBg(Ui.tint(Ui.ORANGE, 0x1F), Ui.ORANGE, this@CoursesActivity, Radius.SM)
+            }
+            note.addView(tv("Verify Occ selection", Type.LABEL, Ui.ORANGE, true))
+            note.addView(tv("Occ $current: do the times above match MAYA?", Type.CAPTION, Ui.TEXT).apply { setPadding(0, dp(2), 0, 0) })
+            note.addView(button("Looks right", Emphasis.TERTIARY, Ui.ORANGE) {
+                pp.setOccNeedsCheck(c.code, false)
+                render()
+            }.apply { contentDescription = "Occ $current for ${c.code} looks right" },
+                LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(-12) })
+            col.addView(note, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+        }
+
         // actions: the course page (a link out) and which pages notify you
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         if (c.url.isNotEmpty()) {
@@ -196,9 +222,9 @@ class CoursesActivity : BaseActivity() {
                 startActivity(
                     Intent(this, SectionsActivity::class.java)
                         .putExtra(SectionsActivity.EXTRA_ID, c.id)
-                        .putExtra(SectionsActivity.EXTRA_NAME, c.code + if (c.name.isNotEmpty()) "  " + c.name else "")
+                        .putExtra(SectionsActivity.EXTRA_NAME, c.code + Timetable.classTitle(c.code, c.name, "").let { if (it.isNotEmpty()) " · $it" else "" })
                 )
-            }.apply { contentDescription = "Notification pages for ${c.code}: " + Sections.summary(this@CoursesActivity, c.id) })
+            }.apply { contentDescription = "Notification pages for ${c.code}: " + Sections.summary(this@CoursesActivity, c.id, st) })
         }
         if (actions.childCount > 0) col.addView(actions, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
 
@@ -212,6 +238,10 @@ class CoursesActivity : BaseActivity() {
         val pp = Prefs(this)
         val keep = pp.myGroups.split(",").map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
         pp.myGroups = (if (occ.isEmpty()) keep else keep + "$code:occ$occ").joinToString(", ")
+        // a new Occ has new class times: ask for a look at them; none set, nothing to check
+        pp.setOccNeedsCheck(code, occ.isNotEmpty())
+        // the confirmed mark follows the Occ: cleared here, Confirm your Occ asks about this course again
+        pp.setOccConfirmed(code, occ.isNotEmpty())
         if (occ.isEmpty()) Timetable.clearCatalog(this, code) else Timetable.autoSetup(this, code, occ)
     }
 
@@ -267,13 +297,15 @@ class CoursesActivity : BaseActivity() {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             left.addView(tv(c.code, Type.BODY, Ui.TEXT, true))
-            if (c.name.isNotEmpty() && !c.name.equals(c.code, true)) {
-                left.addView(tv(c.name, Type.CAPTION, Ui.DIM).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            // the name without the code in front ("GIG1003 BASIC …" repeated the code and cut the name off)
+            val name = Timetable.classTitle(c.code, c.name, "")
+            if (name.isNotEmpty()) {
+                left.addView(tv(name, Type.CAPTION, Ui.DIM).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
             }
             row.addView(left, LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
             val f = EditText(this).apply {
                 setText(Shorts.get(this@CoursesActivity, c.code))
-                hint = "short form"
+                hint = "short name"
                 textSize = Type.LABEL * Ui.fontScale
                 setTextColor(Ui.TEXT); setHintTextColor(Ui.DIM); setSingleLine()
                 minWidth = dp(90)
@@ -290,8 +322,8 @@ class CoursesActivity : BaseActivity() {
             (resources.displayMetrics.heightPixels * 0.5).toInt().coerceAtLeast(dp(180)),
         )
         AlertDialog.Builder(this, Ui.dialogTheme)
-            .setTitle("Short forms for your courses")
-            .setMessage("Write the name you recognise. Blank = show the code only.")
+            .setTitle("Short names")
+            .setMessage("Blank = code only.")
             .setView(scroll)
             .setPositiveButton("Save all") { _, _ ->
                 var n = 0
@@ -299,7 +331,7 @@ class CoursesActivity : BaseActivity() {
                     val v = f.text.toString().trim()
                     if (v != Shorts.get(this, code)) { Shorts.set(this, code, v); n++ }
                 }
-                Toast.makeText(this, "Saved $n short form" + (if (n == 1) "" else "s") + ".", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Saved $n short name" + (if (n == 1) "" else "s") + ".", Toast.LENGTH_SHORT).show()
                 render()
             }
             .setNegativeButton("Cancel", null)

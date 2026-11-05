@@ -119,15 +119,18 @@ object Scheduler {
         val p = Prefs(ctx)
         val st = State(ctx)
         val now = System.currentTimeMillis() / 1000
-        val cal = Checker.myCalendar(st, p)
-        // holiday mode: skip class reminder alarms outside teaching weeks
-        val classesActive = AcademicCalendar.inTeaching(ctx, java.time.LocalDate.now(zone()))
+        // without the classes you removed on the Timetable
+        val cal = Checker.activeCalendar(ctx, st, p)
         val codes = LinkedHashSet<Int>()
         for (e in cal) {
-            if (!classesActive || !Checker.isAttEvent(e)) continue
+            if (!Checker.isAttEvent(e)) continue
             val start = Checker.classTimes(ctx, e).first   // honours your Time Override
+            // holiday mode: no class alarms on days outside teaching weeks (decided by the class's own date)
+            if (!AcademicCalendar.inTeaching(ctx, localDt(start).toLocalDate())) continue
+            val end = Checker.classTimes(ctx, e).second
             val at = start - 590  // fires just inside the 10-minute window
-            if (start + 20 <= now || at > now + 3 * 86400) continue
+            // kept until the class ends: the last-chance attendance alarm comes during it
+            if (end <= now || at > now + 3 * 86400) continue
             val code = (e.optLong("id") * 31 + start).hashCode()
             if (at > now) {
                 setAlarm(ctx, at * 1000, code)
@@ -137,9 +140,17 @@ object Scheduler {
             // Armed on its own: a re-run inside the last 10 minutes (every check, and the 10-minute alarm
             // itself) must keep it, or the clean-up below cancels it
             if (p.attStartAlert) {
-                val code2 = code xor 0x2A2A2A
-                setAlarm(ctx, (start + 20) * 1000, code2)
-                codes.add(code2)
+                if (start + 20 > now) {
+                    val code2 = code xor 0x2A2A2A
+                    setAlarm(ctx, (start + 20) * 1000, code2)
+                    codes.add(code2)
+                }
+                // and the last-chance one, 10 minutes before the class ends (Checker.checkAttendanceStart)
+                if (end - start > 25 * 60 && end - 600 + 20 > now) {
+                    val code4 = code xor 0x3C3C3C
+                    setAlarm(ctx, (end - 600 + 20) * 1000, code4)
+                    codes.add(code4)
+                }
             }
             // third: the leave-by alert for the shuttle or the walk (Checker.checkLeaveBy), also armed on its own
             val lead = Shuttle.leadMin(ctx)
@@ -158,6 +169,19 @@ object Scheduler {
                 } catch (_: Exception) { }
             }
         }
+        // the same two attendance alerts for classes Spectrum's calendar does not list
+        if (p.attStartAlert) for (n in 0L..2L) {
+            val date = java.time.LocalDate.now(zone()).plusDays(n)
+            for (s in Checker.slotsWithoutAttEvent(ctx, p, cal, date)) {
+                val start = date.atTime(s.start / 60, s.start % 60).atZone(zone()).toEpochSecond()
+                val end = date.atTime(s.end / 60, s.end % 60).atZone(zone()).toEpochSecond()
+                val code = "slotatt:${s.key}:$date".hashCode()
+                if (start + 20 > now) { setAlarm(ctx, (start + 20) * 1000, code); codes.add(code) }
+                if (end - start > 25 * 60 && end - 600 + 20 > now) {
+                    setAlarm(ctx, (end - 600 + 20) * 1000, code xor 0x3C3C3C); codes.add(code xor 0x3C3C3C)
+                }
+            }
+        }
         parseHm(p.summaryTime)?.let { setAlarm(ctx, nextDaily(it), 1); codes.add(1) }
         parseHm(p.afternoonTime)?.let { setAlarm(ctx, nextDaily(it), 2); codes.add(2) }
         // classes that were removed, skipped or moved since last time must not still fire
@@ -170,7 +194,7 @@ object Scheduler {
 
     // ------------------------------------------------------------ custom event reminders
 
-    /** Arms exact alarms for every event occurrence with a reminder in the next 7 days. */
+    /** Arms exact alarms for every event reminder due in the next 8 days (each check arms the ones after that). */
     fun scheduleEventReminders(ctx: Context) {
         val am = ctx.getSystemService(AlarmManager::class.java)
         val zoneId = zone()
@@ -180,16 +204,20 @@ object Scheduler {
         for (old in 9000 until p.eventAlarmEnd) cancelAlarm(ctx, EventAlarmReceiver::class.java, old)
         var code = 9000
         for (e in Events.all(ctx)) {
-            for ((d, t) in e.upcoming(now.toLocalDate(), 7)) {
-                val start = d.atTime(t).atZone(zoneId).toInstant().toEpochMilli()
-                val at = start - e.reminderMin * 60_000L
-                if (at <= System.currentTimeMillis()) continue
+            if (e.reminders.isEmpty()) continue
+            // far enough ahead that a reminder weeks before the event is seen
+            val ahead = 8L + e.reminders.max() / (24 * 60) + 1
+            for ((d, _) in e.upcoming(now.toLocalDate(), ahead)) for (before in e.reminders) {
+                val from = d.atTime(e.remindFrom() / 60, e.remindFrom() % 60).atZone(zoneId).toInstant().toEpochMilli()
+                val at = from - before * 60_000L
+                if (at <= System.currentTimeMillis() || at > System.currentTimeMillis() + 8 * 86_400_000L) continue
                 val pi = PendingIntent.getBroadcast(
                     ctx, code++,
                     Intent(ctx, EventAlarmReceiver::class.java)
                         .putExtra("eventId", e.id)
                         .putExtra("title", e.title)
-                        .putExtra("dateLabel", EventsUi.fmtDate(d)),
+                        .putExtra("date", d.toString())
+                        .putExtra("time", if (e.allDay) "all day" else EventsUi.fmtMin(e.startTime)),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
                 try {

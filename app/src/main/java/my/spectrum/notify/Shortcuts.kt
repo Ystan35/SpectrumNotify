@@ -17,7 +17,9 @@ object Shortcuts {
     val ICONS: List<Pair<String, Int>> = listOf(
         "school" to R.drawable.lk_school, "payment" to R.drawable.lk_payment, "library" to R.drawable.lk_library,
         "calendar" to R.drawable.lk_calendar, "mail" to R.drawable.lk_mail, "book" to R.drawable.lk_book,
-        "web" to R.drawable.lk_web, "document" to R.drawable.lk_document, "bus" to R.drawable.lk_bus,
+        "web" to R.drawable.lk_web, "document" to R.drawable.lk_document, "slides" to R.drawable.lk_slides,
+        "sheet" to R.drawable.lk_sheet, "pdf" to R.drawable.lk_pdf, "folder" to R.drawable.lk_folder,
+        "cloud" to R.drawable.lk_cloud, "bus" to R.drawable.lk_bus,
         "food" to R.drawable.lk_food, "wifi" to R.drawable.lk_wifi, "person" to R.drawable.lk_person,
         "star" to R.drawable.lk_star, "grades" to R.drawable.lk_grades, "video" to R.drawable.lk_video,
         "link" to R.drawable.lk_link, "home" to R.drawable.lk_home, "map" to R.drawable.lk_map,
@@ -27,7 +29,8 @@ object Shortcuts {
     /** Spoken name of each icon, for screen readers in the picker. */
     fun iconLabel(key: String): String = when (key) {
         "school" -> "Graduation cap"; "payment" -> "Payment card"; "library" -> "Library"; "calendar" -> "Calendar"
-        "mail" -> "Mail"; "book" -> "Book"; "web" -> "Web"; "document" -> "Document"; "bus" -> "Bus"
+        "mail" -> "Mail"; "book" -> "Book"; "web" -> "Web"; "document" -> "Document"; "slides" -> "Presentation"
+        "sheet" -> "Spreadsheet"; "pdf" -> "PDF"; "folder" -> "Folder"; "cloud" -> "Cloud drive"; "bus" -> "Bus"
         "food" -> "Food"; "wifi" -> "Wi-Fi"; "person" -> "Person"; "star" -> "Star"; "grades" -> "Grades"
         "video" -> "Video"; "link" -> "Link"; "home" -> "Home"; "map" -> "Map"; else -> "Help"
     }
@@ -38,6 +41,13 @@ object Shortcuts {
     fun guessIcon(name: String, url: String): String {
         val t = "$name $url".lowercase()
         return when {
+            // files and drives first (Google Drive / Docs, OneDrive / SharePoint), so "Exam slides" is slides
+            "docs.google.com/presentation" in t || "/:p:/" in t || "slides" in t || "presentation" in t || Regex("""\.pptx?\b""").containsMatchIn(t) -> "slides"
+            "docs.google.com/spreadsheets" in t || "/:x:/" in t || "spreadsheet" in t || Regex("""\.(xlsx?|csv)\b""").containsMatchIn(t) -> "sheet"
+            "docs.google.com/document" in t || "/:w:/" in t || Regex("""\.docx?\b""").containsMatchIn(t) -> "document"
+            "/:b:/" in t || Regex("""\.pdf\b""").containsMatchIn(t) -> "pdf"
+            "drive.google.com/drive/folders" in t || "/:f:/" in t || "folder" in t -> "folder"
+            "drive.google.com" in t || "onedrive" in t || "1drv.ms" in t || "sharepoint.com" in t || "dropbox" in t -> "cloud"
             "maya" in t || "siswa" in t -> "person"
             "pay" in t || "fee" in t || "bayar" in t -> "payment"
             "starecs" in t || "result" in t || "grade" in t || "exam" in t -> "grades"
@@ -54,11 +64,21 @@ object Shortcuts {
 
     /** UM defaults, also what "Reset to UM defaults" restores. */
     fun defaults(): List<Link> = listOf(
-        Link("Maya", "https://maya.um.edu.my/s/studentsignin", "person"),
+        Link("Spectrum", "https://spectrum.um.edu.my/", "book"),
+        Link("SpectrumExam", "https://spectrumexam.um.edu.my/", "grades"),
+        Link("Maya", MAYA_URL, "person"),
         Link("ePay", "https://epay.um.edu.my/", "payment"),
+        Link("MySiswa", "https://mysis.um.edu.my/", "school"),
         Link("STAREcs", "https://starecs.um.edu.my/", "grades"),
-        Link("MySiswa", "https://mysiswa.um.edu.my/", "school"),
+        Link("Academic calendar", CALENDAR_URL, "calendar"),
     )
+
+    // UM's Bachelor degree calendar for 2026/2027 (AASD); a link like the rest, so another university can change it
+    private const val CALENDAR_URL = "https://aasd.um.edu.my/website_doc/academic-calendar/2026/" +
+        "Attachment%20D%20Academic%20Calendar%20Bachelor%20Degree%202026-2027%20Academic%20Session_July%202026.pdf"
+
+    private const val MAYA_URL = "https://maya.um.edu.my/sitsvision/wrd/siw_lgn"
+    private const val MAYA_OLD_URL = "https://maya.um.edu.my/s/studentsignin"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences("shortcuts", Context.MODE_PRIVATE)
 
@@ -78,6 +98,50 @@ object Shortcuts {
             val u = o.optString("url").trim()
             if (n.isNotEmpty() && u.isNotEmpty()) out.add(Link(n, u, o.optString("icon").ifEmpty { guessIcon(n, u) }))
         }
+        return upgrade(ctx, out)
+    }
+
+    /**
+     * Once, for lists saved before 0.31: MySiswa moved to mysis.um.edu.my, and Spectrum and SpectrumExam
+     * join the defaults (only when no link to them is there already; your own edits stay).
+     */
+    private fun upgrade(ctx: Context, list: List<Link>): List<Link> {
+        if (sp(ctx).getBoolean("v031", false)) return reorderOnce(ctx, list)
+        val out = list.map { l ->
+            if (Uri.parse(l.url).host.equals("mysiswa.um.edu.my", true)) l.copy(url = "https://mysis.um.edu.my/") else l
+        }.toMutableList()
+        fun has(host: String) = out.any { Uri.parse(it.url).host.equals(host, true) }
+        for (d in defaults()) {
+            val host = Uri.parse(d.url).host ?: continue
+            if ((host == "spectrum.um.edu.my" || host == "spectrumexam.um.edu.my") && !has(host)) out.add(d)
+        }
+        // marked before saving: a save refreshes the widget, which reads the list and would come back here
+        sp(ctx).edit().putBoolean("v031", true).commit()
+        save(ctx, out)
+        return reorderOnce(ctx, out)
+    }
+
+    /**
+     * Once: the UM links take the default order with your own links after them, and Maya's old sign-in
+     * address becomes the login page (an address you changed yourself stays).
+     */
+    private fun reorderOnce(ctx: Context, list: List<Link>): List<Link> {
+        if (sp(ctx).getBoolean("linkOrder2", false)) return calendarOnce(ctx, list)
+        val hosts = defaults().map { Uri.parse(it.url).host }
+        val out = list.map { l -> if (l.url.trimEnd('/').equals(MAYA_OLD_URL, true)) l.copy(url = MAYA_URL) else l }
+            .sortedBy { l -> hosts.indexOfFirst { it.equals(Uri.parse(l.url).host, true) }.let { if (it < 0) hosts.size else it } }
+        sp(ctx).edit().putBoolean("linkOrder2", true).commit()
+        save(ctx, out)
+        return calendarOnce(ctx, out)
+    }
+
+    /** Once: the academic calendar, a fixed toolbox entry before, joins your links (unless you have one already). */
+    private fun calendarOnce(ctx: Context, list: List<Link>): List<Link> {
+        if (sp(ctx).getBoolean("calLink", false)) return list
+        sp(ctx).edit().putBoolean("calLink", true).commit()
+        if (list.any { it.url == CALENDAR_URL || it.icon == "calendar" }) return list
+        val out = list + Link("Academic calendar", CALENDAR_URL, "calendar")
+        save(ctx, out)
         return out
     }
 
@@ -88,7 +152,9 @@ object Shortcuts {
             arr.put(JSONObject().put("name", l.name.trim()).put("url", l.url.trim())
                 .put("icon", l.icon.ifEmpty { guessIcon(l.name, l.url) }))
         }
-        sp(ctx).edit().putString("list", arr.toString()).apply()
+        sp(ctx).edit().putString("list", arr.toString()).commit()
+        // committed first: the widget reads the list back straight away
+        try { UmLinksWidget.updateAll(ctx) } catch (_: Exception) { }
     }
 
     /**
