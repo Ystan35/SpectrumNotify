@@ -153,6 +153,49 @@ object Checker {
         return (id != 0L && "dl:$id" in hidden) || hiddenNameKey(unesc(e.str("name"))) in hidden
     }
 
+    /** One task you hid, with every key that hides it (by name, and by event id when known). */
+    class HiddenTask(val keys: List<String>, val name: String, val course: String, val due: Long)
+
+    /** Your hidden tasks for Settings, soonest due first (unknown due times last). */
+    fun hiddenTasks(ctx: Context): List<HiddenTask> {
+        val keys = ctx.getSharedPreferences("health", Context.MODE_PRIVATE).getStringSet("hiddenEvents", emptySet())!!
+        val meta = NotifyLog.hiddenMeta(ctx)
+        // an id key goes with the name key hidden with it (same name in its meta); alone it is a task of its own
+        val byName = keys.filter { it.startsWith("dn:") }.associateWith { mutableListOf(it) }
+        val loose = ArrayList<String>()
+        for (k in keys.filter { !it.startsWith("dn:") }) {
+            val n = meta.optJSONObject(k)?.optString("n").orEmpty()
+            byName[hiddenNameKey(n)]?.add(k) ?: loose.add(k)
+        }
+        return (byName.values.map { it.toList() } + loose.map { listOf(it) }).map { ks ->
+            val m = ks.firstNotNullOfOrNull { meta.optJSONObject(it) }
+            HiddenTask(ks, m?.optString("n").orEmpty().ifEmpty { ks[0].removePrefix("dn:") }, m?.optString("c").orEmpty(), m?.optLong("t") ?: 0L)
+        }.sortedBy { if (it.due > 0) it.due else Long.MAX_VALUE }
+    }
+
+    /**
+     * After a successful deadline check: note the name / course / due time of hidden tasks it saw ([seen]), and
+     * forget hidden tasks whose due time has passed. One not seen and with no due time gets a guess of 15 days
+     * from now (the check looks 14 days ahead, so a task still to come shows up and gets its real time before then).
+     */
+    private fun pruneHidden(ctx: Context, seen: List<JSONObject>, now: Long) {
+        val sp = ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
+        val keys = sp.getStringSet("hiddenEvents", emptySet())!!.toMutableSet()
+        val meta = NotifyLog.hiddenMeta(ctx)
+        for (e in seen) {
+            val name = unesc(e.str("name"))
+            val info = JSONObject().put("n", name).put("c", e.optJSONObject("course")?.str("fullname").orEmpty()).put("t", e.optLong("timesort"))
+            listOf("dl:" + e.optLong("id"), hiddenNameKey(name)).filter { it in keys }.forEach { meta.put(it, info) }
+        }
+        for (k in keys.toList()) {
+            val m = meta.optJSONObject(k) ?: JSONObject().also { meta.put(k, it) }
+            val t = m.optLong("t")
+            if (t == 0L) m.put("t", now + 15 * 86400)
+            else if (t < now) { keys.remove(k); meta.remove(k) }
+        }
+        sp.edit().putStringSet("hiddenEvents", keys).putString("hiddenMeta", meta.toString()).apply()
+    }
+
     /** "dn:<name>" key [NotificationsActivity] stores when a deadline reminder is hidden. */
     fun hiddenNameKey(name: String): String = "dn:" + name.trim().lowercase()
 
@@ -290,7 +333,8 @@ object Checker {
     ): Triple<String, String, String> {
         val p = Prefs(ctx)
         val id = if (courseId != 0L) courseId else courseIdForCode(ctx, code)
-        val att = Timetable.userAttLinkRaw(ctx, code).ifEmpty { attendanceUrl(ctx, id, preferLec) }
+        // your choice for this kind of class (Attendance picker) first, then the app's guess
+        val att = Timetable.attFor(ctx, code, preferLec).ifEmpty { attendanceUrl(ctx, id, preferLec) }
         val meeting = if (Timetable.inPerson(ctx, code)) "" else Timetable.meetingLinkOf(ctx, code).ifEmpty {
             if (id == 0L) "" else {
                 val ls = linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
@@ -395,7 +439,7 @@ object Checker {
             ClassItem(
                 slot.title.ifEmpty { "Class" }, slot.course,
                 slot.course, start, end,
-                meeting.ifEmpty { att },
+                meeting,   // never the attendance page: that is attUrl (Join class opened it, even in person)
                 coursePage,
                 // Teams-recording courses only — this used to be true for every own entry, so Home said
                 // "Attendance for this course is by Teams recording" for any class you added
@@ -492,9 +536,22 @@ object Checker {
             val parent = (if (sec.str("component") == "mod_subsection") parentByCm[sec.optLong("itemid")] else null) ?: parentBySec[k]
             if (parent != null && parent != k) secParent[k] = parent
         }
+        // the whole course as a list for its Materials screen (Courses tab): what you can see, minus plain text labels
+        val mats = JSONArray()
+        for (sec in sections) for (m in (sec.optJSONArray("modules") ?: JSONArray()).objs()) {
+            val mod = m.str("modname")
+            if (mod == "subsection" || mod == "label" || !m.optBoolean("uservisible", true)) continue
+            val files = JSONArray()
+            for (f in (m.optJSONArray("contents") ?: JSONArray()).objs()) if (f.str("type") == "file" || f.str("type") == "url")
+                files.put(JSONObject().put("n", f.str("filename")).put("u", f.str("fileurl")).put("m", f.str("mimetype")).put("s", f.optLong("filesize")))
+            mats.put(JSONObject().put("sec", sec.optLong("id")).put("sn", sec.str("name")).put("n", m.str("name"))
+                .put("mod", mod).put("u", m.str("url")).put("f", files))
+        }
+        (st.j.optJSONObject("materials") ?: JSONObject().also { st.j.put("materials", it) }).put("$cid", mats)
         // no sub-sections on the course: its pages still sit under Occ headings
         if (secParent.isEmpty()) secParent.putAll(occParents(sections.map { it.optLong("id").toString() to it.str("name") }))
         val nameById = sections.associate { it.optLong("id").toString() to it.str("name") }
+        var attSeq = 0   // place of each attendance page on the course page, for the picker's list
         for (sec in sections) {
             val sname = sec.str("name")
             val skey = sec.optLong("id").toString()
@@ -546,7 +603,7 @@ object Checker {
                     // lecture / L / tutorial / class)
                     val kind = attKind(nm)
                     val lbl = st.j.optJSONObject("attlabels") ?: JSONObject()
-                    lbl.put("$cid:$attKey", JSONObject().put("name", nm).put("kind", kind).put("vis", m.optBoolean("uservisible", true)))
+                    lbl.put("$cid:$attKey", JSONObject().put("name", nm).put("kind", kind).put("vis", m.optBoolean("uservisible", true)).put("o", attSeq++))
                     st.j.put("attlabels", lbl)
                 }
                 // Occ detection via availability: a module the user CAN see that names an Occ
@@ -778,6 +835,7 @@ object Checker {
             mapOf("timesortfrom" to now, "timesortto" to now + 14 * 86400, "limitnum" to 50),
         ).optJSONArray("events")?.objs() ?: emptyList()
         val sent = st.strings("deadlines_sent")
+        val hiddenSeen = ArrayList<JSONObject>()
         val upcoming = ArrayList<JSONObject>()
         // Moodle leaves work you submitted (assignment) or finished (quiz attempt) or completed OUT of this list
         // (mod_*_core_calendar_provide_event_action returns null), so it needs no check of its own here.
@@ -787,7 +845,7 @@ object Checker {
             val ts = e.optLong("timesort")
             val remaining = ts - now
             if (remaining <= 0) continue
-            if (isHiddenDeadline(ctx, e)) continue
+            if (isHiddenDeadline(ctx, e)) { hiddenSeen.add(e); continue }
             upcoming.add(e)
             if (isTaskDone(ctx, unesc(e.str("name")), e.optLong("id"), ts)) continue
             val applicable = p.deadlineList.filter { remaining <= it * 3600L }
@@ -807,6 +865,7 @@ object Checker {
             sent.addAll(keys)
         }
         st.putStrings("deadlines_sent", sent.toList().takeLast(500))
+        pruneHidden(ctx, hiddenSeen, now)
         return upcoming
     }
 
@@ -860,7 +919,7 @@ object Checker {
             if (key in sent) continue
             val code = Timetable.courseCode(e.optJSONObject("course"))
             val buttons = ArrayList<Pair<String, String>>()
-            Shuttle.walkUrl(t)?.let { buttons.add(Pair("Walking route", it)) }
+            Shuttle.walkUrl(t)?.let { buttons.add(Pair(if (((t.plan as? ShuttleModel.Plan.Walk)?.minutes ?: 0) > 45) "Directions" else "Walking route", it)) }
             // rain from setting off to the end of the class: say so (once, with this alert)
             val day = localDt(leave).toLocalDate()
             val endZ = localDt(classTimes(ctx, e).second)

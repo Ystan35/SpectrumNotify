@@ -115,7 +115,7 @@ object AcademicCalendar {
     }
 
     /** The semester a date belongs to (teaching start to semester end); the later-starting one wins an overlap. */
-    fun forDate(ctx: Context, d: LocalDate): Dates? =
+    fun forDate(ctx: Context, d: LocalDate): Dates? = if (!Prefs.isUm(ctx)) null else
         semesters(ctx).lastOrNull { !d.isBefore(it.teachStart) && !d.isAfter(it.semEnd) }
 
     /** Index of [forDate]'s semester in [semesters], for storing corrections under the bundled label. */
@@ -162,6 +162,8 @@ object AcademicCalendar {
      *  regression this prevents. While a semester is still on, later dates are NOT teaching:
      *  the next semester has different subjects. */
     fun inTeaching(ctx: Context, d: LocalDate): Boolean {
+        // another university's Moodle: UM's weeks would hide its classes, so every day can have classes
+        if (!Prefs.isUm(ctx)) return true
         val all = semesters(ctx)
         val last = all.last()
         if (d.isAfter(last.semEnd)) return LocalDate.now(zone()).isAfter(last.semEnd)
@@ -181,6 +183,7 @@ object AcademicCalendar {
 
     /** Human line for the UI: what the calendar says about this date (null = normal teaching day). */
     fun describe(ctx: Context, d: LocalDate): String? {
+        if (!Prefs.isUm(ctx)) return null
         val all = semesters(ctx)
         val s = forDate(ctx, d)
         val m = DateTimeFormatter.ofPattern("d MMM")

@@ -373,6 +373,37 @@ object Timetable {
 
     fun attendanceKey(course: String) = "att:$course"
 
+    /**
+     * The attendance link you chose for a course's lectures ([preferLec] true) or tutorials (false), else the one for
+     * the whole course (also what older versions saved when you pasted a link); "" = the app chooses.
+     */
+    fun attFor(ctx: Context, course: String, preferLec: Boolean?): String {
+        val k = when (preferLec) { true -> "lec"; false -> "tut"; null -> "" }
+        val own = if (k.isEmpty()) "" else sp(ctx).getString("att:$course:$k", "") ?: ""
+        return own.ifEmpty { userAttLinkRaw(ctx, course) }
+    }
+
+    /**
+     * Saves the attendance link for [kind] ("lec", "tut", or "" for every class of the course); "" clears it.
+     * Clearing one kind while a whole-course link exists keeps that link for the other kind only.
+     */
+    fun setAttFor(ctx: Context, course: String, kind: String, url: String) {
+        val e = sp(ctx).edit()
+        val key = if (kind.isEmpty()) "att:$course" else "att:$course:$kind"
+        if (url.isNotEmpty()) e.putString(key, url.trim())
+        else if (kind.isEmpty()) { e.remove(key); e.remove("att:$course:lec"); e.remove("att:$course:tut") }
+        else {
+            e.remove(key)
+            val wide = userAttLinkRaw(ctx, course)
+            if (wide.isNotEmpty()) {
+                val other = if (kind == "lec") "tut" else "lec"
+                if ((sp(ctx).getString("att:$course:$other", "") ?: "").isEmpty()) e.putString("att:$course:$other", wide)
+                e.remove("att:$course")
+            }
+        }
+        e.apply()
+    }
+
     /** How attendance is taken for a course: "link" (Spectrum page), "manual" (lecturer, in class), "none", or "" = not set. */
     fun attMode(ctx: Context, course: String): String = sp(ctx).getString("attmode:$course", "") ?: ""
 

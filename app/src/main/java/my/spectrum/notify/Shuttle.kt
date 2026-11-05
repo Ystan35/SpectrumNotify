@@ -35,9 +35,20 @@ object Shuttle {
                 try { ShuttleModel.parse(s).takeIf { it.routes.isNotEmpty() && it.generatedAt >= bundled.generatedAt } }
                 catch (_: Exception) { null }
             }
-            return (stored ?: bundled).also { cache = it }
+            return withMine(app, stored ?: bundled).also { cache = it }
         }
     }
+
+    /** [d] plus the places you added yourself ([MyPlaces]). */
+    private fun withMine(ctx: Context, d: ShuttleModel.Data): ShuttleModel.Data {
+        val mine = MyPlaces.places(ctx, d.places.values)
+        if (mine.isEmpty()) return d
+        return ShuttleModel.Data(d.generatedAt, d.source, d.officialUrl, d.phone, d.email, d.notes,
+            d.places + mine.associateBy { it.id }, d.routes, d.faculties)
+    }
+
+    /** Your places changed: the next [data] reloads them. */
+    fun invalidate() { synchronized(this) { cache = null } }
 
     /** Downloads the current bus.json and keeps it when newer. Called from the background check; failures are quiet. */
     fun refresh(ctx: Context) {
@@ -56,7 +67,7 @@ object Shuttle {
             val fresh = ShuttleModel.parse(text)
             if (fresh.routes.isEmpty() || fresh.generatedAt <= now.generatedAt) return
             prefs(ctx).edit().putString("json", text).apply()
-            synchronized(this) { cache = fresh }
+            synchronized(this) { cache = withMine(ctx, fresh) }
         } catch (_: Exception) {
         }
     }
@@ -69,7 +80,7 @@ object Shuttle {
 
     /** Minutes before you must set off that the leave-by alert comes; 0 = off. */
     /** Off for anyone not at UM: no shuttle on Home, no leave-by alerts, no shuttle downloads, gone from the toolbox. */
-    fun enabled(ctx: Context): Boolean = prefs(ctx).getBoolean("on", true)
+    fun enabled(ctx: Context): Boolean = prefs(ctx).getBoolean("on", Prefs.isUm(ctx))
     fun setEnabled(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("on", on).apply()
 
     fun leadMin(ctx: Context): Int = if (enabled(ctx)) prefs(ctx).getInt("lead", 10) else 0
@@ -149,5 +160,7 @@ object Shuttle {
     fun stopName(ctx: Context, id: String): String = data(ctx).places[id]?.name ?: id
 
     /** Where tapping the line goes: walking directions in Maps for a walk, else null (open the Shuttle screen). */
-    fun walkUrl(t: TripInfo): String? = (t.plan as? ShuttleModel.Plan.Walk)?.let { ShuttleModel.mapsWalkUrl(it.from, it.to) }
+    fun walkUrl(t: TripInfo): String? = (t.plan as? ShuttleModel.Plan.Walk)?.let {
+        ShuttleModel.mapsUrl(it.from, it.to, if ((it.minutes ?: 0) > 45) "transit" else "walking")   // a long walk: public transport instead
+    }
 }

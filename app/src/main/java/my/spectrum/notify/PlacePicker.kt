@@ -48,6 +48,7 @@ fun Activity.pickerField(
 private fun groupOf(p: ShuttleModel.Place): Int {
     val n = p.name.lowercase(Locale.ROOT)
     return when {
+        MyPlaces.isMine(p.id) -> 3
         // a college is a college, with or without a stop of its own (KK2 has none: bus to KK1, then walk)
         " rc" in "$n " || "residential" in n || "kolej kediaman" in n || "international house" in n -> 1
         !p.isStop || n.startsWith("faculty") || n.startsWith("academy") || n.startsWith("fakulti") || "pasum" in n -> 0
@@ -55,7 +56,11 @@ private fun groupOf(p: ShuttleModel.Place): Int {
     }
 }
 
-/** A searchable list of the places that pass [only], grouped: faculties and buildings, residential colleges, other stops. */
+/**
+ * A searchable list of the places that pass [only], grouped: your places, faculties and buildings, residential
+ * colleges, other stops. When your own places can be picked here, a search also looks on the map, and you can
+ * add a place yourself (pin on a map).
+ */
 fun Activity.pickPlace(
     title: String, only: (ShuttleModel.Place) -> Boolean = { true }, none: String? = null, onPick: (String) -> Unit,
 ) {
@@ -79,8 +84,15 @@ fun Activity.pickPlace(
         .setNegativeButton("Cancel", null)
         .create()
     val home = Shuttle.homeId(this)
-    val heads = listOf("Faculties and buildings", "Residential colleges", "Bus stops")
-    fun fill(q: String) {
+    val heads = listOf("Faculties and buildings", "Residential colleges", "Bus stops", "Your places")
+    // your places only where this picker takes any place (not Settings' home stop, which must be a stop)
+    val canAdd = only(ShuttleModel.Place(MyPlaces.PREFIX, "", false, "", "", 0.0, 0.0))
+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    var seq = 0
+    fun picked(id: String) { dlg.dismiss(); onPick(id) }
+    fun addYourself(name: String, lat: Double?, lng: Double?) = editPlace(name, lat, lng, null) { picked(it) }
+    lateinit var fill: (String) -> Unit
+    fill = { q ->
         list.removeAllViews()
         val words = q.lowercase(Locale.ROOT).split(" ").filter { it.isNotBlank() }
         // each word matches the start of a word of the name ("api" finds "(API)", not "Rapid"), or the id
@@ -89,25 +101,59 @@ fun Activity.pickPlace(
             val akas = p.aka.flatMap { it.lowercase(Locale.ROOT).split(" ") }
             words.all { w -> parts.any { it.startsWith(w) } || akas.any { it.startsWith(w) } || p.id.lowercase(Locale.ROOT).startsWith(w) }
         }
-        fun row(label: String, id: String) {
-            list.addView(tv(label, Type.BODY_L, Ui.TEXT).apply {
+        fun row(label: String, id: String, sub: String = "", onClick: () -> Unit = { picked(id) }) {
+            list.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
                 setPadding(dp(8), dp(12), dp(8), dp(12))
                 background = rippleBg(Ui.BG, 0, this@pickPlace, Radius.SM)
                 isClickable = true
-                setOnClickListener { dlg.dismiss(); onPick(id) }
+                addView(tv(label, Type.BODY_L, Ui.TEXT))
+                if (sub.isNotEmpty()) addView(tv(sub, Type.CAPTION, Ui.DIM).apply { maxLines = 2 })
+                contentDescription = if (sub.isEmpty()) label else "$label, $sub"
+                setOnClickListener { onClick() }
+                // your own places: hold to move, rename or delete
+                if (MyPlaces.isMine(id)) setOnLongClickListener {
+                    manageMyPlace(d.places[id] ?: return@setOnLongClickListener true) {
+                        dlg.dismiss(); pickPlace(title, only, none, onPick)
+                    }
+                    true
+                }
             })
         }
+        if (words.isEmpty() && canAdd) row("+ Add a place of your own", "", "Search the map or drop a pin") { addYourself("", null, null) }
         if (words.isEmpty()) {
             if (none != null) row(none, "")
             d.places[home]?.takeIf(only)?.let { list.label("Your home stop", Type.CAPTION, Ui.CYAN, 8); row(it.label(), it.id) }
         }
-        for (g in 0..2) {
+        for (g in listOf(3, 0, 1, 2)) {
             val inG = hits.filter { groupOf(it) == g }
             if (inG.isEmpty()) continue
             list.label(heads[g], Type.CAPTION, Ui.CYAN, 12).setTypeface(null, Typeface.BOLD)
             inG.forEach { row(it.label(), it.id) }
         }
-        if (hits.isEmpty()) list.label("Nothing matches \"$q\".", Type.LABEL, Ui.DIM, 12)
+        if (hits.isEmpty() && !canAdd) list.label("Nothing matches \"$q\".", Type.LABEL, Ui.DIM, 12)
+        if (words.isNotEmpty() && canAdd) {
+            // places outside the UM list: the map search (after a pause in typing), then "add it yourself"
+            val mine = ++seq
+            val head = list.label("Places on the map", Type.CAPTION, Ui.CYAN, 12).apply { setTypeface(null, Typeface.BOLD) }
+            val status = list.label(if (q.trim().length < 3) "Type a little more to search the map." else "Searching the map…", Type.LABEL, Ui.DIM, 4)
+            val at = list.indexOfChild(status)
+            row("+ Add \"${q.trim()}\" yourself", "", "Drop a pin on the map") { addYourself(q.trim(), null, null) }
+            if (q.trim().length >= 3) handler.postDelayed({
+                if (mine == seq) searchMap(q.trim()) { found ->
+                    if (mine != seq) return@searchMap
+                    list.removeView(status)
+                    if (found.isEmpty()) list.addView(tv("Nothing found on the map. Add it yourself below.", Type.LABEL, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) }, at)
+                    // insert the results where "Searching…" was, above "Add yourself"
+                    val before = list.childCount
+                    found.forEach { f -> row(f.name, "", f.detail) { addYourself(f.name, f.lat, f.lng) } }
+                    val added = (before until list.childCount).map { list.getChildAt(it) }
+                    added.forEach { list.removeView(it) }
+                    added.forEachIndexed { i, v -> list.addView(v, at + i) }
+                }
+            }, 500)
+            head.contentDescription = "Places on the map"
+        }
     }
     search.addTextChangedListener(object : android.text.TextWatcher {
         override fun afterTextChanged(e: android.text.Editable?) = fill(e?.toString() ?: "")

@@ -129,12 +129,17 @@ object NotifyLog {
 
     fun isHidden(ctx: Context, ts: Long): Boolean = hiddenSetFor(ctx).contains(ts.toString())
 
-    /** Silence a deadline's SOURCE event so re-polls don't resurrect it ("dl:<eventId>" keys). */
-    fun hideEvent(ctx: Context, key: String) {
+    /**
+     * Silence a deadline's SOURCE event so re-polls don't resurrect it ("dl:<eventId>" / "dn:<name>" keys).
+     * [name], [course] and [due] (epoch seconds, 0 = not known) are kept for Settings' list of hidden tasks.
+     */
+    fun hideEvent(ctx: Context, key: String, name: String = "", course: String = "", due: Long = 0L) {
         val sp = ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
         val s = sp.getStringSet("hiddenEvents", emptySet())!!.toMutableSet()
         s.add(key)
-        sp.edit().putStringSet("hiddenEvents", s).apply()
+        val e = sp.edit().putStringSet("hiddenEvents", s)
+        if (name.isNotEmpty()) e.putString("hiddenMeta", hiddenMeta(ctx).put(key, JSONObject().put("n", name).put("c", course).put("t", due)).toString())
+        e.apply()
     }
 
     /** Undo of [hideEvent]. */
@@ -142,8 +147,15 @@ object NotifyLog {
         val sp = ctx.getSharedPreferences("health", Context.MODE_PRIVATE)
         val s = sp.getStringSet("hiddenEvents", emptySet())!!.toMutableSet()
         s.remove(key)
-        sp.edit().putStringSet("hiddenEvents", s).apply()
+        sp.edit().putStringSet("hiddenEvents", s).putString("hiddenMeta", hiddenMeta(ctx).apply { remove(key) }.toString()).apply()
     }
+
+    /** What each hidden key was: {"n": name, "c": course, "t": due (epoch s, 0 = not known)}. */
+    fun hiddenMeta(ctx: Context): JSONObject =
+        try { JSONObject(ctx.getSharedPreferences("health", Context.MODE_PRIVATE).getString("hiddenMeta", "{}")!!) } catch (_: Exception) { JSONObject() }
+
+    fun setHiddenMeta(ctx: Context, m: JSONObject) =
+        ctx.getSharedPreferences("health", Context.MODE_PRIVATE).edit().putString("hiddenMeta", m.toString()).apply()
 
     /** Remove debug-class sys lines (keeps Check failed / crash / login events). */
     @Synchronized

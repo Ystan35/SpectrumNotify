@@ -419,6 +419,7 @@ class MainActivity : BaseActivity() {
             if (!s.done && s.go != null) {
                 row.addView(button(s.button, if (s === next) Emphasis.PRIMARY else Emphasis.SECONDARY) { s.go.invoke(); setupSig = "" }.apply {
                     contentDescription = "${s.button}: ${s.title}"
+                    if (s.title == "Log in to Spectrum") tag = "guide:login"
                 }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
             }
             card.addView(row)
@@ -489,26 +490,27 @@ class MainActivity : BaseActivity() {
         page.addView(scroll, lp(MATCH, 0, 1f))
 
         // app title row: THE shared header (same implementation as every page)
-        themeBtn = (headerRow(homeMode = true).getChildAt(2) as ImageButton)
-        // same place as on every other tab (screen() uses 8dp top, 16 left, 12 right; content already pads 16)
-        content.addView(themeBtn.parent as View, lp(MATCH, WRAP).apply { topMargin = dp(8); rightMargin = dp(-4) })
+        // the greeting is the page title, in the same header as every tab (toolbox + theme switch at its end)
+        val topRow = headerRow("", toolbox = true)
+        themeBtn = topRow.findViewWithTag("themeBtn")
+        greetTitle = topRow.findViewWithTag<TextView>("headerTitle").apply { textSize = Type.DISPLAY * Ui.fontScale }
+        // pinned above the scrolling page, like every other tab's header (it used to scroll away)
+        topRow.setPadding(dp(16), dp(10), dp(8), dp(6))
+        page.addView(topRow, 0, lp(MATCH, WRAP))
 
-        // greeting + refresh sit on their own card so they stand out from the BG
+        // date and sync state under it, with the refresh button; no card of their own
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(14), dp(12), dp(14))
-            background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.LG)
         }
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        greetTitle = tv("", Type.DISPLAY, Ui.TEXT, true)
-        greetSub = tv("", Type.BODY, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) }
-        syncLabel = tv("", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) }
-        texts.addView(greetTitle)
+        greetSub = tv("", Type.BODY, Ui.DIM)
+        syncLabel = tv("", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) }
         texts.addView(greetSub)
         texts.addView(syncLabel)
         header.addView(texts, lp(0, WRAP, 1f))
         refreshBtn = ImageButton(this).apply {
+            tag = "guide:refresh"
             setImageResource(R.drawable.ic_refresh)
             setColorFilter(Ui.CYAN)
             background = rippleBg(Ui.BG, Ui.BORDER, this@MainActivity, Radius.PILL)
@@ -516,10 +518,10 @@ class MainActivity : BaseActivity() {
             setOnClickListener { startRefresh() }
         }
         header.addView(refreshBtn, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
-        content.addView(header, lp(MATCH, WRAP).apply { topMargin = dp(14); bottomMargin = dp(12) })
+        content.addView(header, lp(MATCH, WRAP).apply { bottomMargin = dp(16) })
 
         // the next class leads; the setup guide comes after it (it used to push the class below the fold)
-        heroBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        heroBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; tag = "guide:hero" }
         content.addView(heroBox, lp(MATCH, WRAP))
 
         setupBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -527,6 +529,7 @@ class MainActivity : BaseActivity() {
 
         // deadlines strip
         dueSection = LinearLayout(this).apply {
+            tag = "guide:due"
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
@@ -678,13 +681,14 @@ class MainActivity : BaseActivity() {
     }
 
     private fun pill(label: String, filled: Boolean, onClick: () -> Unit): TextView =
-        tv(label, Type.BODY, if (filled) Ui.HERO_A else 0xFFFFFFFF.toInt(), true).apply {
+        tv(label, Type.BODY, if (filled) onFill(Ui.SIGNAL) else 0xFFFFFFFF.toInt(), true).apply {
             gravity = Gravity.CENTER
             minHeight = dp(44)
-            setPadding(dp(18), 0, dp(18), 0)
+            maxLines = 2
+            setPadding(dp(10), dp(4), dp(10), dp(4))
             background = GradientDrawable().apply {
-                cornerRadius = dp(Radius.LG).toFloat()
-                if (filled) setColor(0xFFFFFFFF.toInt()) else { setColor(0x00000000); setStroke(dp(1), 0xB3FFFFFF.toInt()) }
+                cornerRadius = dp(Radius.PILL).toFloat()
+                if (filled) setColor(Ui.SIGNAL) else { setColor(0x00000000); setStroke(outline(), 0xB3FFFFFF.toInt()) }
             }
             setOnClickListener { onClick() }
         }
@@ -756,15 +760,12 @@ class MainActivity : BaseActivity() {
             val b2 = (hue2(pr, q, h - 1f / 3f) * 255).toInt().coerceIn(0, 255)
             return 0xFF000000.toInt() or (r2 shl 16) or (g2 shl 8) or b2
         }
-        fun heroBg(course: String): GradientDrawable {
-            val tint = Timetable.colours(this, setOf(course))[course]
-            return if (tint == null) {
-                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.HERO_A, Ui.HERO_B))
-            } else {
-                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(shiftColour(tint, 0f), shiftColour(tint, -0.1f)))
-            }.apply { cornerRadius = dp(Radius.LG).toFloat() }
-        }
-        fun label(t: String) = tv(t, Type.CAPTION, soft, true).apply { letterSpacing = 0.08f }
+        @Suppress("UNUSED_PARAMETER")
+        fun heroBg(course: String): GradientDrawable =
+            GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.HERO_A, Ui.HERO_B))
+                .apply { cornerRadius = dp(Radius.LG).toFloat() }
+        // hero labels in plain sentence case ("Next class"), not tracked capitals
+        fun label(t: String) = tv(if (t == t.uppercase()) t.lowercase().replaceFirstChar { it.uppercase() } else t, Type.LABEL, soft, true)
 
         if (slides.isEmpty()) {
             heroBox.removeAllViews()
@@ -777,7 +778,7 @@ class MainActivity : BaseActivity() {
                 card.addView(label("WELCOME"))
                 card.addView(tv("Never miss a class link", Type.HEADLINE, white, true).apply { setPadding(0, dp(6), 0, 0) })
                 card.addView(tv("Log in with your Spectrum account to get class links, deadlines and new materials here.", Type.BODY, soft).apply { setPadding(0, dp(6), 0, dp(14)) })
-                card.addView(pill("Log in", true) { startActivity(Intent(this, LoginWebActivity::class.java)) }, lp(WRAP, WRAP))
+                card.addView(pill("Log in", true) { startActivity(Intent(this, LoginWebActivity::class.java)) }.apply { tag = "guide:heroLogin" }, lp(WRAP, WRAP))
             } else {
                 val due = ov.due.firstOrNull()
                 val today = java.time.LocalDate.now(zone())
@@ -817,7 +818,16 @@ class MainActivity : BaseActivity() {
             val col = Timetable.colours(this, setOf(c.course))[c.course] ?: white
             card.addView(label(if (live) "HAPPENING NOW" else if (isToday(c.start)) "UP NEXT TODAY" else "NEXT CLASS").apply {
             })
-            card.addView(tv(Shorts.display(this, c.course), Type.DISPLAY, white, true).apply { setPadding(0, dp(6), 0, 0) })
+            // the course's own colour as a short strip before its code (the card itself is always jade)
+            card.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6), 0, 0)
+                addView(View(this@MainActivity).apply {
+                    background = GradientDrawable().apply { cornerRadius = dp(3).toFloat(); setColor(col) }
+                }, lp(dp(6), dp(30)).apply { rightMargin = dp(10) })
+                addView(tv(Shorts.display(this@MainActivity, c.course), Type.DISPLAY, white, true))
+            })
             val sub = Timetable.classTitle(c.course, c.full, c.name)
             if (sub.isNotEmpty()) {
                 card.addView(tv(sub, Type.BODY, soft).apply {
@@ -826,13 +836,13 @@ class MainActivity : BaseActivity() {
                     setPadding(0, dp(2), 0, 0)
                 })
             }
-            card.addView(tv("${dayLabel(c.start)} · ${hhmm(c.start)}–${hhmm(c.end)}", Type.BODY_L, white, true).apply {
+            card.addView(tv("${dayLabel(c.start)}, ${hhmm(c.start)}–${hhmm(c.end)}", Type.BODY_L, white, true).apply {
                 setPadding(0, dp(12), 0, 0)
             })
             card.addView(
                 tv(if (live) "Ends ${relIn(c.end - now)}" else "Starts ${relIn(c.start - now)}", Type.LABEL, white, true).apply {
                     setPadding(dp(12), dp(6), dp(12), dp(6))
-                    background = GradientDrawable().apply { cornerRadius = dp(Radius.MD).toFloat(); setColor(0x33FFFFFF) }
+                    background = GradientDrawable().apply { cornerRadius = dp(Radius.PILL).toFloat(); setColor(0x33FFFFFF) }
                 },
                 lp(WRAP, WRAP).apply { topMargin = dp(8) },
             )
@@ -862,7 +872,7 @@ class MainActivity : BaseActivity() {
                     }, lp(MATCH, WRAP).apply { topMargin = dp(8) })
                 }
             }
-            if (c.link.isEmpty() || c.manual) {
+            if (!c.link.isJoinable() || c.manual) {
                 val inPerson = Timetable.inPerson(this, c.code.ifEmpty { c.course })
                 val room = Timetable.locationOf(this, c.code.ifEmpty { c.course }).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
                 val note = if (c.manual) "Attendance for this course is by Teams recording."
@@ -871,28 +881,32 @@ class MainActivity : BaseActivity() {
                 card.addView((if (inPerson && !c.manual) iconText(R.drawable.ic_place, note, Type.LABEL, soft) else tv(note, Type.LABEL, soft))
                     .apply { setPadding(0, dp(10), 0, 0) })
             }
-            if (c.hiddenOwn.isNotEmpty()) {
-                card.addView(tv(
-                    "Your own ${Shorts.display(this, c.code.ifEmpty { c.course })} entry (${c.hiddenOwn}) is hidden: Spectrum lists this class at the same time.",
-                    Type.CAPTION, soft,
-                ).apply { setPadding(0, dp(8), 0, 0) })
+            // dismissed per course and times: a different clash of yours shows again
+            val noteKey = "${c.code.ifEmpty { c.course }}|${c.hiddenOwn}"
+            val seenNotes = getSharedPreferences("home", MODE_PRIVATE)
+            if (c.hiddenOwn.isNotEmpty() && noteKey !in seenNotes.getStringSet("hiddenOwnSeen", emptySet())!!) {
+                val msg = "Your own ${Shorts.display(this, c.code.ifEmpty { c.course })} entry (${c.hiddenOwn}) is hidden: Spectrum lists this class at the same time."
+                card.addView(iconText(0, msg, Type.CAPTION, soft, trailing = R.drawable.ic_close).apply {
+                    setPadding(0, dp(8), 0, dp(4))
+                    contentDescription = "$msg Double tap to dismiss."
+                    setOnClickListener {
+                        seenNotes.edit().putStringSet("hiddenOwnSeen", seenNotes.getStringSet("hiddenOwnSeen", emptySet())!! + noteKey).apply()
+                        (parent as? android.view.ViewGroup)?.removeView(this)
+                    }
+                })
             }
             // horizontal scroll so three pills never get squeezed into wrapping vertically
             // its own padded zone: a sideways drag that starts here scrolls the buttons, never the card (HeroPager)
-            val actions = HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
-                tag = HeroPager.NO_SWIPE
-                setPadding(dp(6), dp(6), dp(6), dp(6))
-                background = roundBg(0x1FFFFFFF, 0, this@MainActivity, Radius.PILL)
-            }
+            // equal-width pills, all the same height: no scrolling track, nothing hides off the edge
             val actionsRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
+                tag = HeroPager.NO_SWIPE
             }
             // a real meeting link exists → Join class is the primary action,
             // whatever kind of slot the class came from
-            val hasLink = c.link.isNotEmpty()
-            if (hasLink) actionsRow.addView(pill("Join class", true) { openUrl(c.link) }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
+            val hasLink = c.link.isJoinable()
+            if (hasLink) actionsRow.addView(pill("Join class", true) { openUrl(c.link) }, lp(0, WRAP, 1f).apply { rightMargin = dp(8) })
             actionsRow.addView(pill("Attendance", !hasLink) {
                 if (Timetable.attMode(this@MainActivity, c.course) == "manual") {
                     Toast.makeText(this@MainActivity, "Attendance for ${Shorts.display(this@MainActivity, c.course)} is taken in class by the lecturer.", Toast.LENGTH_LONG).show()
@@ -909,10 +923,9 @@ class MainActivity : BaseActivity() {
                 val eventIsAtt = c.link.contains("/mod/attendance/", true)
                 val target = att.ifEmpty { if (eventIsAtt) c.link else "" }.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
                 if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
-            }, lp(WRAP, dp(Ui.touch(44))).apply { rightMargin = dp(10) })
-            actionsRow.addView(pill("Course page", !hasLink) { openUrl(c.courseUrl) }, lp(WRAP, dp(Ui.touch(44))))
-            actions.addView(actionsRow, lp(WRAP, WRAP))
-            card.addView(actions, lp(MATCH, WRAP).apply { topMargin = dp(14) })
+            }, lp(0, WRAP, 1f).apply { rightMargin = dp(8) })
+            actionsRow.addView(pill("Course page", false) { openUrl(c.courseUrl) }, lp(0, WRAP, 1f))
+            card.addView(actionsRow, lp(MATCH, WRAP).apply { topMargin = dp(16) })
             // countdown progress: how far we are into the wait (or the class itself), fills to 100%
             val span = if (live) maxOf(1, c.end - c.start) else maxOf(1, (c.start - now) + (c.end - c.start))
             val done = if (live) now - c.start else (c.start - now).coerceAtLeast(0)
@@ -964,7 +977,7 @@ class MainActivity : BaseActivity() {
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
                             setColor(if (enabled) Ui.tint(if (Ui.dark) 0xFFFFFFFF.toInt() else 0xFF26251F.toInt(), 0x14) else 0x00000000)
-                            setStroke(dp(1), if (enabled) Ui.CYAN else Ui.tint(Ui.DIM, 0x66))
+                            setStroke(outline(), if (enabled) Ui.CYAN else Ui.tint(Ui.DIM, 0x66))
                         }
                         if (enabled) setOnClickListener { onClick() }
                     }
@@ -1193,20 +1206,21 @@ class MainActivity : BaseActivity() {
             if (isDone) "Puts it back on your active list, with reminders" else "Keeps it on the list, struck through; no more reminders",
         ) {
             Checker.setTaskDone(this, d.name, !isDone, d.eventId, d.ts)
-            dueSig = ""
+            ovAt = 0L; dueSig = ""
             render()
         }
         row("Hide this (wrong?)", "Removes it from Home, Notifications and reminders — you can undo right after") {
             // by id, and by name so its reminders leave the Notifications list too
-            if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId)
-            NotifyLog.hideEvent(this, Checker.hiddenNameKey(d.name))
+            if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId, d.name, d.course, d.ts)
+            NotifyLog.hideEvent(this, Checker.hiddenNameKey(d.name), d.name, d.course, d.ts)
             sheetDismiss()
-            dueSig = ""
+            // the task list is rebuilt from a copy kept up to 15 s: drop it so the card goes at once
+            ovAt = 0L; dueSig = ""
             render()
             undoBar("Deadline hidden") {
                 if (d.eventId != 0L) NotifyLog.unhideEvent(this, "dl:" + d.eventId)
                 NotifyLog.unhideEvent(this, Checker.hiddenNameKey(d.name))
-                dueSig = ""
+                ovAt = 0L; dueSig = ""
                 render()
             }
         }
@@ -1325,7 +1339,7 @@ class MainActivity : BaseActivity() {
  * button) is taken from the children and from the scrolling page; on release the card either slides out and
  * [onCommit] shows the neighbour, or springs back. At the first/last class the card only stretches a little.
  */
-private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
+class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
     companion object {
         /** Tag a child with this to keep sideways drags that start on it (e.g. the scrolling button row). */
         const val NO_SWIPE = "heroNoSwipe"
@@ -1433,3 +1447,6 @@ private class HeroPager(ctx: android.content.Context) : FrameLayout(ctx) {
             .withEndAction { onCommit(dir) }.start()
     }
 }
+
+/** A link Join class can open: not empty and not an attendance page (that is the Attendance button's). */
+private fun String.isJoinable() = isNotEmpty() && !contains("/mod/attendance/", true)

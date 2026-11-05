@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- one typeface for every screen and dialog; colours stay in code (Ui), except dialogs below -->
+    <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:fontFamily">@font/atkinson</item>
+    </style>
+    <!-- dialogs follow the app's own light/dark choice (Ui.dialogTheme), so each mode has its colours here -->
+    <style name="AppDialog" parent="@android:style/Theme.DeviceDefault.Dialog.Alert">
+        <item name="android:fontFamily">@font/atkinson</item>
+        <item name="android:colorBackground">#FF1C3D32</item>
+        <item name="android:colorAccent">#FF9BD8A6</item>
+        <item name="android:colorPrimary">#FF9BD8A6</item>
+        <item name="android:textColorPrimary">#FFEAF4EC</item>
+        <item name="android:textColorSecondary">#FFA3C2AF</item>
+    </style>
+    <style name="AppDialog.Light" parent="@android:style/Theme.DeviceDefault.Light.Dialog.Alert">
+        <item name="android:fontFamily">@font/atkinson</item>
+        <item name="android:colorBackground">#FFFBFAF7</item>
+        <item name="android:colorAccent">#FF1F7A55</item>
+        <item name="android:colorPrimary">#FF1F7A55</item>
+        <item name="android:textColorPrimary">#FF1E2B25</item>
+        <item name="android:textColorSecondary">#FF56625B</item>
+    </style>
+</resources>

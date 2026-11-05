@@ -7,6 +7,9 @@ on:
       - "latest.json"
   workflow_dispatch:
 
+permissions:
+  contents: write   # create the GitHub Release
+
 env:
   HAS_TOKEN: ${{ secrets.GH_PAT != '' }}
 
@@ -49,6 +52,16 @@ jobs:
             git add latest.json apk/SpectrumNotify.apk
             git commit -m "Publish $NAME ($CODE): latest.json + APK [skip ci]"
           fi
+      - name: GitHub Release with the APK (before latest.json goes out, so the update link already works)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          DRAFT=$(gh release view "v$NAME" --json isDraft -q .isDraft 2>/dev/null || echo none)
+          if [ "$DRAFT" = false ]; then echo "v$NAME already released"; exit 0; fi
+          # a draft left by a failed run (GitHub API error mid-create) may lack the APK: start it over
+          if [ "$DRAFT" = true ]; then gh release delete "v$NAME" --yes; fi
+          gh release create "v$NAME" apk/SpectrumNotify.apk --target "${{ github.sha }}" --title "Spectrum Notify $NAME" --generate-notes --latest
       - name: Push latest.json + APK (token auth)
         if: env.HAS_TOKEN == 'true'
         run: |

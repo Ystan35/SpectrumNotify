@@ -137,15 +137,32 @@ object LinksEditor {
         val courses = Courses.all(activity).filter { it.id > 0L && it.url.isNotEmpty() }
         if (courses.isNotEmpty()) {
             box.btn("+ Add a Spectrum course page") {
-                val names = courses.map { c -> Shorts.display(activity, c.code) + if (c.name.isNotEmpty()) " · ${c.name}" else "" }
-                AlertDialog.Builder(activity, Ui.dialogTheme)
+                // one bordered card per course: the code (with your short name) over the course's own name;
+                // courses already in your links are left out, so a page is never added twice
+                val have = Shortcuts.all(activity).map { it.url }.toSet()
+                val left = courses.filter { it.url !in have }
+                val list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(activity.dp(20), activity.dp(4), activity.dp(20), activity.dp(8)) }
+                val dlg = AlertDialog.Builder(activity, Ui.dialogTheme)
                     .setTitle("Add a course page")
-                    .setItems(names.toTypedArray()) { _, which ->
-                        val c = courses[which]
+                    .setView(android.widget.ScrollView(activity).apply { addView(list) })
+                    .setNegativeButton("Cancel", null)
+                    .create()
+                if (left.isEmpty()) list.label("All your courses are already in your links.", Type.BODY, Ui.DIM, 8)
+                for (c in left) list.addView(LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(activity.dp(14), activity.dp(12), activity.dp(14), activity.dp(12))
+                    background = rippleBg(Ui.BAR, Ui.BORDER_STRONG, activity, Radius.MD)
+                    isClickable = true
+                    val name = titleCase(Timetable.classTitle(c.code, c.name, ""))
+                    contentDescription = c.code + if (name.isNotEmpty()) ", $name" else ""
+                    addView(activity.tv(Shorts.display(activity, c.code), Type.BODY_L, Ui.TEXT, true))
+                    if (name.isNotEmpty()) addView(activity.tv(name, Type.LABEL, Ui.DIM).apply { setPadding(0, activity.dp(2), 0, 0) })
+                    setOnClickListener {
+                        dlg.dismiss()
                         saveAndRedraw(Shortcuts.all(activity) + Shortcuts.Link(Shorts.display(activity, c.code), c.url, "book"))
                     }
-                    .setNegativeButton("Cancel", null)
-                    .show()
+                }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = activity.dp(8) })
+                dlg.show()
             }
         }
         box.action("Reset to defaults", "Puts back Spectrum, SpectrumExam, Maya, ePay, MySiswa, STAREcs and the academic calendar, and removes your other links. You can undo right after.") {

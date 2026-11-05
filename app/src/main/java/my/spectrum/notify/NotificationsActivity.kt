@@ -73,11 +73,9 @@ class NotificationsActivity : BaseActivity() {
         recHead.addView(tv("Your notifications", Type.BODY, Ui.DIM), lp(0, WRAP, 1f))
         recHead.addView(button("Clear all", Emphasis.TERTIARY) { confirmClear() })
         content.addView(recHead)
-        chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        content.addView(HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(chipRow)
-        }, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
+        // five equal icon buttons across the width: nothing scrolls sideways or hides off-screen
+        chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; tag = "guide:notifFilter" }
+        content.addView(chipRow, lp(MATCH, WRAP).apply { bottomMargin = dp(12) })
         recordsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(recordsBox, lp(MATCH, WRAP))
 
@@ -173,6 +171,7 @@ class NotificationsActivity : BaseActivity() {
 
     // ------------------------------------------------------------ chips and records
     private val filters = listOf("" to "All", Cat.CLASS to "Classes", Cat.DEADLINE to "Deadlines", Cat.MATERIAL to "Materials", Cat.NEWS to "News")
+    private val filterIcons = listOf(R.drawable.ic_bell, R.drawable.ic_cat_class, R.drawable.ic_cat_deadline, R.drawable.ic_cat_material, R.drawable.ic_cat_news)
 
     /** Course page URL from a real /course/view.php link in the entry (never module ids). */
     private fun courseSiteId(anyUrl: String, e: NotifyLog.Entry): String? {
@@ -194,25 +193,44 @@ class NotificationsActivity : BaseActivity() {
         chipRow.removeAllViews()
         for ((i, f) in filters.withIndex()) {
             val sel = f.first == filter
-            val label = if (counts[i] > 0 && f.first.isNotEmpty()) "${f.second}  ${counts[i]}" else f.second
-            chipRow.addView(
-                tv(label, Type.BODY, if (sel) onAccent() else Ui.TEXT, sel).apply {
-                    gravity = Gravity.CENTER
-                    minHeight = dp(Ui.touch(48))
-                    setPadding(dp(16), 0, dp(16), 0)
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(Radius.PILL).toFloat()
-                        if (sel) setColor(Ui.CYAN) else { setColor(Ui.BAR); setStroke(dp(1), Ui.BORDER) }
-                    }
-                    setOnClickListener {
-                        filter = f.first
-                        chipSig = ""
-                        recSig = ""
-                        render()
-                    }
-                },
-                lp(WRAP, WRAP).apply { rightMargin = dp(8) },
-            )
+            val fg = if (sel) onFill(Ui.SIGNAL) else Ui.TEXT
+            val n = if (f.first.isNotEmpty()) counts[i] else 0
+            // icon over a short label, every button the same width; a count sits on the icon's corner
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                minimumHeight = dp(Ui.touch(56))
+                setPadding(0, dp(8), 0, dp(6))
+                background = rippleBg(if (sel) Ui.SIGNAL else Ui.BAR, if (sel) Ui.SIGNAL else Ui.BORDER, this@NotificationsActivity, Radius.MD)
+                isClickable = true
+                isSelected = sel
+                contentDescription = f.second + (if (n > 0) ", $n" else "") + (if (sel) ", selected" else "")
+                setOnClickListener {
+                    filter = f.first
+                    chipSig = ""
+                    recSig = ""
+                    render()
+                }
+            }
+            val holder = FrameLayout(this)
+            holder.addView(ImageView(this).apply {
+                setImageResource(filterIcons[i])
+                setColorFilter(fg)
+            }, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+            if (n > 0) holder.addView(tv(if (n > 99) "99+" else "$n", Type.CAPTION * 0.85f, if (sel) Ui.SIGNAL else onAccent(), true).apply {
+                gravity = Gravity.CENTER
+                minWidth = dp(16)
+                setPadding(dp(3), 0, dp(3), 0)
+                background = roundBg(if (sel) onFill(Ui.SIGNAL) else Ui.CYAN, 0, this@NotificationsActivity, Radius.PILL)
+            }, FrameLayout.LayoutParams(WRAP, dp(16), Gravity.TOP or Gravity.END))
+            item.addView(holder, lp(dp(40), dp(26)))
+            item.addView(tv(f.second, Type.CAPTION, fg, sel).apply {
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(dp(2), dp(4), dp(2), 0)
+            }, lp(MATCH, WRAP))
+            chipRow.addView(item, lp(0, WRAP, 1f).apply { if (i > 0) leftMargin = dp(6) })
         }
     }
 
@@ -296,11 +314,11 @@ class NotificationsActivity : BaseActivity() {
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val badge = FrameLayout(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.tint(col, 0x2E)) }
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.tint(Ui.TEXT, 0x14)) }
         }
         badge.addView(ImageView(this).apply {
             setImageResource(Cat.icon(cat))
-            setColorFilter(col)
+            setColorFilter(Ui.DIM)
         }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
         row.addView(badge, lp(dp(40), dp(40)))
 
@@ -309,8 +327,7 @@ class NotificationsActivity : BaseActivity() {
             setPadding(dp(12), 0, dp(8), 0)
         }
         val meta = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        meta.addView(tv(Cat.label(cat), Type.CAPTION, col, true).apply { letterSpacing = 0.06f })
-        meta.addView(tv("· ${ago(NotifyLog.atOf(e))}", Type.CAPTION, Ui.DIM).apply { setPadding(dp(6), 0, 0, 0) })
+        meta.addView(tv(Cat.label(cat).lowercase().replaceFirstChar { it.uppercase() } + ", " + ago(NotifyLog.atOf(e)), Type.CAPTION, Ui.DIM))
         col2.addView(meta)
         val title = tv(unesc(e.title), Type.BODY_L, Ui.TEXT, true).apply {
             ellipsize = TextUtils.TruncateAt.END
@@ -373,8 +390,9 @@ class NotificationsActivity : BaseActivity() {
             extraChips.add(Pair("Hide this (wrong?)") {
                 // reminders carry only the task name ("Due in ~5h: Quiz 2"): hide that name everywhere
                 // (Home, reminders, morning summary), not just this one line
-                val keys = listOfNotNull(Checker.reminderTaskName(e.title)?.let { Checker.hiddenNameKey(it) })
-                keys.forEach { NotifyLog.hideEvent(this, it) }
+                val taskName = Checker.reminderTaskName(e.title)
+                val keys = listOfNotNull(taskName?.let { Checker.hiddenNameKey(it) })
+                keys.forEach { NotifyLog.hideEvent(this, it, taskName.orEmpty()) }
                 NotifyLog.hide(this, e.ts)
                 logStamp = -1L
                 recSig = ""
@@ -395,7 +413,7 @@ class NotificationsActivity : BaseActivity() {
                 setPadding(dp(52), dp(12), 0, 0)
             }
             for ((i, b) in btns.withIndex()) {
-                val chip = button(b.first, if (i == 0) Emphasis.PRIMARY else Emphasis.SECONDARY, col) { openUrl(b.second) }
+                val chip = button(b.first, if (i == 0) Emphasis.SECONDARY else Emphasis.TERTIARY, Ui.CYAN) { openUrl(b.second) }
                 // a document / slides / sheet / PDF / folder / video gets its icon (Drive, OneDrive, Spectrum files)
                 FileKind.of(b.second, b.first)?.let { k ->
                     chip.leadingIcon(k.icon)
@@ -405,7 +423,7 @@ class NotificationsActivity : BaseActivity() {
                 chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
             }
             for (x in extraChips) {
-                val chip = button(x.first, Emphasis.SECONDARY, col) { x.second() }
+                val chip = button(x.first, Emphasis.TERTIARY, Ui.CYAN) { x.second() }
                 chips.add(chip)
                 chipLine.addView(chip, lp(WRAP, WRAP).apply { rightMargin = dp(8) })
             }

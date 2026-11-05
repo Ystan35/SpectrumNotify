@@ -490,9 +490,9 @@ object ShuttleModel {
         return out
     }
 
-    /** Google Maps walking directions: by coordinates when both places have them, else by name. */
-    fun mapsWalkUrl(from: Place, to: Place): String {
+    /** Google Maps directions ([mode] "walking" or "transit"): by coordinates when both places have them, else by name. */
+    fun mapsUrl(from: Place, to: Place, mode: String = "walking"): String {
         fun pt(p: Place) = if (p.lat != null && p.lng != null) "${p.lat},${p.lng}" else java.net.URLEncoder.encode(p.query, "UTF-8")
-        return "https://www.google.com/maps/dir/?api=1&origin=${pt(from)}&destination=${pt(to)}&travelmode=walking"
+        return "https://www.google.com/maps/dir/?api=1&origin=${pt(from)}&destination=${pt(to)}&travelmode=$mode"
     }
 }

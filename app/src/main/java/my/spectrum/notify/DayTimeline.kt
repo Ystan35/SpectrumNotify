@@ -112,7 +112,7 @@ object DayTimeline {
                 contentDescription = "All day event ${ev.title}. Tap to edit."
                 setOnClickListener { onEvent(ev) }
                 addView(TextView(activity).apply {
-                    text = "ALL DAY" + (if (ev.days > 1) " · DAY ${ev.dayNumber(date)} OF ${ev.days}" else ""); textSize = Type.CAPTION * Ui.fontScale; letterSpacing = 0.08f
+                    text = "All day" + (if (ev.days > 1) ", day ${ev.dayNumber(date)} of ${ev.days}" else ""); textSize = Type.CAPTION * Ui.fontScale; letterSpacing = 0.08f
                     setTextColor(onAccent()); setTypeface(typeface, Typeface.BOLD)
                 })
                 addView(TextView(activity).apply {
@@ -189,7 +189,7 @@ object DayTimeline {
             card.background = rippleBg(if (live) Ui.tint(tint, 0x22) else Ui.BAR, if (live) tint else Ui.BORDER, activity, Radius.MD)
             card.isClickable = true
             if (live) card.addView(TextView(activity).apply {
-                text = "ONGOING"; textSize = Type.CAPTION * Ui.fontScale; letterSpacing = 0.08f
+                text = "Now"; textSize = Type.CAPTION * Ui.fontScale
                 setTextColor(onAccent()); setTypeface(typeface, Typeface.BOLD)
                 setPadding(dp(10), dp(2), dp(10), dp(2))
                 background = roundBg(tint, 0, activity, Radius.SM)

@@ -22,7 +22,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Spectrum Notify"
         android:usesCleartextTraffic="false"
-        android:theme="@android:style/Theme.DeviceDefault.DayNight">
+        android:theme="@style/AppTheme">
 
         <activity
             android:name=".MainActivity"
@@ -50,7 +50,26 @@
         <activity android:name=".SectionsActivity" android:exported="false" />
         <activity android:name=".AccountActivity" android:exported="false" />
         <activity android:name=".LoginWebActivity" android:exported="false" />
-        <activity android:name=".ShuttleActivity" android:exported="false" />
+        <!-- shared to from Google Maps (Share → "Add a shuttle place"): saves the place as one of yours -->
+        <activity android:name=".ShuttleActivity" android:exported="true">
+            <intent-filter android:label="Add a shuttle place">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".MaterialsActivity" android:exported="false" />
+
+        <!-- downloaded course files, shared read-only with the app that opens them -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
 

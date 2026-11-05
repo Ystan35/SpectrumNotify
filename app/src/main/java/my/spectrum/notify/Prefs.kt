@@ -7,6 +7,18 @@ import androidx.security.crypto.MasterKey
 
 /** Settings (plain) + token (Android Keystore-backed encrypted storage). */
 class Prefs(ctx: Context) {
+    companion object {
+        /**
+         * True when the saved Moodle is UM's (or none is saved yet). UM's semester dates, timetable list and
+         * shuttle only fit UM; read straight from the file because the month grid asks for every day cell.
+         */
+        fun isUm(ctx: Context): Boolean {
+            val raw = ctx.applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE).getString("site", null).orEmpty()
+            val host = raw.trim().replace(Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://"), "").substringBefore('/').substringBefore(':').lowercase()
+            return host.isEmpty() || host == "um.edu.my" || host.endsWith(".um.edu.my")
+        }
+    }
+
     private val app = ctx.applicationContext
     private val sp: SharedPreferences = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val health: SharedPreferences = app.getSharedPreferences("health", Context.MODE_PRIVATE)
@@ -149,7 +161,7 @@ class Prefs(ctx: Context) {
     // ---------------- appearance / accessibility
     /** Theme override: 0 = follow phone, 1 = light, 2 = dark. */
     var themeMode: Int
-        get() = sp.getInt("themeMode", 0)
+        get() = sp.getInt("themeMode", 1)   // light unless you pick Phone or Dark
         set(v) { sp.edit().putInt("themeMode", v).apply() }
     /** Text scale: 0 = normal (1.0), 1 = large (1.2), 2 = extra large (1.4). */
     var textScale: Int

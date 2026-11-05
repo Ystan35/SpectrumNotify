@@ -100,6 +100,7 @@ object EventsUi {
         var length = (existing?.days ?: 1) - 1L
         var drawEnd: () -> Unit = {}
         lateinit var dateBtn: Button
+        lbl("Date")
         dateBtn = col.btn(dateLabel(date)) {
             val parts = date.toString().split("-").map { it.toInt() }
             android.app.DatePickerDialog(activity, { _, y, m, d ->
@@ -110,6 +111,7 @@ object EventsUi {
                 drawEnd()
             }, parts[0], parts[1] - 1, parts[2]).show()
         }
+        dateBtn.asField(activity)
 
         // time pickers, like the class editor; moving the start keeps the end after it
         lateinit var endF: TimeField
@@ -119,7 +121,7 @@ object EventsUi {
         }
         endF = TimeField(activity, timed?.endTime ?: 11 * 60) { }
         var allDay = existing?.allDay ?: false
-        val times = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; visibility = if (allDay) View.GONE else View.VISIBLE }
+        val times = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; visibility = if (allDay) View.GONE else View.VISIBLE }
         lateinit var drawReminders: () -> Unit
         val reminders = LinkedHashSet<Int>().apply { addAll(existing?.reminders ?: listOf(30)) }
         col.addView(android.widget.Switch(activity).apply {
@@ -151,14 +153,19 @@ object EventsUi {
                 drawEnd()
             }, cur.year, cur.monthValue - 1, cur.dayOfMonth).apply { datePicker.minDate = date.atStartOfDay(zone()).toInstant().toEpochMilli() }.show()
         }
+        endBtn.asField(activity)
         drawEnd = {
             endBox.visibility = if (allDay) View.VISIBLE else View.GONE
             val end = endDate
             endBtn.text = if (end == null) "Same day" else dateLabel(end) + " (${length + 1} days)"
         }
         drawEnd()
-        times.label("Starts", Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD); times.addView(startF.view)
-        times.label("Ends", Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD); times.addView(endF.view)
+        for ((name, f) in listOf("Starts" to startF, "Ends" to endF)) {
+            val half = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+            half.label(name, Type.LABEL, Ui.TEXT, 12).setTypeface(null, Typeface.BOLD)
+            half.addView(f.view)
+            times.addView(half, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (name == "Ends") leftMargin = dp(10) })
+        }
         col.addView(times)
 
         lbl("Repeat")
@@ -300,6 +307,18 @@ object EventsUi {
         }
 
     private fun dateLabel(d: LocalDate): String = d.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy"))
+
+    /** A date button drawn as an input box (like the time fields): it holds a value you can change, it is not an action. */
+    private fun Button.asField(activity: Activity) {
+        background = rippleBg(Ui.BAR, Ui.BORDER_STRONG, activity, Radius.SM)
+        setTextColor(Ui.TEXT)
+        setTypeface(Typeface.create(typeface, Typeface.NORMAL))
+        textSize = Type.BODY_L * Ui.fontScale
+        gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+        val p = (12 * activity.resources.displayMetrics.density).toInt()
+        setPadding(p, 0, p, 0)
+        (layoutParams as? LinearLayout.LayoutParams)?.topMargin = (6 * activity.resources.displayMetrics.density).toInt()
+    }
 
     private fun fmt(min: Int): String =
         String.format("%02d:%02d", min / 60, min % 60)

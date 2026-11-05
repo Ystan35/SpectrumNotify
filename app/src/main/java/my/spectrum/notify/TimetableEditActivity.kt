@@ -55,7 +55,7 @@ class TimetableEditActivity : BaseActivity() {
         val col = screen(if (editing) "Edit class" else "Add class")
         val first = own.firstOrNull()
 
-        if (!editing) {
+        if (!editing && Prefs.isUm(this)) {
             col.label("Studying at UM? Choose your course and your Lecture / Tutorial Occ from the UM timetable.", Type.CAPTION, Ui.DIM, 6)
             col.btn("Pick from UM timetable") {
                 startActivity(Intent(this, CatalogActivity::class.java))
@@ -262,15 +262,30 @@ class TimetableEditActivity : BaseActivity() {
         times.addView(endBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(12) })
         col.addView(times, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
 
-        // attendance link override (the Attendance pill reads this first)
-        col.label("Attendance link", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("Paste your occ's attendance page to override the automatically picked one.", Type.CAPTION, Ui.DIM, 2)
-        val attLinkField = col.field(Timetable.userAttLinkRaw(this, s.course), "https://spectrum.um.edu.my/mod/attendance/view.php?id=…")
+        // both fields start with the link this class uses now (yours, else the app's pick), the same as its buttons
+        val preferLec = when (s.kind) { SlotKind.LECTURE -> true; SlotKind.TUTORIAL -> false; else -> Checker.preferLecOf(s.title) }
+        val attKind = if (!AttendancePicker.hasBothKinds(this, s.course)) "" else when (preferLec) { true -> "lec"; false -> "tut"; null -> "" }
+        val cid = Courses.all(this).firstOrNull { it.code.equals(s.course, true) }?.id ?: 0L
+        val links = Checker.linksForCourse(
+            this, s.course, cid, Checker.groupTokens(s.title + " " + s.note), preferLec, s.day, s.start, s.end,
+        )
+        val shownMeeting = links.first
+        var shownAtt = links.second
 
-        // meeting link override
+        col.label("Attendance link", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("The page the Attendance button opens. Paste another to replace it, or clear to let the app choose.", Type.CAPTION, Ui.DIM, 2)
+        val attLinkField = col.field(shownAtt, "https://…/mod/attendance/view.php?id=…")
+        // the same chooser as the pencil on the Timetable card; it saves at once, so the field just shows the result
+        if (cid > 0L) col.btn("Choose from the course's pages", Emphasis.SECONDARY) {
+            AttendancePicker.open(this, s.course, cid, attKind) {
+                shownAtt = Timetable.attFor(this, s.course, preferLec).ifEmpty { Checker.attendanceUrl(this, cid, preferLec) }
+                attLinkField.setText(shownAtt)
+            }
+        }
+
         col.label("Meeting link", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
-        col.label("Detected automatically from Spectrum. Paste your own to override, or clear to go back.", Type.CAPTION, Ui.DIM, 2)
-        val mlinkField = col.field(Timetable.meetingLinkOf(this, s.course), "https://teams.microsoft.com/…")
+        col.label("The link Join class opens. Paste another to replace it, or clear to let the app choose.", Type.CAPTION, Ui.DIM, 2)
+        val mlinkField = col.field(shownMeeting, "https://teams.microsoft.com/…")
 
         col.label("Type", Type.LABEL, Ui.TEXT, 24).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label(
@@ -298,22 +313,21 @@ class TimetableEditActivity : BaseActivity() {
             val hasChanged = newStart != specStart || newEnd != specEnd
             if (hasChanged) Timetable.setTimeOverride(this, s.key, newStart, newEnd)
             else Timetable.clearTimeOverride(this, s.key)
-            Timetable.setMeetingLink(this, s.course, mlinkField.text.toString().trim())
-            // persist the pasted ATTENDANCE link too: the Attendance pill reads
-            // userAttLinkRaw first, so this overrides the occ-scored page (fixes wrong-occ)
-            if (attLinkField.text.toString().trim() != Timetable.userAttLinkRaw(this, s.course)) {
-                Timetable.setAttendanceLink(this, s.course, attLinkField.text.toString().trim())
-            }
+            // saved only when edited, so an untouched field keeps following the app's pick
+            val m = mlinkField.text.toString().trim()
+            if (m != shownMeeting) Timetable.setMeetingLink(this, s.course, m)
+            val a = attLinkField.text.toString().trim()
+            if (a != shownAtt) Timetable.setAttFor(this, s.course, attKind, a)
             Scheduler.scheduleAll(this)   // the class alarm moves with the new time right away
             finish()
         }
         if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course).isNotEmpty() ||
-            Timetable.userAttLinkRaw(this, s.course).isNotEmpty()
+            Timetable.attFor(this, s.course, preferLec).isNotEmpty()
         ) {
             dangerBtn(col, "Reset to Spectrum values") {
                 Timetable.clearTimeOverride(this, s.key)
                 Timetable.setMeetingLink(this, s.course, "")
-                Timetable.setAttendanceLink(this, s.course, "")
+                Timetable.setAttFor(this, s.course, "", "")   // also clears the lecture / tutorial choices
                 // a link pasted in the Location dialog (pre-0.25.1) would otherwise come back as the override
                 if (Timetable.locationOf(this, s.course).startsWith("online:")) Timetable.setLocation(this, s.course, "online:")
                 Scheduler.scheduleAll(this)

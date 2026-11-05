@@ -85,7 +85,7 @@ class CoursesActivity : BaseActivity() {
             contentDescription = "Set short names for all courses"
         }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(8) })
         box.addView(actions, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
-        box.addView(button("+  Add a course from the UM timetable", Emphasis.TERTIARY) {
+        if (Prefs.isUm(this)) box.addView(button("+  Add a course from the UM timetable", Emphasis.TERTIARY) {
             startActivity(Intent(this, CatalogActivity::class.java))
         }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(4) })
         for (c in list) {
@@ -111,18 +111,40 @@ class CoursesActivity : BaseActivity() {
             setPadding(dp(16), dp(14), dp(16), dp(10))
         }
 
-        // header: code (and your short form) small in the course colour, the course name big and bold under it
+        // the Occ is worked out first: its pill sits on the code line
+        val pp = Prefs(this)
+        val catOccs = Catalog.find(this, c.code)?.occs() ?: emptyList()
+        val occs = if (catOccs.isNotEmpty()) catOccs else learned
+        val current = Regex(Regex.escape(c.code) + ":occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE)
+            .find(pp.myGroups)?.groupValues?.get(1) ?: ""
+        val occMissing = current.isEmpty() && occs.isNotEmpty()
+
+        // header: code (and your short form) in the course colour, the Occ pill at the end of the same line
         val short = Shorts.get(this, c.code)
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         // short names are set for all courses at once (Short names, above); tapping this line changes just this one
-        col.addView(tv(c.code.uppercase() + if (short.isNotEmpty()) "  ·  $short" else "", Type.LABEL, colour, true).apply {
-            letterSpacing = 0.06f
+        head.addView(tv(c.code.uppercase() + if (short.isNotEmpty()) "  ($short)" else "", Type.LABEL, colour, true).apply {
             isClickable = true
+            minHeight = dp(Ui.touch(48))
+            gravity = Gravity.CENTER_VERTICAL
             contentDescription = c.code + (if (short.isNotEmpty()) ", short name $short" else "") + ". Tap to change the short name"
             setOnClickListener { editShortName(c.code, short) }
-        })
-        val title = Timetable.classTitle(c.code, c.name, "").ifEmpty { c.code }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        if (occs.isNotEmpty()) {
+            // not set: a mint "Set Occ" you cannot miss; set: a quiet outlined "Occ 3"
+            head.addView(chip(if (occMissing) "Set Occ" else "Occ $current", occMissing, Ui.SIGNAL, Type.LABEL, 14) {
+                pickOcc(c.code, occs, current, catOccs.isEmpty())
+            }.apply {
+                tag = "guide:occ"   // the first-run guide points at the first one
+                if (occMissing) setTextColor(onFill(Ui.SIGNAL))
+                setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_expand_more, 0)
+                compoundDrawableTintList = android.content.res.ColorStateList.valueOf(if (occMissing) onFill(Ui.SIGNAL) else Ui.TEXT)
+                contentDescription = "Occ for ${c.code}: " + (if (current.isEmpty()) "not set" else current) + ". Tap to change"
+            }, LinearLayout.LayoutParams(WRAP, WRAP))
+        }
+        col.addView(head)
+        val title = titleCase(Timetable.classTitle(c.code, c.name, "").ifEmpty { c.code })
         col.addView(tv(title, Type.TITLE, Ui.TEXT, true).apply {
-            setPadding(0, dp(2), 0, 0)
             if (Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
         })
 
@@ -146,92 +168,116 @@ class CoursesActivity : BaseActivity() {
             col.addView(times)
         }
 
-        // your Occ for this course: a compact dropdown, changed in place
-        val pp = Prefs(this)
-        val catOccs = Catalog.find(this, c.code)?.occs() ?: emptyList()
-        val occs = if (catOccs.isNotEmpty()) catOccs else learned
-        val current = Regex(Regex.escape(c.code) + ":occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE)
-            .find(pp.myGroups)?.groupValues?.get(1) ?: ""
-        val occMissing = current.isEmpty() && occs.isNotEmpty()
-        val mine = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        mine.addView(tv("Occ", Type.LABEL, if (occMissing) Ui.ORANGE else Ui.DIM, true), LinearLayout.LayoutParams(WRAP, WRAP).apply { rightMargin = dp(8) })
-        if (occs.isEmpty()) {
-            mine.addView(tv("learned from Spectrum", Type.LABEL, Ui.DIM), LinearLayout.LayoutParams(0, WRAP, 1f))
-        } else {
-            val names = listOf("Not set") + occs.map { "Occ $it" }
-            val sel = occs.indexOf(current) + 1
-            val occSp = spinner(names, if (sel >= 0) sel else 0) { pos ->
-                val picked = if (pos <= 0) "" else occs[pos - 1]
-                if (picked == current) return@spinner
-                setOcc(c.code, picked)
-                render()
-                // a slip of the finger is one tap to put back: the old Occ and its classes return
-                val what = if (picked.isEmpty()) "Occ cleared for ${c.code}" else "${c.code} set to Occ $picked"
-                undoBar(if (current.isEmpty()) what else "$what (was Occ $current)") { setOcc(c.code, current); render() }
-            }
-            // as wide as its longest choice ("Occ 12"), not the whole card; orange edge while not set
-            occSp.background = roundBg(Ui.BAR, if (occMissing) Ui.ORANGE else Ui.BORDER_STRONG, this, Radius.SM)
-            occSp.minimumHeight = dp(Ui.touch(48))
-            occSp.contentDescription = "Occ for ${c.code}: " + (if (current.isEmpty()) "not set" else current)
-            mine.addView(occSp, LinearLayout.LayoutParams(WRAP, WRAP))
-            mine.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        }
-        col.addView(mine, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
-        if (occMissing) {
-            col.label("Pick your Occ (lecture/tutorial group): it decides which links and posts are yours.", Type.CAPTION, Ui.ORANGE, 4)
-        }
-        // Spectrum knows when YOUR classes are. Its weekly classes that the picked Occ does not have
-        // (no UM-list class at that time) mean the Occ is probably wrong: say so instead of showing both quietly.
-        val fromList = c.slots.filter { it.grp.startsWith("cat-") }
-        val notInOcc = c.slots.filter { s -> !s.manual && fromList.none { it.day == s.day && it.start < s.end && s.start < it.end } }
-        if (current.isNotEmpty() && fromList.isNotEmpty() && notInOcc.isNotEmpty()) {
-            val whenText = notInOcc.take(2).joinToString(", ") { "${Timetable.DAYS[it.day - 1]} ${Timetable.fmtMin(it.start)}" }
-            col.label("Spectrum also lists ${c.code} on $whenText, which Occ $current does not have. " +
-                "If that is your class, your Occ may be wrong.", Type.CAPTION, Ui.ORANGE, 4)
+        // which attendance page the classes use; tap to choose (lectures and tutorials can differ)
+        if (c.id > 0L && c.slots.isNotEmpty()) {
+            val both = AttendancePicker.hasBothKinds(this, c.code)
+            val text = if (both) "Attendance: lectures " + AttendancePicker.label(this, c.code, c.id, "lec") +
+                    ", tutorials " + AttendancePicker.label(this, c.code, c.id, "tut")
+                else "Attendance: " + AttendancePicker.label(this, c.code, c.id, "")
+            col.addView(iconText(R.drawable.ic_check, text, Type.LABEL, Ui.TEXT, trailing = R.drawable.ic_chevron_right).apply {
+                minHeight = dp(Ui.touch(48))
+                setPadding(0, dp(4), 0, dp(4))
+                background = rippleBg(Ui.BAR, 0, this@CoursesActivity, Radius.SM)
+                contentDescription = "$text. Tap to choose the attendance page"
+                setOnClickListener { AttendancePicker.openForCourse(this@CoursesActivity, c.code, c.id) { render() } }
+            })
         }
 
-        // just chosen (Confirm your Occ, or the dropdown above): ask you to check it against the class times
-        if (current.isNotEmpty() && pp.occNeedsCheck(c.code)) {
+        // ONE notice when the Occ needs a look: just picked (check it against MAYA), or Spectrum has
+        // weekly classes this Occ does not (the Occ may be wrong). "Looks right" settles both.
+        val fromList = c.slots.filter { it.grp.startsWith("cat-") }
+        val notInOcc = c.slots.filter { s -> !s.manual && fromList.none { it.day == s.day && it.start < s.end && s.start < it.end } }
+        val okKey = "${c.code.uppercase()}|$current"
+        val acked = okKey in occOk()
+        val mismatch = current.isNotEmpty() && fromList.isNotEmpty() && notInOcc.isNotEmpty() && !acked
+        if (current.isNotEmpty() && (pp.occNeedsCheck(c.code) || mismatch)) {
             val note = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(10), dp(12), dp(4))
-                background = roundBg(Ui.tint(Ui.ORANGE, 0x1F), Ui.ORANGE, this@CoursesActivity, Radius.SM)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = roundBg(Ui.tint(Ui.YELLOW, 0x2A), Ui.tint(Ui.YELLOW, 0x2A), this@CoursesActivity, Radius.MD)
             }
-            note.addView(tv("Verify Occ selection", Type.LABEL, Ui.ORANGE, true))
-            note.addView(tv("Occ $current: do the times above match MAYA?", Type.CAPTION, Ui.TEXT).apply { setPadding(0, dp(2), 0, 0) })
-            note.addView(button("Looks right", Emphasis.TERTIARY, Ui.ORANGE) {
+            note.addView(tv("Check your Occ", Type.BODY, Ui.TEXT, true))
+            val whenText = notInOcc.take(2).joinToString(", ") { "${Timetable.DAYS[it.day - 1]} ${Timetable.fmtMin(it.start)}" }
+            note.addView(tv(
+                (if (mismatch) "Spectrum also has ${c.code} on $whenText, which Occ $current doesn't. " else "") +
+                    "Do the times above match MAYA?",
+                Type.LABEL, Ui.TEXT,
+            ).apply { setPadding(0, dp(4), 0, dp(10)) })
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(button("Looks right", Emphasis.SECONDARY, Ui.CYAN) {
                 pp.setOccNeedsCheck(c.code, false)
+                occOkAdd(okKey)
                 render()
-            }.apply { contentDescription = "Occ $current for ${c.code} looks right" },
-                LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(-12) })
-            col.addView(note, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+            }.apply { contentDescription = "Occ $current for ${c.code} looks right" }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
+            row.addView(button("Change Occ", Emphasis.SECONDARY, Ui.CYAN) {
+                pickOcc(c.code, occs, current, catOccs.isEmpty())
+            }, LinearLayout.LayoutParams(0, WRAP, 1f))
+            note.addView(row)
+            col.addView(note, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
         }
 
         // actions: the course page (a link out) and which pages notify you
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        if (c.url.isNotEmpty()) {
-            actions.addView(button("Course page", Emphasis.SECONDARY, colour) { open(c.url) }.apply {
-                contentDescription = "Open ${c.code} home page on Spectrum"
-            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { rightMargin = dp(4) })
+        // three equal buttons on one line: a long label shrinks a little instead of wrapping
+        fun TextView.fit() = apply {
+            setPadding(dp(6), dp(6), dp(6), dp(6)); maxLines = 1
+            setAutoSizeTextTypeUniformWithConfiguration(11, (Type.BODY * Ui.fontScale).toInt(), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
         }
         if (c.id > 0L) {
-            actions.addView(button("Notification pages", Emphasis.TERTIARY) {
+            // the course's files, folders and links, one tap each (downloaded in the app)
+            actions.addView(button("Materials", Emphasis.PRIMARY, Ui.SIGNAL) {
+                startActivity(Intent(this, MaterialsActivity::class.java)
+                    .putExtra(MaterialsActivity.EXTRA_ID, c.id)
+                    .putExtra(MaterialsActivity.EXTRA_CODE, c.code + Timetable.classTitle(c.code, c.name, "").let { if (it.isNotEmpty()) ", " + titleCase(it) else "" }))
+            }.fit().apply { contentDescription = "Materials for ${c.code}: files, folders and links"; tag = "guide:materials" },
+                LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
+        }
+        if (c.url.isNotEmpty()) {
+            actions.addView(button("Course page", Emphasis.SECONDARY, Ui.CYAN) { open(c.url) }.fit().apply {
+                contentDescription = "Open ${c.code} home page on Spectrum"
+            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
+        }
+        if (c.id > 0L) {
+            actions.addView(button("Notifications", Emphasis.SECONDARY, Ui.CYAN) {
                 startActivity(
                     Intent(this, SectionsActivity::class.java)
                         .putExtra(SectionsActivity.EXTRA_ID, c.id)
                         .putExtra(SectionsActivity.EXTRA_NAME, c.code + Timetable.classTitle(c.code, c.name, "").let { if (it.isNotEmpty()) " · $it" else "" })
                 )
-            }.apply { contentDescription = "Notification pages for ${c.code}: " + Sections.summary(this@CoursesActivity, c.id, st) })
+            }.fit().apply { contentDescription = "Notification pages for ${c.code}: " + Sections.summary(this@CoursesActivity, c.id, st) },
+                LinearLayout.LayoutParams(0, WRAP, 1f))
         }
-        if (actions.childCount > 0) col.addView(actions, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+        if (actions.childCount > 0) col.addView(actions, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14) })
 
         card.addView(col, LinearLayout.LayoutParams(0, WRAP, 1f))
         return card
     }
 
+
+    /** The Occ picker (from the pill or "Change Occ"): same saving and Undo as the old dropdown. */
+    private fun pickOcc(code: String, occs: List<String>, current: String, learnedOnly: Boolean) {
+        val names = (listOf("Not set") + occs.map { "Occ $it" }).toTypedArray()
+        val sel = occs.indexOf(current) + 1
+        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
+            .setTitle("Your Occ for $code")
+            .apply { if (learnedOnly) setMessage("These Occs were learned from Spectrum (the course is not in the UM list).") }
+            .setSingleChoiceItems(names, sel) { d, pos ->
+                d.dismiss()
+                val picked = if (pos <= 0) "" else occs[pos - 1]
+                if (picked == current) return@setSingleChoiceItems
+                setOcc(code, picked)
+                render()
+                // a slip of the finger is one tap to put back: the old Occ and its classes return
+                val what = if (picked.isEmpty()) "Occ cleared for $code" else "$code set to Occ $picked"
+                undoBar(if (current.isEmpty()) what else "$what (was Occ $current)") { setOcc(code, current); render() }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Courses whose Occ you said looks right despite Spectrum's extra times ("CODE|occ"). */
+    private fun occOk(): Set<String> = getSharedPreferences("courses", MODE_PRIVATE).getStringSet("occOk", emptySet())!!
+    private fun occOkAdd(k: String) = getSharedPreferences("courses", MODE_PRIVATE).edit().putStringSet("occOk", occOk() + k).apply()
 
     /** Saves the Occ for [code] ("" = not set) and swaps its UM-list classes to that Occ's (none when not set). */
     private fun setOcc(code: String, occ: String) {
@@ -337,4 +383,17 @@ class CoursesActivity : BaseActivity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
+}
+
+/** Spectrum sends course names in capitals; show them in title case (roman numerals and short codes stay). */
+fun titleCase(t: String): String {
+    if (t != t.uppercase()) return t
+    val small = setOf("and", "of", "the", "in", "for", "to", "a", "an", "on", "with")
+    return t.split(" ").mapIndexed { i, w ->
+        when {
+            w.matches(Regex("[IVX]+")) || w.any { it.isDigit() } -> w
+            i > 0 && w.lowercase() in small -> w.lowercase()
+            else -> w.lowercase().replaceFirstChar { it.uppercase() }
+        }
+    }.joinToString(" ")
 }

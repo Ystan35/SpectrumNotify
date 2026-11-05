@@ -81,18 +81,17 @@ class ShuttleActivity : BaseActivity() {
         col.addView(tabBox)
         col.addView(planBox)
         col.addView(restBox)
+        // a place shared from Google Maps: save it as yours, then plan a trip to it
+        if (intent.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT)?.let { text ->
+            tab = 0
+            MyPlaces.fromShare(this, text) { id -> setTrip(fromId.takeIf { it != id } ?: "", id) }
+        }
     }
 
     private fun placeOf(d: ShuttleModel.Data, id: String): ShuttleModel.Place? = if (id == ME) me else d.places[id]
 
     /** "📍": asks for location permission the first time, then plans from where you are. */
-    private fun useMyLocation() {
-        val fine = android.Manifest.permission.ACCESS_FINE_LOCATION
-        val coarse = android.Manifest.permission.ACCESS_COARSE_LOCATION
-        if (checkSelfPermission(fine) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
-            checkSelfPermission(coarse) == android.content.pm.PackageManager.PERMISSION_GRANTED) locate()
-        else requestPermissions(arrayOf(fine, coarse), REQ_LOCATION)
-    }
+    private fun useMyLocation() = locate()
 
     @Deprecated("Deprecated in Java")
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -103,37 +102,7 @@ class ShuttleActivity : BaseActivity() {
     }
 
     /** A fresh fix (or one from the last 2 minutes), then From = your location. */
-    @android.annotation.SuppressLint("MissingPermission")
-    private fun locate() {
-        val lm = getSystemService(LOCATION_SERVICE) as android.location.LocationManager
-        val provider = listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER)
-            .firstOrNull { try { lm.isProviderEnabled(it) } catch (_: Exception) { false } }
-        if (provider == null) {
-            Toast.makeText(this, "Location is off. Turn it on in quick settings, then tap the location button again.", Toast.LENGTH_LONG).show()
-            return
-        }
-        val recent = listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER)
-            .mapNotNull { try { lm.getLastKnownLocation(it) } catch (_: Exception) { null } }
-            .filter { System.currentTimeMillis() - it.time < 2 * 60_000 }
-            .minByOrNull { it.accuracy }
-        if (recent != null) { gotLocation(recent); return }
-        Toast.makeText(this, "Finding where you are…", Toast.LENGTH_SHORT).show()
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            lm.getCurrentLocation(provider, null, mainExecutor) { loc ->
-                if (loc != null) gotLocation(loc)
-                else Toast.makeText(this, "Could not find your location. Try again outdoors, or pick a place.", Toast.LENGTH_LONG).show()
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            lm.requestSingleUpdate(provider, object : android.location.LocationListener {
-                override fun onLocationChanged(loc: android.location.Location) = gotLocation(loc)
-                @Deprecated("Deprecated in Java")
-                override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
-                override fun onProviderEnabled(p: String) {}
-                override fun onProviderDisabled(p: String) {}
-            }, Looper.getMainLooper())
-        }
-    }
+    private fun locate() = findLocation(REQ_LOCATION) { gotLocation(it) }
 
     private fun gotLocation(loc: android.location.Location) {
         if (isFinishing) return
@@ -300,6 +269,16 @@ class ShuttleActivity : BaseActivity() {
             day.dayOfWeek == DayOfWeek.FRIDAY -> box.label("Friday: no UM shuttle 12:30 pm – 2:30 pm.", Type.CAPTION, Ui.DIM, 8)
         }
         val list = ShuttleModel.journeys(d, from, to, day, time, mode == 2, max = 3)
+        // too far to walk and no shuttle goes there: hand the trip to Google Maps (trains, Rapid KL, Grab)
+        val far = (ShuttleModel.meters(from, to) ?: 0) > 3000
+        if (far && list.all { it.walkOnly }) {
+            box.label("${"%.1f".format((ShuttleModel.meters(from, to) ?: 0) / 1000.0)} km away, and the UM shuttle does not go there.", Type.LABEL, Ui.TEXT, 8)
+            box.addView(button("Directions in Google Maps", Emphasis.PRIMARY, Ui.SIGNAL) { open(ShuttleModel.mapsUrl(from, to, "transit")) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            // a walk of hours is no option worth showing
+            if (list.any { it.arrive - it.depart <= 45 }) box.label("Or walk:", Type.CAPTION, Ui.DIM, 12)
+            else return null
+        }
         if (list.isEmpty()) {
             box.label(if (mode == 2) "No bus gets there by ${ShuttleModel.fmt(time)} $dayWord." else "No more buses for this trip $dayWord.", Type.LABEL, Ui.ORANGE, 8)
             return null
@@ -327,7 +306,11 @@ class ShuttleActivity : BaseActivity() {
             else card.addView(tv(if (j.walkOnly) "🚶 Walk all the way" else j.buses.joinToString(" → ") { b ->
                 "🚌 " + b.ride.route.label.removePrefix("Route ") + if (b.ride.route.frequent) "" else " " + ShuttleModel.fmt(b.ride.depart)
             } + " · tap for the steps", Type.LABEL, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
-            if (on && j.walkOnly) card.addView(button("Walking route in Maps", Emphasis.SECONDARY) { open(ShuttleModel.mapsWalkUrl(from, to)) },
+            // a long walk: Google Maps' public transport directions instead of a walking route
+            val longWalk = j.arrive - j.depart > 45
+            if (on && j.walkOnly) card.addView(button(if (longWalk) "Directions in Google Maps" else "Walking route in Maps", Emphasis.SECONDARY) {
+                open(ShuttleModel.mapsUrl(from, to, if (longWalk) "transit" else "walking"))
+            },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
             card.contentDescription = head + ". " + waitLine.let { if (it.isEmpty()) "" else "$it. " } + j.legs.joinToString(". ") { legText(d, it).drop(2) } + if (on) ". Shown on the map." else ". Tap to show it on the map."
             box.addView(card, lp())

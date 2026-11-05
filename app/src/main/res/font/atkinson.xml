@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Atkinson Hyperlegible Next (Braille Institute, SIL OFL 1.1; licence in docs/licenses), static instances of the variable font -->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font android:font="@font/atkinson_400" android:fontStyle="normal" android:fontWeight="400" />
+    <font android:font="@font/atkinson_600" android:fontStyle="normal" android:fontWeight="600" />
+    <font android:font="@font/atkinson_700" android:fontStyle="normal" android:fontWeight="700" />
+</font-family>

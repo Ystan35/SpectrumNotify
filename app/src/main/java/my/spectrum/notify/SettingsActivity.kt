@@ -114,7 +114,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         col.label("Search settings", Type.LABEL, Ui.TEXT, 12).setTypeface(null, android.graphics.Typeface.BOLD)
-        searchBox = col.field("", "e.g. quiet, filter, theme, check", kind = 0)
+        searchBox = col.field("", "e.g. quiet, filter, theme, check", kind = 0).apply { tag = "guide:settingsSearch" }
         searchResults = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(searchResults, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         searchBox?.addTextChangedListener(object : android.text.TextWatcher {
@@ -261,7 +261,7 @@ class SettingsActivity : BaseActivity() {
                 target.label("Occs learned from Spectrum (course not in the bundled UM list).", Type.CAPTION, Ui.DIM, 2)
             }
         }
-        target.action("Pick a course from the UM timetable", "Adds the class times and sets your Occ here.") {
+        if (Prefs.isUm(this)) target.action("Pick a course from the UM timetable", "Adds the class times and sets your Occ here.") {
             startActivity(android.content.Intent(this, CatalogActivity::class.java))
         }
         add(
@@ -385,21 +385,17 @@ class SettingsActivity : BaseActivity() {
         }
         target.label("High contrast uses stronger text colours. Big touch targets make every button and box 56 dp tall.", Type.CAPTION, Ui.DIM, 8)
         target = accordion(col, "APP & MAINTENANCE", icon = R.drawable.ic_settings,
-            contents = listOf("Check now", "Update", "Test notification", "Alarms", "Battery", "Hidden deadlines", "Diagnostic lines"))
+            contents = listOf("Check now", "Guide", "Update", "Test notification", "Alarms", "Battery", "Hidden deadlines", "Diagnostic lines"))
         target.action("Check now", "Looks at Spectrum right away. A new notification appears in the list if something is new.") {
             save()
             Scheduler.pollNow(this)
             Toast.makeText(this, "Checking Spectrum...", Toast.LENGTH_SHORT).show()
         }
-        val hiddenCount = getSharedPreferences("health", MODE_PRIVATE)
-            .getStringSet("hiddenEvents", emptySet())!!.size
-        if (hiddenCount > 0) {
-            target.action("Restore hidden deadlines ($hiddenCount)", "Undoes \"Hide this\" — the deadlines are fetched and reminded again on the next check.") {
-                getSharedPreferences("health", MODE_PRIVATE).edit().remove("hiddenEvents").apply()
-                Toast.makeText(this, "Restored — hidden deadlines return on the next check.", Toast.LENGTH_LONG).show()
-                recreate()
-            }
+        target.action("Show the guide again", "The short tour of Home and the tabs, from the start.") {
+            Guide.restart(this)
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
         }
+        hiddenTaskList(target)
         target.action("Check for app update", "Compares this build with the latest release on GitHub. Shows the result here; a notification appears if a newer version exists.") {
             Thread {
                 val msg = Updater.check(this, manual = true)
@@ -479,6 +475,42 @@ class SettingsActivity : BaseActivity() {
     }
 
     /** A tappable section header with icon, name and a one-line contents list; one open at a time. */
+    /**
+     * Tasks you hid ("Hide this (wrong?)"), one card each with its own Restore. Ones already past their due time
+     * are dropped here (and after each check), so the list only holds tasks still to come.
+     */
+    private fun hiddenTaskList(box: LinearLayout) {
+        val now = System.currentTimeMillis() / 1000
+        val all = Checker.hiddenTasks(this)
+        all.filter { it.due in 1 until now }.forEach { t -> t.keys.forEach { NotifyLog.unhideEvent(this, it) } }
+        val tasks = all.filter { it.due !in 1 until now }
+        box.label("Hidden deadlines", Type.LABEL, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+        if (tasks.isEmpty()) { box.label("None. \"Hide this (wrong?)\" on a task puts it here, so you can bring it back.", Type.CAPTION, Ui.DIM, 2); return }
+        box.label("Not on Home, in Notifications or in reminders. Restore one to see it again after the next check.", Type.CAPTION, Ui.DIM, 2)
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", java.util.Locale.ENGLISH)
+        for (t in tasks) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(10), dp(10), dp(10))
+                background = roundBg(Ui.BAR, Ui.BORDER, this@SettingsActivity, Radius.MD)
+            }
+            val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            text.addView(tv(t.name, Type.BODY, Ui.TEXT, true).apply { maxLines = 2 })
+            // a guessed time (older hides, see Checker.pruneHidden) is not shown as a due date
+            val due = if (t.due > now + 15 * 86400 - 3600 || t.due == 0L) "" else "Due " + java.time.Instant.ofEpochSecond(t.due).atZone(zone()).format(fmt)
+            val sub = listOf((Regex("""[A-Z]{3,4}\d{4}""").find(t.course)?.value?.let { Shorts.display(this, it) } ?: t.course), due).filter { it.isNotEmpty() }.joinToString(" · ")
+            if (sub.isNotEmpty()) text.addView(tv(sub, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+            card.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            card.addView(button("Restore", Emphasis.SECONDARY) {
+                t.keys.forEach { NotifyLog.unhideEvent(this, it) }
+                box.removeView(card)
+                Toast.makeText(this, "${t.name} shows again after the next check.", Toast.LENGTH_SHORT).show()
+            }.apply { contentDescription = "Restore ${t.name}" })
+            box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        }
+    }
+
     private fun accordion(
         col: LinearLayout,
         title: String,

@@ -38,14 +38,16 @@ object Ui {
     var RAISED_BORDER = 0
     var TEXT = 0
     var DIM = 0
-    var CYAN = 0         // primary accent
+    var CYAN = 0         // interactive accent (links, outlines, selected chips): jade
+    var SIGNAL = 0       // mint fill: the one primary action on a screen and "now" (dark jade text on it)
     var GREEN = 0
     var RED = 0
     var YELLOW = 0
     var ORANGE = 0
     var PURPLE = 0
-    val HERO_A = 0xFF3B5BDB.toInt()
-    val HERO_B = 0xFF7048E8.toInt()
+    // Jade Horizon: the hero (when the class has no colour of its own) runs jade to deep jade
+    val HERO_A = 0xFF288760.toInt()
+    val HERO_B = 0xFF1A5140.toInt()
 
     /** Multiply every textSize by this (1.0 / 1.2 / 1.4 from Settings > Appearance). */
     @Volatile var fontScale = 1.0f
@@ -56,40 +58,41 @@ object Ui {
 
     /** Alert dialogs in the app's colour mode (the plain Dialog_Alert style is always dark). */
     val dialogTheme: Int
-        get() = if (dark) android.R.style.Theme_DeviceDefault_Dialog_Alert else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
+        get() = if (dark) R.style.AppDialog else R.style.AppDialog_Light
     init { palette(true, false) }
 
     /** d = dark mode, hc = Settings > High contrast (brighter text and accents, stronger edges). */
     private fun palette(d: Boolean, hc: Boolean) {
         dark = d
         if (d) {
-            BG = 0xFF12151C.toInt(); BAR = 0xFF1B1F29.toInt(); BORDER = 0xFF2A3040.toInt()
-            BORDER_STRONG = 0xFF646B7D.toInt(); RAISED = 0xFF20242E.toInt(); RAISED_BORDER = 0xFF3A4150.toInt()
-            TEXT = 0xFFE4E2DD.toInt(); DIM = 0xFF9BA0AC.toInt(); CYAN = 0xFF8FA8FF.toInt()
+            // jade night: the Jade Horizon ramp (#1A5140 deepest) taken down to a page colour
+            BG = 0xFF10231C.toInt(); BAR = 0xFF17332A.toInt(); BORDER = 0xFF24493B.toInt()
+            BORDER_STRONG = 0xFF5E8A76.toInt(); RAISED = 0xFF1C3D32.toInt(); RAISED_BORDER = 0xFF2E5A49.toInt()
+            TEXT = 0xFFEAF4EC.toInt(); DIM = 0xFFA3C2AF.toInt(); CYAN = 0xFF9BD8A6.toInt(); SIGNAL = 0xFFB7E5BA.toInt()
             GREEN = 0xFF5FD5A0.toInt(); RED = 0xFFF88C8C.toInt(); YELLOW = 0xFFEFC878.toInt()
             ORANGE = 0xFFF2A96A.toInt(); PURPLE = 0xFFC0A5FF.toInt()
         } else {
-            // warm light: cream surfaces instead of plain white, soft blue-grey structure.
+            // putty: soft grey page, lighter raised cards, jade ink (after the soft product styleguide).
             // every text colour reads at 4.5:1 or more on both BG and BAR
-            BG = 0xFFF5F3EE.toInt(); BAR = 0xFFFDFBF7.toInt(); BORDER = 0xFFE2DED4.toInt()
-            BORDER_STRONG = 0xFF8E8A80.toInt(); RAISED = 0xFFFFFFFF.toInt(); RAISED_BORDER = 0xFFD8D4CA.toInt()
-            TEXT = 0xFF26251F.toInt(); DIM = 0xFF6B6A60.toInt(); CYAN = 0xFF4A5FC4.toInt()
+            BG = 0xFFE9E8E3.toInt(); BAR = 0xFFF5F4F0.toInt(); BORDER = 0xFFD9D7D0.toInt()
+            BORDER_STRONG = 0xFF7F857F.toInt(); RAISED = 0xFFFBFAF7.toInt(); RAISED_BORDER = 0xFFD2D0C9.toInt()
+            TEXT = 0xFF1E2B25.toInt(); DIM = 0xFF56625B.toInt(); CYAN = 0xFF1F7A55.toInt(); SIGNAL = 0xFFB7E5BA.toInt()
             GREEN = 0xFF2E7D5B.toInt(); RED = 0xFFB44A4A.toInt(); YELLOW = 0xFF85600C.toInt()
             ORANGE = 0xFF985417.toInt(); PURPLE = 0xFF7452B8.toInt()
         }
         if (!hc) return
         if (d) {
             // high contrast dark: brighter text/dim, stronger accents (still warm-tinted, never pure white)
-            TEXT = 0xFFFFFDF5.toInt(); DIM = 0xFFC9CBD3.toInt(); CYAN = 0xFFB0C2FF.toInt()
+            TEXT = 0xFFFAFFFB.toInt(); DIM = 0xFFC8DED0.toInt(); CYAN = 0xFFC9F0CC.toInt(); SIGNAL = 0xFFCFF2D1.toInt()
             GREEN = 0xFF83E8B8.toInt(); RED = 0xFFFFA8A8.toInt(); YELLOW = 0xFFFFD98F.toInt()
             ORANGE = 0xFFFFC08A.toInt(); PURPLE = 0xFFD6C0FF.toInt()
-            BORDER = 0xFF4A5266.toInt(); BORDER_STRONG = 0xFF8A90A0.toInt(); RAISED_BORDER = 0xFF6A7184.toInt()
+            BORDER = 0xFF3F6A58.toInt(); BORDER_STRONG = 0xFF8DB5A2.toInt(); RAISED_BORDER = 0xFF5E8A76.toInt()
         } else {
             // high contrast light: near-black warm text, darker greys and accents
-            TEXT = 0xFF14130E.toInt(); DIM = 0xFF4A4940.toInt(); CYAN = 0xFF2C3F9E.toInt()
+            TEXT = 0xFF0E1813.toInt(); DIM = 0xFF3E4A44.toInt(); CYAN = 0xFF155E40.toInt()
             GREEN = 0xFF1F5C42.toInt(); RED = 0xFF8F3030.toInt(); YELLOW = 0xFF6E4C08.toInt()
             ORANGE = 0xFF83490F.toInt(); PURPLE = 0xFF5A3E92.toInt()
-            BORDER = 0xFFBDB8AC.toInt(); BORDER_STRONG = 0xFF5E5B52.toInt(); RAISED_BORDER = 0xFF8E8A80.toInt()
+            BORDER = 0xFFB9B7AF.toInt(); BORDER_STRONG = 0xFF575D57.toInt(); RAISED_BORDER = 0xFF7F857F.toInt()
         }
     }
 
@@ -153,8 +156,8 @@ fun Context.dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
 
 /** The type scale: every text size in the app is one of these roles (always times Ui.fontScale). */
 object Type {
-    const val DISPLAY = 28f   // greeting, the class on the hero card
-    const val HEADLINE = 22f  // page and sheet titles, hero headline
+    const val DISPLAY = 30f   // greeting, the class on the hero card
+    const val HEADLINE = 24f  // page and sheet titles, hero headline
     const val TITLE = 18f     // card titles, large figures
     const val BODY_L = 16f    // setting names, emphasised body
     const val BODY = 14f      // body text, buttons
@@ -164,9 +167,9 @@ object Type {
 
 /** Corner radii in dp: small controls, cards, big surfaces, and fully round (clamped to a pill). */
 object Radius {
-    const val SM = 8
-    const val MD = 14
-    const val LG = 22
+    const val SM = 10   // fields, small tiles
+    const val MD = 16
+    const val LG = 20   // cards and sheets (soft, like the styleguide)
     const val PILL = 100
 }
 
@@ -212,11 +215,9 @@ fun TextView.leadingIcon(res: Int) {
     compoundDrawablePadding = context.dp(6)
 }
 
-/** The one section heading style: small bold capitals in DIM ("DUE SOON", "COURSES"). */
+/** The one section heading style: a bold sentence-case line in TEXT ("Due soon"); callers that still pass capitals get sentence case. */
 fun Context.sectionLabel(text: String): TextView =
-    tv(text.uppercase(), Type.LABEL, Ui.DIM, true).apply {
-        letterSpacing = 0.08f
-        isAllCaps = false
+    tv(if (text == text.uppercase()) text.lowercase().replaceFirstChar { it.uppercase() } else text, Type.BODY_L, Ui.TEXT, true).apply {
         if (Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
     }
 
@@ -226,7 +227,7 @@ enum class Emphasis { PRIMARY, SECONDARY, TERTIARY }
 /** The one button: a pill at least one touch target tall. [accent] tints it (course colour, CYAN by default). */
 fun Context.button(label: String, emphasis: Emphasis, accent: Int = Ui.CYAN, onClick: () -> Unit): TextView {
     val c = this
-    return tv(label, Type.BODY, if (emphasis == Emphasis.PRIMARY) onAccent() else accent, true).apply {
+    return tv(label, Type.BODY, if (emphasis == Emphasis.PRIMARY) onFill(accent) else accent, true).apply {
         gravity = Gravity.CENTER
         minHeight = c.dp(Ui.touch(48))
         minWidth = c.dp(Ui.touch(48))
@@ -236,12 +237,12 @@ fun Context.button(label: String, emphasis: Emphasis, accent: Int = Ui.CYAN, onC
             cornerRadius = c.dp(Radius.PILL).toFloat()
             when (emphasis) {
                 Emphasis.PRIMARY -> setColor(accent)
-                Emphasis.SECONDARY -> { setColor(0); setStroke(c.dp(1), accent) }
+                Emphasis.SECONDARY -> { setColor(0); setStroke(c.outline(), accent) }
                 Emphasis.TERTIARY -> setColor(0)
             }
         }
         foreground = android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(Ui.tint(if (emphasis == Emphasis.PRIMARY) onAccent() else accent, 60)),
+            android.content.res.ColorStateList.valueOf(Ui.tint(if (emphasis == Emphasis.PRIMARY) onFill(accent) else accent, 60)),
             null, GradientDrawable().apply { cornerRadius = c.dp(Radius.PILL).toFloat(); setColor(0xFFFFFFFF.toInt()) },
         )
         isClickable = true
@@ -249,25 +250,50 @@ fun Context.button(label: String, emphasis: Emphasis, accent: Int = Ui.CYAN, onC
     }
 }
 
-/** The one and only app header: a slim brand row (logo + name + theme toggle), no card, so the page title leads.
- *  homeMode = shown on the home screen (not clickable); elsewhere tapping it goes Home. */
-fun Activity.headerRow(homeMode: Boolean): LinearLayout {
+/**
+ * The one header: the page title leads (no logo bar above it any more), then the toolbox ("Aa", tabs only)
+ * and the theme switch. The title view is tagged "headerTitle" and the switch "themeBtn" so Home can reach them.
+ */
+fun Activity.headerRow(title: String, toolbox: Boolean, back: Boolean = false): LinearLayout {
     val titleRow = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(4), 0, 0, 0)
     }
-    titleRow.addView(android.widget.ImageView(this).apply {
-        setImageResource(R.mipmap.ic_launcher_round)
-        contentDescription = "Spectrum Notify"
-    }, LinearLayout.LayoutParams(dp(26), dp(26)).apply { rightMargin = dp(10) })
+    if (back) titleRow.addView(ImageButton(this).apply {
+        setImageResource(R.drawable.ic_back)
+        setColorFilter(Ui.TEXT)
+        background = android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Ui.tint(Ui.CYAN, 60)), null,
+            roundBg(0xFFFFFFFF.toInt(), 0, this@headerRow, Radius.PILL),
+        )
+        contentDescription = "Back"
+        setOnClickListener { finish() }
+    }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply { rightMargin = dp(4) })
     titleRow.addView(TextView(this).apply {
-        text = "Spectrum Notify"
-        textSize = Type.BODY_L * Ui.fontScale
+        tag = "headerTitle"
+        text = title
+        textSize = Type.HEADLINE * Ui.fontScale
         setTypeface(typeface, android.graphics.Typeface.BOLD)
         setTextColor(Ui.TEXT)
+        if (Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    if (toolbox) titleRow.addView(TextView(this).apply {
+        tag = "toolboxBtn"
+        text = "Aa"
+        textSize = Type.TITLE * Ui.fontScale
+        setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER
+        setTextColor(Ui.CYAN)
+        background = android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Ui.tint(Ui.CYAN, 60)), null,
+            roundBg(0xFFFFFFFF.toInt(), 0, this@headerRow, Radius.PILL),
+        )
+        contentDescription = "Toolbox: appearance, links${if (Prefs.isUm(context)) ", semester dates" else ""}"
+        isClickable = true
+        setOnClickListener { openToolbox(this) }
+    }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))))
     titleRow.addView(ImageButton(this).apply {
+        tag = "themeBtn"
         setImageResource(if (Ui.dark) R.drawable.ic_sun else R.drawable.ic_moon)
         setColorFilter(Ui.CYAN)
         background = android.graphics.drawable.RippleDrawable(
@@ -283,14 +309,18 @@ fun Activity.headerRow(homeMode: Boolean): LinearLayout {
             }
         }
     }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))))
-    if (!homeMode) {
-        // only logo + title go Home; the theme toggle keeps its own click
-        titleRow.isClickable = false
-        titleRow.isFocusable = false
-        (titleRow.getChildAt(0) as View).setOnClickListener { goToHome() }
-        (titleRow.getChildAt(1) as View).setOnClickListener { goToHome() }
-    }
     return titleRow
+}
+
+/** Opens the toolbox sheet under [anchor] (the header's Aa); the sheet places itself from the anchor's margins. */
+fun Activity.openToolbox(anchor: View) {
+    val root = findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0) as? FrameLayout ?: return
+    val a = IntArray(2); anchor.getLocationInWindow(a)
+    val r = IntArray(2); root.getLocationInWindow(r)
+    showQuickSheet(root, FrameLayout.LayoutParams(anchor.width, anchor.height).apply {
+        rightMargin = root.width - (a[0] - r[0]) - anchor.width
+        bottomMargin = root.height - (a[1] - r[1]) - anchor.height
+    })
 }
 
 /** Dark screen with a top bar (back arrow + title) and a scrolling column; returns the column.
@@ -309,33 +339,11 @@ fun Activity.screen(
         setBackgroundColor(Ui.BG)
     }
 
-    root.addView(headerRow(homeMode = this is MainActivity), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-        setMargins(dp(16), dp(8), dp(12), 0)
-    })
-    val top = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(16), dp(8), dp(16), dp(6))
+    val top = headerRow(title, toolbox = navTo != null, back = navTo == null).apply {
+        setPadding(dp(if (navTo == null) 8 else 20), dp(10), dp(8), dp(6))
     }
-    if (navTo == null) {
-        top.addView(
-            android.widget.ImageButton(this).apply {
-                setImageResource(R.drawable.ic_back)
-                setColorFilter(Ui.TEXT)
-                setBackgroundColor(0)
-                contentDescription = "Back"
-                setOnClickListener { finish() }
-            },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
-        )
-    }
-    top.addView(TextView(this).apply {
-        text = title
-        textSize = Type.HEADLINE * Ui.fontScale
-        setTypeface(typeface, android.graphics.Typeface.BOLD)
-        setTextColor(Ui.TEXT)
-    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     if (actionIcon != 0 && onAction != null) {
+        // the page's own action sits right after the title, before the toolbox and theme switch
         top.addView(
             ImageButton(this).apply {
                 setImageResource(actionIcon)
@@ -344,7 +352,8 @@ fun Activity.screen(
                 contentDescription = actionDesc
                 setOnClickListener { onAction() }
             },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
+            top.indexOfChild(top.findViewWithTag<View>("headerTitle")) + 1,
+            LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply { rightMargin = dp(4) },
         )
     }
     root.addView(top)
@@ -383,9 +392,12 @@ fun LinearLayout.label(t: String, size: Float = Type.CAPTION, color: Int = Ui.DI
     return tv
 }
 
+/** Outline width: 1dp broke into dashes along pill curves on some phones, so at least 1.5dp (and 2px). */
+fun Context.outline(): Int = maxOf(2, Math.round(resources.displayMetrics.density * 1.5f))
+
 fun roundBg(fill: Int, stroke: Int, ctx: Context, radius: Int = Radius.SM): GradientDrawable = GradientDrawable().apply {
     setColor(fill)
-    setStroke(ctx.dp(1), stroke)
+    setStroke(ctx.outline(), stroke)
     cornerRadius = ctx.dp(radius).toFloat()
 }
 
@@ -433,9 +445,9 @@ fun LinearLayout.btn(text: String, emphasis: Emphasis, onClick: () -> Unit): But
     b.stateListAnimator = null
     b.textSize = Type.BODY * Ui.fontScale
     b.setTypeface(b.typeface, Typeface.BOLD)
-    b.setTextColor(if (emphasis == Emphasis.PRIMARY) onAccent() else Ui.CYAN)
+    b.setTextColor(if (emphasis == Emphasis.PRIMARY) onFill(Ui.SIGNAL) else Ui.CYAN)
     b.background = when (emphasis) {
-        Emphasis.PRIMARY -> rippleBg(Ui.CYAN, Ui.CYAN, context, Radius.PILL)
+        Emphasis.PRIMARY -> rippleBg(Ui.SIGNAL, Ui.SIGNAL, context, Radius.PILL)
         Emphasis.SECONDARY -> rippleBg(Ui.BAR, Ui.CYAN, context, Radius.PILL)
         // no fill or edge (sits on any surface); the mask still shows the ripple
         Emphasis.TERTIARY -> android.graphics.drawable.RippleDrawable(
@@ -484,11 +496,14 @@ fun LinearLayout.action(text: String, help: String, onClick: () -> Unit): Button
 /** Text on top of an accent-coloured fill (selected chip, "NOW" badge). */
 fun onAccent(): Int = if (Ui.dark) Ui.BG else 0xFFFFFFFF.toInt()
 
+/** Text on a filled button: deep jade on the mint fill (in both modes), else as [onAccent]. */
+fun onFill(fill: Int): Int = if (fill == Ui.SIGNAL) 0xFF1A5140.toInt() else onAccent()
+
 /** A selectable chip: filled with the accent when selected, outlined otherwise. */
 fun Context.chip(
     label: String,
     selected: Boolean,
-    accent: Int = Ui.CYAN,
+    accent: Int = Ui.SIGNAL,
     size: Float = Type.BODY,
     padH: Int = 14,
     dot: Int = 0,
@@ -508,11 +523,11 @@ fun Context.chip(
         minHeight = c.dp(Ui.touch(48))
         minWidth = c.dp(48)
         setPadding(c.dp(padH), 0, c.dp(padH), 0)
-        setTextColor(if (selected) onAccent() else Ui.TEXT)
+        setTextColor(if (selected) onFill(accent) else Ui.TEXT)
         if (selected) setTypeface(typeface, Typeface.BOLD)
         background = GradientDrawable().apply {
             cornerRadius = c.dp(Radius.PILL).toFloat()
-            if (selected) setColor(accent) else { setColor(Ui.BAR); setStroke(c.dp(1), Ui.BORDER_STRONG) }
+            if (selected) setColor(accent) else { setColor(Ui.BAR); setStroke(c.outline(), Ui.BORDER_STRONG) }
         }
         foreground = android.graphics.drawable.RippleDrawable(
             android.content.res.ColorStateList.valueOf(Ui.tint(accent, 80)),
@@ -533,17 +548,17 @@ fun LinearLayout.segmented(labels: List<String>, selected: Int, onPick: (Int) ->
     val bar = LinearLayout(ctx).apply {
         orientation = LinearLayout.HORIZONTAL
         setPadding(ctx.dp(3), ctx.dp(3), ctx.dp(3), ctx.dp(3))
-        background = roundBg(Ui.BAR, Ui.BORDER_STRONG, ctx, Radius.MD)
+        background = roundBg(Ui.BAR, Ui.BORDER, ctx, Radius.PILL)
     }
     labels.forEachIndexed { i, l ->
         val on = i == selected
-        bar.addView(ctx.tv(l, Type.BODY, if (on) onAccent() else Ui.TEXT, on).apply {
+        bar.addView(ctx.tv(l, Type.BODY, if (on) onFill(Ui.SIGNAL) else Ui.TEXT, on).apply {
             gravity = Gravity.CENTER
             minHeight = ctx.dp(Ui.touch(48) - 6)
-            background = if (on) roundBg(Ui.CYAN, Ui.CYAN, ctx, Radius.MD - 3)
+            background = if (on) roundBg(Ui.SIGNAL, Ui.SIGNAL, ctx, Radius.PILL)
                 else android.graphics.drawable.RippleDrawable(
                     android.content.res.ColorStateList.valueOf(Ui.tint(Ui.CYAN, 60)), null,
-                    roundBg(0xFFFFFFFF.toInt(), 0, ctx, Radius.MD - 3),
+                    roundBg(0xFFFFFFFF.toInt(), 0, ctx, Radius.PILL),
                 )
             isClickable = true
             isSelected = on
@@ -693,7 +708,7 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
     val bar = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setBackgroundColor(Ui.BAR)
+        setBackgroundColor(Ui.BG)
         minimumHeight = dp(64)
         setPadding(dp(4), dp(2), dp(4), dp(2))
     }
@@ -707,42 +722,45 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
     }
     val slot = (resources.displayMetrics.widthPixels - dp(8)) / tabs.size.toFloat()
     val fit = minOf(1f, (slot - dp(2)) / tabs.maxOf { probe.measureText(it.label) })
+    fun open(idx: Int) {
+        val t = tabs[idx]
+        val i = Intent(this, t.cls)
+        if (t.cls == MainActivity::class.java) {
+            i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        startActivity(i)
+        // tabs replace each other instead of piling up (Back from any tab goes Home)
+        if (active != MainActivity::class.java && t.cls != MainActivity::class.java) finish()
+        // slide toward the side the tab sits on, like switching tabs, not opening a page
+        if (idx > activeIdx) overridePendingTransition(R.anim.tab_in_right, R.anim.tab_out_left)
+        else overridePendingTransition(R.anim.tab_in_left, R.anim.tab_out_right)
+    }
+    // a sideways swipe on the page opens the neighbouring tab
+    (this as? BaseActivity)?.tabSwipe = { dir -> (activeIdx + dir).takeIf { activeIdx >= 0 && it in tabs.indices }?.let { open(it) } }
     for ((idx, t) in tabs.withIndex()) {
         val isActive = t.cls == active
         val item = LinearLayout(this).apply {
+            tag = "nav:" + t.label
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(0, dp(6), 0, dp(6))
             isClickable = true
             contentDescription = t.label + if (isActive) ", current screen" else ""
-            background = rippleBg(Ui.BAR, 0, this@bottomNav, Radius.MD)
-            setOnClickListener {
-                if (!isActive) {
-                    val i = Intent(this@bottomNav, t.cls)
-                    if (t.cls == MainActivity::class.java) {
-                        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    }
-                    startActivity(i)
-                    // tabs replace each other instead of piling up (Back from any tab goes Home)
-                    if (active != MainActivity::class.java && t.cls != MainActivity::class.java) finish()
-                    // slide toward the side the tab sits on, like switching tabs, not opening a page
-                    if (idx > activeIdx) overridePendingTransition(R.anim.tab_in_right, R.anim.tab_out_left)
-                    else overridePendingTransition(R.anim.tab_in_left, R.anim.tab_out_right)
-                }
-            }
+            background = rippleBg(Ui.BG, 0, this@bottomNav, Radius.MD)
+            setOnClickListener { if (!isActive) open(idx) }
         }
         // short indicator above the active icon (3dp pill, 28dp wide)
         if (isActive) {
             item.addView(View(this).apply {
-                background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Ui.CYAN) }
-            }, LinearLayout.LayoutParams(dp(28), dp(3)).apply { bottomMargin = dp(3) })
+                background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(if (Ui.dark) Ui.SIGNAL else Ui.CYAN) }
+            }, LinearLayout.LayoutParams(dp(28), dp(4)).apply { bottomMargin = dp(2) })
         } else {
             item.addView(View(this), LinearLayout.LayoutParams(dp(28), dp(3)).apply { bottomMargin = dp(3) })
         }
         val holder = android.widget.FrameLayout(this)
         holder.addView(android.widget.ImageView(this).apply {
             setImageResource(t.icon)
-            setColorFilter(if (isActive) Ui.CYAN else Ui.DIM)
+            setColorFilter(if (isActive) Ui.TEXT else Ui.DIM)
         }, android.widget.FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
         if (t.withDot) {
             dot = View(this).apply {
@@ -757,7 +775,7 @@ fun Activity.bottomNav(active: Class<*>): LinearLayout {
         item.addView(TextView(this).apply {
             text = t.label
             textSize = labelSp * fit
-            setTextColor(if (isActive) Ui.CYAN else Ui.DIM)
+            setTextColor(if (isActive) Ui.TEXT else Ui.DIM)
             if (isActive) setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             maxLines = 1
@@ -948,23 +966,12 @@ fun Activity.addNavBar(page: LinearLayout, active: Class<*>) {
 
 // ---------------------------------------------------------------- floating toolbox (all tabs)
 
-/** The draggable "Aa" toolbox button + its quick sheet. Lives on every tab. */
+/** Tabs: the floating "back to top" button (the toolbox itself is the Aa in the header, see [headerRow]). */
 fun Activity.attachToolbox(root: FrameLayout, scroll: ScrollView? = null) {
-    val fab = TextView(this).apply {
-        text = "Aa"
-        textSize = Type.TITLE * Ui.fontScale
-        setTypeface(typeface, Typeface.BOLD)
-        gravity = Gravity.CENTER
-        setTextColor(Ui.CYAN)
-        background = rippleBg(Ui.BAR, Ui.CYAN, this@attachToolbox, Radius.PILL)
-        contentDescription = "Toolbox: appearance, links, semester dates. Tap to open, hold and drag to move."
-        elevation = dp(6).toFloat()
-    }
+    // where the old floating Aa sat; "back to top" keeps that corner, just above the bottom bar
     val fabLp = FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48)), Gravity.BOTTOM or Gravity.END).apply {
-        rightMargin = dp(14); bottomMargin = dp(78)
+        rightMargin = dp(14); bottomMargin = dp(78) - dp(Ui.touch(48)) - dp(10)
     }
-    root.addView(fab, fabLp)
-
     // "back to top" ↑ sits just above Aa as one group: it follows Aa when dragged and only shows
     // once the page is scrolled down about a screen
     val upSize = dp(Ui.touch(44))
@@ -997,7 +1004,6 @@ fun Activity.attachToolbox(root: FrameLayout, scroll: ScrollView? = null) {
         scroll.setOnScrollChangeListener { _, _, y, _, _ -> show(y > scroll.height * 0.8f) }
         up.setOnClickListener { scroll.smoothScrollTo(0, 0); show(false) }
     }
-    setupFabDrag(fab, fabLp, root, onMoved = { sync() }) { showQuickSheet(root, fabLp) }
 }
 
 fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) {
@@ -1081,12 +1087,13 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
         startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_OPEN, "appearance"))
     }
 
-    header("Go to")
+    if (Shuttle.enabled(this) || Prefs.isUm(this)) header("Go to")
     if (Shuttle.enabled(this)) row(R.drawable.lk_bus, "UM Shuttle", desc = "UM Shuttle: plan a trip, next buses and routes") {
         closeQuickSheet(root)
         startActivity(Intent(this, ShuttleActivity::class.java))
     }
-    row(R.drawable.ic_date_range, "Semester dates") {
+    // UM's semester dates: on another university's Moodle they are not used
+    if (Prefs.isUm(this)) row(R.drawable.ic_date_range, "Semester dates") {
         closeQuickSheet(root)
         AcademicCalendarEditor.open(this) { recreate() }
     }
@@ -1157,55 +1164,4 @@ fun Activity.showQuickSheet(root: FrameLayout, fabLp: FrameLayout.LayoutParams) 
 fun Activity.closeQuickSheet(root: FrameLayout) {
     root.findViewWithTag<View>("quicksheet")?.let { root.removeView(it) }
     root.findViewWithTag<View>("quicksheetdim")?.let { root.removeView(it) }
-}
-
-/** Tap opens the quick sheet; holding still and dragging moves the button and snaps it to the nearest edge. */
-fun Activity.setupFabDrag(fab: TextView, fabLp: FrameLayout.LayoutParams, root: FrameLayout, onMoved: () -> Unit = {}, onTap: () -> Unit) {
-    var downX = 0f
-    var downY = 0f
-    var startX = 0
-    var startY = 0
-    var moved = false
-    var dragging = false
-    var pressTime = 0L
-    fab.setOnTouchListener { v, ev ->
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = ev.rawX; downY = ev.rawY
-                startX = fabLp.rightMargin; startY = fabLp.bottomMargin
-                moved = false; dragging = false; pressTime = System.currentTimeMillis()
-                true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = (ev.rawX - downX).toInt()
-                val dy = (ev.rawY - downY).toInt()
-                if (!dragging && (abs(dx) > dp(8) || abs(dy) > dp(8))) dragging = true
-                if (dragging) {
-                    moved = true
-                    v.parent?.requestDisallowInterceptTouchEvent(true)
-                    // margins are measured from BOTTOM/END, so the button tracks the finger
-                    fabLp.rightMargin = (startX - dx).coerceIn(0, root.width - v.width)
-                    fabLp.bottomMargin = (startY - dy).coerceIn(dp(64), root.height - v.width)
-                    root.updateViewLayout(v, fabLp)
-                    onMoved()
-                }
-                true
-            }
-            MotionEvent.ACTION_UP -> {
-                if (dragging) {
-                    // snap to the nearer horizontal edge
-                    val toEnd = fabLp.rightMargin < (root.width - v.width) / 2
-                    fabLp.rightMargin = if (toEnd) dp(14) else root.width - v.width - dp(14)
-                    root.updateViewLayout(v, fabLp)
-                    onMoved()
-                    moved = false  // a finished drag never counts as a tap
-                } else if (System.currentTimeMillis() - pressTime < 600) {
-                    onTap()
-                }
-                true
-            }
-            MotionEvent.ACTION_CANCEL -> { dragging = false; true }
-            else -> false
-        }
-    }
 }

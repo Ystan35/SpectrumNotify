@@ -76,7 +76,7 @@ class TimetableActivity : BaseActivity() {
             return
         }
 
-        box.segmented(listOf("Day", "Week", "Month"), mode) { mode = it; render() }
+        box.segmented(listOf("Day", "Week", "Month"), mode) { mode = it; render() }.tag = "guide:ttViews"
         when (mode) {
             0 -> renderDay()
             1 -> renderWeek()
@@ -234,7 +234,7 @@ class TimetableActivity : BaseActivity() {
         // attendance field: auto-filled from the course's Spectrum attendance page,
         // placeholder when nothing is known, tap to paste one or more links
         val auto = Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s))
-        val user = userAttLink(s.course)
+        val user = Timetable.attFor(this, s.course, preferLecOf(s))
         val link = user.ifEmpty { auto }
         val att = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -244,20 +244,44 @@ class TimetableActivity : BaseActivity() {
 
         val meeting = autoMeeting
         fun openBtn(label: String, url: String, filled: Boolean): TextView =
-            button(label, if (filled) Emphasis.PRIMARY else Emphasis.SECONDARY, c) {
+            button(label, if (filled) Emphasis.PRIMARY else Emphasis.SECONDARY, if (filled) Ui.SIGNAL else Ui.CYAN) {
                 try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
                 catch (_: Exception) { Toast.makeText(this@TimetableActivity, "Cannot open link", Toast.LENGTH_SHORT).show() }
+            }.apply {
+                // three equal buttons: one line each, the label shrinks a little rather than breaking mid-word
+                setPadding(dp(6), dp(6), dp(6), dp(6))
+                maxLines = 1
+                setAutoSizeTextTypeUniformWithConfiguration(11, (Type.BODY * Ui.fontScale).toInt(), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
             }
-        if (link.isNotEmpty()) att.addView(openBtn("Attendance", link, true), LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
-        if (meeting.isNotEmpty()) att.addView(openBtn("Join class", meeting, link.isEmpty()), LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(6) })
-        // round link icon: "+ Link" as text wrapped mid-word at large text sizes
-        att.addView(android.widget.ImageButton(this).apply {
+        val kind = when (preferLecOf(s)) { true -> "lec"; false -> "tut"; null -> "" }
+        val pick = { AttendancePicker.open(this, s.course, courseIdOf(s.course), if (AttendancePicker.hasBothKinds(this, s.course)) kind else "") { render() } }
+        // the edit icon at the right end of Attendance chooses which attendance page this class uses (the app's
+        // guess can be wrong); holding Attendance does the same
+        if (link.isNotEmpty()) att.addView(android.widget.FrameLayout(this).apply {
+            addView(openBtn("Attendance", link, true).apply {
+                setPadding(dp(6), dp(6), dp(50), dp(6)) // room for the icon so the label never sits under it
+                setOnLongClickListener { pick(); true }
+                contentDescription = "Attendance. Hold to choose the attendance page"
+            }, android.widget.FrameLayout.LayoutParams(MATCH, WRAP))
+            addView(android.widget.ImageButton(this@TimetableActivity).apply {
+                tag = "guide:attPencil"
+                setImageResource(R.drawable.ic_edit)
+                setColorFilter(Ui.CYAN)
+                // its own visible circle inside the pill, so a tap on it is clearly not a tap on Attendance
+                background = rippleBg(Ui.BAR, 0, this@TimetableActivity, Radius.PILL)
+                contentDescription = "Choose the attendance page for ${s.course}"
+                setOnClickListener { pick() }
+            }, android.widget.FrameLayout.LayoutParams(dp(40), dp(40), Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(5) })
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
+        if (meeting.isNotEmpty()) att.addView(openBtn("Join class", meeting, link.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
+        // no attendance page found: the link button opens the same chooser (pick one, or paste)
+        if (link.isEmpty()) att.addView(android.widget.ImageButton(this).apply {
             setImageResource(R.drawable.lk_link)
             setColorFilter(Ui.CYAN)
-            background = rippleBg(0, Ui.BORDER, this@TimetableActivity, Radius.PILL)
-            contentDescription = "Paste an attendance link for ${s.course}"
-            setOnClickListener { pasteAttendance(s.course) }
-        }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply { leftMargin = dp(6) })
+            background = rippleBg(0, Ui.CYAN, this@TimetableActivity, Radius.PILL)
+            contentDescription = "Choose or paste an attendance link for ${s.course}"
+            setOnClickListener { pick() }
+        }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))))
         if (link.isEmpty() && meeting.isEmpty()) {
             att.addView(tv("no link yet — tap to paste", Type.CAPTION, Ui.DIM).apply {
                 setPadding(dp(8), 0, 0, 0)
@@ -485,7 +509,7 @@ class TimetableActivity : BaseActivity() {
             background = GradientDrawable().apply {
                 cornerRadius = dp(Radius.SM).toFloat()
                 setColor(Ui.tint(c, 0x40))
-                setStroke(dp(1), c)
+                setStroke(outline(), c)
             }
             isClickable = true
             setOnClickListener { slotDetail(s) }   // tap anywhere: full detail popup
@@ -529,7 +553,7 @@ class TimetableActivity : BaseActivity() {
         if (s.kind != SlotKind.CLASS) box.addView(tv(s.kind.label, Type.LABEL, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
         val loc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
-        val attUrl = userAttLink(s.course).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
+        val attUrl = Timetable.attFor(this, s.course, preferLecOf(s)).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
         val locLine = when {
             Timetable.inPerson(this, s.course) -> if (loc.startsWith("room:")) "📍 In person · " + loc.removePrefix("room:") else ""
             loc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
@@ -550,13 +574,13 @@ class TimetableActivity : BaseActivity() {
         fun pillBtn(label: String, url: String, filled: Boolean): TextView = TextView(this).apply {
             text = label
             textSize = Type.LABEL * Ui.fontScale
-            setTextColor(if (filled) onAccent() else c)
+            setTextColor(if (filled) onFill(Ui.SIGNAL) else Ui.CYAN)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             minHeight = dp(44)
             background = GradientDrawable().apply {
-                cornerRadius = dp(Radius.LG).toFloat()
-                if (filled) setColor(c) else { setColor(0x00000000); setStroke(dp(1), c) }
+                cornerRadius = dp(Radius.PILL).toFloat()
+                if (filled) setColor(Ui.SIGNAL) else { setColor(0x00000000); setStroke(outline(), Ui.CYAN) }
             }
             setOnClickListener {
                 try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }

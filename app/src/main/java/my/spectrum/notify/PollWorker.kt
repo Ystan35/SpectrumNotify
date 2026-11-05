@@ -25,7 +25,7 @@ object Updater {
     private const val VERSION_URL =
         "https://raw.githubusercontent.com/Ystan35/SpectrumNotify/main/latest.json"
     private const val DOWNLOAD_URL =
-        "https://raw.githubusercontent.com/Ystan35/SpectrumNotify/main/apk/SpectrumNotify.apk"
+        "https://github.com/Ystan35/SpectrumNotify/releases/latest/download/SpectrumNotify.apk"
 
     /** Auto path (silent) or manual path (returns a result string for the caller to show). */
     fun check(ctx: Context, manual: Boolean = false): String? {

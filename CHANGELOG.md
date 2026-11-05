@@ -2,6 +2,20 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.32.0 (versionCode 96)
+Redesign, a first-run guide, and releases on GitHub.
+- **New look:** jade palette, soft pill buttons, light mode by default, firmer outlines, a clearer current-tab marker. Home's header stays put while the page scrolls.
+- **First-run guide** (new installs only): log in first, then a tour that switches to each tab and highlights its controls and gestures. Skip it any time; replay from Settings → App & maintenance → Show the guide again.
+- **Swipe between tabs** with a long sideways swipe.
+- **Attendance picker:** the pencil inside Attendance chooses the attendance page, lectures and tutorials separately, listed in Spectrum's order with a note to check the course page. Class details show the links in use.
+- **Month view:** one day timeline (no extra popup); swipe it or use ‹ › for other days.
+- **Materials:** every course's files, folders, links and activities; files download in the app with your login.
+- **Your own shuttle places:** search by name, share from Google Maps, or drop a pin; far trips the shuttle does not serve open Google Maps directions.
+- **Hidden tasks:** hiding takes effect at once; Settings lists each one with its own Restore; past-due ones are cleared.
+- **Add a course page:** one bordered card per course, those already in your links left out.
+- **Fixed:** Join class showed for in-person courses and for your own classes opened the attendance page; it now appears only with a real meeting link.
+- **Releases:** each version is published at GitHub Releases; the update notice downloads from there.
+
 ## 0.31.0 (versionCode 95)
 Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text and a logic review.
 - **Pages under another Occ are muted with it.** Spectrum lists a lecturer's pages ("Week 1") as plain pages after their Occ heading, so they stayed on. They now sit under that heading and follow it; pages after the last Occ heading stay on, since they may be for everyone.
@@ -11,6 +25,8 @@ Umbrella reminder, plus fixes from checking 0.30.0 on a phone with large text an
 - **Events:** all-day events show as a coloured banner at the top of the day and can run over several days; pick a label colour; set several reminders at once, with 3 days, 4 days, 1 week or your own time before. Events set to no reminder no longer notify at their start time.
 - **Attendance alert for every class:** classes with no attendance entry on Spectrum's calendar now get the "sign your attendance" alert too, when class starts and 10 minutes before it ends. Courses set to attendance taken in class stay quiet.
 - **For any Moodle university:** a switch in Settings → UM shuttle turns the shuttle off (no bus on Home, no leave-by alerts, gone from the toolbox), and "UM links" is now just "Links" (also on the widget). The academic calendar is now one of your links, so you can change or remove it, instead of a fixed UM entry in the toolbox.
+- **Other universities get their classes.** UM's semester dates decided which weeks had classes, so on another Moodle (e.g. USM's) the Home card and timetable went empty outside UM's teaching weeks. Away from UM those dates are no longer used: classes show every week, and the UM-only parts (Semester dates, picking from the UM timetable, the shuttle unless you switch it on) are hidden.
+- **"Your own entry is hidden" can be dismissed:** tap the note on the Home card; it comes back only if a different entry of yours clashes.
 - **Site address without https:// works:** a Moodle address typed as "spectrum.um.edu.my" made every check fail ("no protocol"), the login page load over blocked http, and "Log in with browser" crash. https:// is now added for you, also to an address already saved.
 - **Umbrella reminder (new):** when rain is 60% likely or more at UM between an hour before your first class and the end of your last, the morning summary says so at the top, one "Bring an umbrella" notification comes that day (never a second one, even if the forecast changes), and the leave-by alert adds "Rain likely 3 – 5 pm: take an umbrella" when rain falls between setting off and the end of that class. Switch it off in Settings → Daily messages. Forecast by Open-Meteo.com (CC BY 4.0), credited under each rain message with a note that forecasts can be wrong.
 - **Buttons no longer cut off** when their label wraps (Courses: "Refresh classes" / "Short names"; Online or in person: "In person" / "Online"). Labels are shorter too.
