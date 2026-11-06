@@ -376,10 +376,14 @@ class SettingsActivity : BaseActivity() {
             Scheduler.pollNow(this)
             Toast.makeText(this, "Checking Spectrum...", Toast.LENGTH_SHORT).show()
         }
-        target.action("Check for app update", "Compares this build with the latest release on GitHub. Shows the result here; a notification appears if a newer version exists.") {
+        target.action("Check for app update", "Compares this build with the latest release on GitHub. If a newer version exists, its download starts.") {
             Thread {
                 val msg = Updater.check(this, manual = true)
-                runOnUiThread { Toast.makeText(this, msg ?: "You are on the latest version.", Toast.LENGTH_LONG).show() }
+                runOnUiThread {
+                    Toast.makeText(this, msg ?: "You are on the latest version.", Toast.LENGTH_LONG).show()
+                    // a newer version: start the download, as the notification's Get the update does
+                    if (msg?.startsWith("Version ") == true) startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Updater.DOWNLOAD_URL)))
+                }
             }.start()
         }
         target.action("Send test notification", "Sends one test message so you can see how notifications look and that tapping opens the app.") {

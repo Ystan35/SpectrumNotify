@@ -2,6 +2,9 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.33.1 (versionCode 98)
+- **Fixed: Check for app update did nothing.** Finding a newer version showed only a short message with the address cut off, and stopped the automatic update notice for that version. It now starts the download, like Get the update in the notification.
+
 ## 0.33.0 (versionCode 97)
 Oli, the on-device assistant, in-app feedback, and the UM timetable as the source of truth.
 - **Oli** (button on every tab, same place): next class or event, classes on a day, where a class is and how to get there (asks where you start, or uses your location), shuttle trips, deadlines (this week = the next 7 days), free time between classes, reminders (including "14 Nov, 9am, remind me 2 days before") added after a confirm, weather, help logging in. Emergency numbers first; no schoolwork; passwords refused. Runs on the phone; waves when left alone.

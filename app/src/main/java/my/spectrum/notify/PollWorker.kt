@@ -49,11 +49,13 @@ object Updater {
             if (latestCode <= p.buildVersionCode) {
                 return if (manual) "You are on the latest version (build $latestCode)." else null
             }
-            // remind at most once per new version (auto path only)
-            if (!manual && p.updateSeenCode >= latestCode) return null
-            p.updateSeenCode = latestCode
             val name = o.optString("versionName", latestCode.toString())
-            if (manual) return "Version $name is available. Download:\n$DOWNLOAD_URL"
+            // the Settings button opens the download itself; it must not mark the version as announced,
+            // or the automatic notice for it never came
+            if (manual) return "Version $name is available. Downloading it now."
+            // remind at most once per new version
+            if (p.updateSeenCode >= latestCode) return null
+            p.updateSeenCode = latestCode
             val body = buildString {
                 append("Version $name is available.")
                 if (notes.isNotEmpty()) append("\n\n$notes")
