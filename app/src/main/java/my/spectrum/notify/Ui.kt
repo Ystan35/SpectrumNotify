@@ -252,7 +252,7 @@ fun Context.button(label: String, emphasis: Emphasis, accent: Int = Ui.CYAN, onC
 
 /**
  * The one header: the page title leads (no logo bar above it any more), then the toolbox ("Aa", tabs only)
- * and the theme switch. The title view is tagged "headerTitle" and the switch "themeBtn" so Home can reach them.
+ * and Oli (tabs), or the theme switch (other screens). The title view is tagged "headerTitle" and the switch "themeBtn".
  */
 fun Activity.headerRow(title: String, toolbox: Boolean, back: Boolean = false): LinearLayout {
     val titleRow = LinearLayout(this).apply {
@@ -292,7 +292,19 @@ fun Activity.headerRow(title: String, toolbox: Boolean, back: Boolean = false): 
         isClickable = true
         setOnClickListener { openToolbox(this) }
     }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))))
-    titleRow.addView(ImageButton(this).apply {
+    // Oli, the assistant: on every tab, in the same place (rose on a dark jade disc in both modes)
+    if (toolbox) titleRow.addView(ImageButton(this).apply {
+        tag = "guide:ask"
+        setImageResource(R.drawable.ic_oli)
+        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+        setPadding(dp(8), dp(8), dp(8), dp(8))
+        background = android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Ui.tint(Ui.CYAN, 60)), roundBg(Ui.HERO_B, Ui.HERO_B, this@headerRow, Radius.PILL), null)
+        contentDescription = "Ask Oli, the assistant"
+        setOnClickListener { startActivity(android.content.Intent(this@headerRow, AssistantActivity::class.java)) }
+    }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply { leftMargin = dp(4) })
+    // tabs change the colour mode in the toolbox (Aa), which leaves room for Oli (ticket SN-NVV67: "Timetable" wrapped)
+    if (!toolbox) titleRow.addView(ImageButton(this).apply {
         tag = "themeBtn"
         setImageResource(if (Ui.dark) R.drawable.ic_sun else R.drawable.ic_moon)
         setColorFilter(Ui.CYAN)
@@ -587,6 +599,11 @@ fun LinearLayout.chips(labels: List<String>, initial: Set<Int>, multi: Boolean, 
                 if (multi) { if (!sel.add(i)) sel.remove(i) } else { sel.clear(); sel.add(i) }
                 draw()
                 onChange(sel.toSet())
+            }.apply {
+                // equal-width chips: one line each, a long label shrinks a little instead of wrapping and being
+                // cut off at the chip's bottom ("As the course", "Manual by lecturer")
+                maxLines = 1
+                setAutoSizeTextTypeUniformWithConfiguration(10, (Type.LABEL * Ui.fontScale).toInt().coerceAtLeast(11), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
             }
             row.addView(c, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 if (i > 0) leftMargin = ctx.dp(6)
@@ -804,6 +821,9 @@ fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val v = style(super.getView(position, convertView, parent), 0)
             (v as TextView).apply {
+                // fill the box, so the arrow (drawn at the text's end) sits at the right edge, not after the words
+                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
                 // the closed box: snug around its text; the Spinner itself keeps the 48dp touch height
                 setPadding(dp(12), dp(6), dp(10), dp(6))
                 compoundDrawablePadding = dp(4)

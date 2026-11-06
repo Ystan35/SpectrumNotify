@@ -189,9 +189,11 @@ class TimetableActivity : BaseActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(6), 0, 0)
         }
-        mid.addView(tv(Shorts.display(this, s.course), Type.BODY_L, c, true))
+        mid.addView(tv(Shorts.display(this, s.course), Type.BODY_L, c, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        // the type chip keeps its width; a long course name wraps instead of squeezing it to one letter per line
         if (s.kind != SlotKind.CLASS) {
             mid.addView(tv(s.kind.label, Type.CAPTION, Ui.TEXT).apply {
+                maxLines = 1
                 setPadding(dp(8), dp(2), dp(8), dp(2))
                 background = roundBg(0, Ui.BORDER, this@TimetableActivity, Radius.SM)
             }, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(10) })
@@ -200,36 +202,44 @@ class TimetableActivity : BaseActivity() {
 
         val dur = s.end - s.start
         val durS = (if (dur >= 60) "${dur / 60}h" else "") + (if (dur % 60 != 0) (if (dur >= 60) " " else "") + "${dur % 60}m" else "")
-        // room + lecturer from the UM catalog when this slot matches a catalog choice
-        val choice = Catalog.find(this, s.course)?.choices(s.kind)?.firstOrNull { ch ->
-            ch.occ == occOf(s) || ch.parts.any { it.day == s.day && it.start == s.start }
-        }
-        val room = choice?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ") ?: ""
-        val lecturer = choice?.detail() ?: ""
+        val room = roomOf(s)
+        val lecturer = choiceOf(s)?.detail() ?: ""
         // Spectrum classes: the course title as Home shows it, not Spectrum's raw event name ("Attendance - … (2026/2027 Group 3)")
         val full = Courses.all(this).firstOrNull { it.code.equals(s.course, true) }?.name?.takeIf { it.isNotEmpty() }
             ?: Catalog.find(this, s.course)?.name ?: ""
-        val detail = listOf(if (s.manual) s.title else Timetable.classTitle(s.course, full, s.title), s.note).filter { it.isNotEmpty() }.joinToString("  ·  ")
+        val fromUm = s.grp.startsWith("cat-")
+        // a UM class's note is its room, already on the location line
+        val detail = listOf(if (s.manual) s.title else Timetable.classTitle(s.course, full, s.title), if (fromUm) "" else s.note).filter { it.isNotEmpty() }.joinToString("  ·  ")
         val oneOff = if (s.date != null) "This week only" else ""
-        val meta = listOf(oneOff, detail, durS, if (s.manual) "Added by you" else "From Spectrum").filter { it.isNotEmpty() }.joinToString("  ·  ")
+        val source = when { fromUm -> "UM timetable"; s.manual -> "Added by you"; else -> "From Spectrum" }
+        val meta = listOf(oneOff, detail, durS, source).filter { it.isNotEmpty() }.joinToString("  ·  ")
         col.addView(tv(meta, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
         // location: user override first; else the auto meeting link (Online) or the catalog room
         val userLoc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
+        val mode = modeOf(s)
         val locLine = when {
-            Timetable.inPerson(this, s.course) -> "📍 In person" + (if (userLoc.startsWith("room:")) " · " + userLoc.removePrefix("room:") else if (room.isNotEmpty()) " · $room" else "")
+            mode == "online" -> "💻 Online"
+            mode == "inperson" -> "📍 " + room.ifEmpty { "In person" }
+            Timetable.inPerson(this, s.course) -> "📍 " + room.ifEmpty { "In person" }
             userLoc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
-            userLoc.startsWith("room:") -> "📍 " + userLoc.removePrefix("room:")
+            umOnline(s) -> "💻 Online"
+            userLoc.startsWith("room:") && room.isNotEmpty() -> "📍 $room"
             autoMeeting.isNotEmpty() -> "💻 Online (auto)"
             room.isNotEmpty() -> "📍 $room"
             else -> "📍 Tap to set location"
         }
-        val loc = tv(locLine, Type.CAPTION, if (userLoc.isEmpty() && room.isEmpty() && autoMeeting.isEmpty()) Ui.DIM else Ui.TEXT).apply {
+        // the venue reads clearly: bold label size; Online in the accent colour
+        val loc = tv(locLine, Type.LABEL, when {
+            userLoc.isEmpty() && room.isEmpty() && autoMeeting.isEmpty() -> Ui.DIM
+            locLine.startsWith("💻") -> Ui.CYAN
+            else -> Ui.TEXT
+        }, true).apply {
             setPadding(0, dp(2), 0, 0)
             isClickable = true
             background = rippleBg(Ui.BAR, 0, this@TimetableActivity, Radius.SM)
         }
-        loc.setOnClickListener { editLocation(s.course, autoMeeting) }
+        loc.setOnClickListener { editLocation(s, autoMeeting) }
         col.addView(loc)
         // attendance field: auto-filled from the course's Spectrum attendance page,
         // placeholder when nothing is known, tap to paste one or more links
@@ -305,7 +315,8 @@ class TimetableActivity : BaseActivity() {
 
     /** Dialog to paste one or more attendance links (one per line). Empty text clears. */
     /** Location editor: Online (auto meeting link if found, else paste) or Physical room. */
-    private fun editLocation(course: String, autoMeeting: String) {
+    private fun editLocation(s: Slot, autoMeeting: String, after: () -> Unit = {}) {
+        val course = s.course
         val names = listOf("Online class", "Physical room", "Clear")
         val current = Timetable.locationOf(this, course)
         val initial = when {
@@ -322,7 +333,7 @@ class TimetableActivity : BaseActivity() {
         }
         val roomField = android.widget.EditText(this).apply {
             hint = "Room, e.g. DK2"
-            setText(if (current.startsWith("room:")) current.removePrefix("room:") else "")
+            setText(roomOf(s))
         }
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         box.addView(linkField)
@@ -337,7 +348,7 @@ class TimetableActivity : BaseActivity() {
             .setMessage(
                 "Online: the app looks for this course's meeting link automatically" +
                     (if (autoMeeting.isNotEmpty()) " (one was found)" else " (none found — paste the link yourself)") + ". " +
-                    "Physical: type the room."
+                    "Physical: the room comes from the UM timetable; type one only for a class it doesn't list."
             )
             .setView(box)
             .setSingleChoiceItems(names.toTypedArray(), if (current.isEmpty()) 0 else initial) { _, which -> mode[0] = which; refresh() }
@@ -359,10 +370,38 @@ class TimetableActivity : BaseActivity() {
                     else -> Timetable.setLocation(this, course, "")
                 }
                 render()
+                after()
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    /** The UM catalog choice this slot matches (room, lecturer), or null. */
+    private fun choiceOf(s: Slot): Catalog.Choice? {
+        val choices = Catalog.find(this, s.course)?.choices(s.kind) ?: return null
+        // your own Occ (the picked class's, else Settings' "CODE:occN"); matching by time alone found another Occ
+        // meeting at the same hour, with its room and lecturer (WIX1002's tutorial showed MM3 and the wrong lecturer)
+        val occ = occOf(s).ifEmpty {
+            Regex(Regex.escape(s.course) + """:occ([0-9]+[a-z]?)""", RegexOption.IGNORE_CASE).find(Prefs(this).myGroups)?.groupValues?.get(1).orEmpty()
+        }
+        return if (occ.isNotEmpty()) choices.firstOrNull { it.occ == occ }
+        else choices.firstOrNull { ch -> ch.parts.any { it.day == s.day && it.start == s.start } }
+    }
+
+    /** This class's room: the UM timetable's (its catalog choice, else the UM class's note), else the typed course room. */
+    private fun roomOf(s: Slot): String =
+        (if (s.grp.startsWith("cat-")) Timetable.umRoom(this, s)
+        else choiceOf(s)?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ").orEmpty())
+            .takeUnless { Timetable.isOnline(it) }.orEmpty()
+            .ifEmpty { Timetable.roomAt(this, s.course, s.day, s.start) }
+
+    /** Your online / in-person choice for this class this week ("" = as usual). */
+    private fun modeOf(s: Slot): String = Timetable.classMode(this, s.key, Timetable.thisWeek(s.day))
+
+    /** The UM timetable lists this class's room as "ONLINE". */
+    private fun umOnline(s: Slot): Boolean =
+        if (s.grp.startsWith("cat-")) Timetable.isOnline(Timetable.umRoom(this, s))
+        else choiceOf(s)?.parts?.any { it.day == s.day && Timetable.isOnline(it.room) } == true
 
     /** Which Occ this slot belongs to: from the picker group id (cat-CODE-kind-N), else empty. */
     private fun occOf(s: Slot): String =
@@ -483,7 +522,7 @@ class TimetableActivity : BaseActivity() {
                     val w = colW / lanes
                     val top = headH + (s.start - minH * 60) * hourH / 60
                     val h = maxOf(dp(36), (s.end - s.start) * hourH / 60 - dp(2))
-                    grid.addView(weekBlock(s, lanes > 1),
+                    grid.addView(weekBlock(s, h),
                         FrameLayout.LayoutParams(w - dp(4), h).apply { leftMargin = col * colW + lane * w + dp(2); topMargin = top })
                 }
                 i = j
@@ -501,11 +540,12 @@ class TimetableActivity : BaseActivity() {
         return wrap
     }
 
-    private fun weekBlock(s: Slot, narrow: Boolean): View {
+    private fun weekBlock(s: Slot, height: Int): View {
         val c = colours[s.course] ?: Ui.CYAN
         val b = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(6), dp(4), dp(4), dp(2))
+            // even padding inside the outline, so text never touches or crosses the frame
+            setPadding(dp(7), dp(6), dp(6), dp(6))
             background = GradientDrawable().apply {
                 cornerRadius = dp(Radius.SM).toFloat()
                 setColor(Ui.tint(c, 0x40))
@@ -514,21 +554,37 @@ class TimetableActivity : BaseActivity() {
             isClickable = true
             setOnClickListener { slotDetail(s) }   // tap anywhere: full detail popup
         }
-        b.addView(tv(Shorts.display(this, s.course), Type.LABEL, Ui.TEXT, true).apply { maxLines = 1 })
-        val sub = if (narrow) s.kind.tag else listOf(s.kind.tag, Timetable.fmtMin(s.start)).filter { it.isNotEmpty() }.joinToString(" · ")
-        if (sub.isNotEmpty()) b.addView(tv(sub, Type.CAPTION, Ui.DIM).apply { maxLines = 1 })
-        // location line when there is room for it (not the narrow multi-lane blocks)
-        if (!narrow) {
-            val loc = Timetable.locationOf(this, s.course)
-            val line = when {
-                loc.startsWith("online:") -> "💻 Online"
-                loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
-                else -> ""
+        // line 1: the code, then the type in a lighter tone ("WIX1002 TUT"); the short name only fit as "WIX1002 · …"
+        val head = android.text.SpannableStringBuilder(s.course)
+        if (s.kind != SlotKind.CLASS) {
+            val at = head.length
+            head.append("  ").append(s.kind.tag)
+            head.setSpan(ForegroundColorSpan(Ui.DIM), at, head.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        b.addView(tv(head, Type.LABEL, Ui.TEXT, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        // venue on every block (narrow ones too), so the week shows where each class is without opening it
+        val loc = Timetable.locationOf(this, s.course)
+        val room = roomOf(s)
+        val line = when (modeOf(s)) {
+            "online" -> "Online"
+            "inperson" -> room.ifEmpty { "In person" }
+            else -> when {
+                Timetable.inPerson(this, s.course) -> room.ifEmpty { "In person" }
+                loc.startsWith("online:") || umOnline(s) -> "Online"
+                else -> room
             }
-            if (line.isNotEmpty()) b.addView(tv(line, Type.CAPTION, Ui.DIM).apply { maxLines = 1 })
+        }
+        // line 2: the venue, bold with its icon; Online in the accent colour with a laptop, so it reads at a glance.
+        // Two lines fit a 1-hour block at 100% (54 dp); the start time is on the grid's axis already.
+        // Too short for two lines (zoomed out): the course alone; the venue is still read out and in the popup
+        if (line.isNotEmpty() && height >= dp((46 * Ui.fontScale).toInt())) {
+            val online = line == "Online"
+            b.addView(iconText(if (online) R.drawable.ic_laptop else R.drawable.ic_place, line, Type.LABEL, if (online) Ui.CYAN else Ui.TEXT, true).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(2) })
         }
         b.contentDescription = "${Shorts.display(this, s.course)} ${s.kind.label}, ${Timetable.DAY_FULL[s.day - 1]} " +
-            "${Timetable.fmtMin(s.start)} to ${Timetable.fmtMin(s.end)}. Tap for details."
+            "${Timetable.fmtMin(s.start)} to ${Timetable.fmtMin(s.end)}" + (if (line.isNotEmpty()) ", $line" else "") + ". Tap for details."
         return b
     }
 
@@ -547,29 +603,72 @@ class TimetableActivity : BaseActivity() {
     /** Popup with the full class detail: name, time, location, lecturer, attendance link(s). */
     private fun slotDetail(s: Slot) {
         val c = colours[s.course] ?: Ui.CYAN
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(12), dp(24), 0) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(22), dp(24), dp(16)) }
         box.addView(tv(Shorts.display(this, s.course), Type.HEADLINE, c, true))
-        box.addView(tv("${Timetable.DAY_FULL[s.day - 1]} · ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}", Type.BODY, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
-        if (s.kind != SlotKind.CLASS) box.addView(tv(s.kind.label, Type.LABEL, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
+        val whenLine = "${Timetable.DAY_FULL[s.day - 1]} · ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}" +
+            if (s.kind != SlotKind.CLASS) " · ${s.kind.label}" else ""
+        box.addView(tv(whenLine, Type.BODY, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
         val loc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
         val attUrl = Timetable.attFor(this, s.course, preferLecOf(s)).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
+        val room = roomOf(s)
+        val mode = modeOf(s)
         val locLine = when {
-            Timetable.inPerson(this, s.course) -> if (loc.startsWith("room:")) "📍 In person · " + loc.removePrefix("room:") else ""
-            loc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
-            loc.startsWith("room:") -> "📍 " + loc.removePrefix("room:")
-            autoMeeting.isNotEmpty() -> "💻 Online (auto)"
-            else -> ""
+            mode == "online" -> "Online"
+            // a room means in person: the room alone, big and clear
+            mode == "inperson" -> room.ifEmpty { "In person" }
+            Timetable.inPerson(this, s.course) -> room.ifEmpty { "In person" }
+            loc.startsWith("online:") -> "Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
+            umOnline(s) -> "Online"
+            room.isNotEmpty() -> room
+            autoMeeting.isNotEmpty() -> "Online (auto)"
+            else -> "Set the room or online link"
         }
-        val choice = Catalog.find(this, s.course)?.choices(s.kind)?.firstOrNull { ch ->
-            ch.occ == occOf(s) || ch.parts.any { it.day == s.day && it.start == s.start }
+        // one venue line with a pencil: tap to change this class's room (or make the course online)
+        lateinit var dlg: android.app.AlertDialog
+        val venue = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(Ui.touch(48))
+            isClickable = true
+            background = rippleBg(0, 0, this@TimetableActivity, Radius.SM)
+            contentDescription = "Venue: $locLine. Tap to change"
+            setOnClickListener { editLocation(s, autoMeeting) { dlg.dismiss(); slotDetail(s) } }
         }
-        val catRoom = choice?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ") ?: ""
-        if (locLine.isNotEmpty()) box.addView(tv(locLine, Type.LABEL, Ui.TEXT).apply { setPadding(0, dp(10), 0, 0) })
-        else if (catRoom.isNotEmpty()) box.addView(tv("📍 $catRoom", Type.LABEL, Ui.TEXT).apply { setPadding(0, dp(10), 0, 0) })
-        val lecturer = choice?.detail() ?: ""
-        if (lecturer.isNotEmpty()) box.addView(tv("👤 $lecturer", Type.LABEL, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
-        if (s.note.isNotEmpty()) box.addView(tv(s.note, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
+        venue.addView(android.widget.ImageView(this).apply {
+            setImageResource(if (locLine.startsWith("Online")) R.drawable.ic_laptop else R.drawable.ic_place)
+            setColorFilter(Ui.CYAN)
+        }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { rightMargin = dp(10) })
+        venue.addView(tv(locLine, Type.BODY_L, if (locLine.startsWith("Online")) Ui.CYAN else Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        venue.addView(android.widget.ImageView(this).apply { setImageResource(R.drawable.ic_edit); setColorFilter(Ui.DIM) },
+            LinearLayout.LayoutParams(dp(18), dp(18)))
+        box.addView(venue, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        val lecturer = choiceOf(s)?.detail() ?: ""
+        if (lecturer.isNotEmpty()) box.addView(tv(lecturer, Type.LABEL, Ui.DIM).apply { setPadding(dp(30), 0, 0, 0) })
+        // online or in person for this class only: this week's date, or every week (a tutorial can differ from its lecture)
+        val date = Timetable.thisWeek(s.day)
+        val modes = listOf("", "online", "inperson")
+        // "Usually" is the same setting as Usually in Edit class: same name, same choices, and for your own class on
+        // several days it covers every day, as Edit class does
+        val usualKeys = if (s.manual && s.grp.isNotEmpty()) Timetable.manualGroup(this, s.grp).map { it.key }.ifEmpty { listOf(s.key) } else listOf(s.key)
+        fun modeRow(title: String, names: List<String>, d: java.time.LocalDate?) {
+            box.addView(tv(title, Type.LABEL, Ui.TEXT, true).apply { setPadding(0, dp(14), 0, 0) })
+            // this row's own saved choice, not the merged one, so the first chip shows when only the other row is set
+            val now = getSharedPreferences("timetable", MODE_PRIVATE).getString(if (d == null) "cmode:${s.key}" else "cmode:${s.key}:$d", "") ?: ""
+            box.chips(names, setOf(modes.indexOf(now).coerceAtLeast(0)), false) { sel ->
+                val m = modes[sel.firstOrNull() ?: 0]
+                if (d == null) usualKeys.forEach { Timetable.setClassMode(this, it, null, m) } else Timetable.setClassMode(this, s.key, d, m)
+                render()
+                dlg.dismiss(); slotDetail(s)
+            }
+        }
+        modeRow("This week (${date.dayOfMonth} ${date.month.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH)})",
+            listOf("Usual", "Online", "In person"), date)
+        // short labels: three chips fit one row inside the popup ("As the course" wrapped and pushed the row out)
+        modeRow("Usually", listOf("Course", "Online", "In person"), null)
+        box.addView(tv("Course = as set in Settings → Online or in person.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
+        // Spectrum's note, unless it only repeats the room
+        if (s.note.isNotEmpty() && !s.grp.startsWith("cat-") && !s.note.equals(room, true)) box.addView(tv(s.note, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
         // action buttons: attendance page (primary), meeting link, course page — whichever exist
         fun pillBtn(label: String, url: String, filled: Boolean): TextView = TextView(this).apply {
             text = label
@@ -587,23 +686,19 @@ class TimetableActivity : BaseActivity() {
                 catch (_: Exception) { Toast.makeText(this@TimetableActivity, "Cannot open link", Toast.LENGTH_SHORT).show() }
             }
         }
-        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(14), 0, 0) }
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(16), 0, 0) }
         if (attUrl.isNotEmpty()) btnRow.addView(pillBtn("Attendance", attUrl, true), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
         val meeting = autoMeeting
         if (meeting.isNotEmpty()) btnRow.addView(pillBtn("Join class", meeting, attUrl.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
         val courseUrl = Prefs(this).site.let { if (it.isNotEmpty()) "$it/course/view.php?id=${courseIdOf(s.course)}" else "" }
         if (courseUrl.isNotEmpty()) btnRow.addView(pillBtn("Course page", courseUrl, attUrl.isEmpty() && meeting.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f))
         if (btnRow.childCount > 0) box.addView(btnRow, LinearLayout.LayoutParams(MATCH, WRAP))
-        box.addView(tv("Edit class", Type.LABEL, Ui.CYAN, true).apply {
-            setPadding(0, dp(14), 0, 0)
-            minHeight = dp(Ui.touch(48))
-            gravity = Gravity.CENTER_VERTICAL
-            isClickable = true
-        }.also { it.setOnClickListener { openEdit(s) } })
-        android.app.AlertDialog.Builder(this, Ui.dialogTheme)
-            .setView(box)
-            .setPositiveButton("Close", null)
-            .show()
+        // footer: Edit class and Close on one line, the same size, instead of a loose link and a dialog button
+        val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        foot.addView(button("Edit class", Emphasis.TERTIARY) { dlg.dismiss(); openEdit(s) }, LinearLayout.LayoutParams(WRAP, WRAP).apply { rightMargin = dp(8) })
+        foot.addView(button("Close", Emphasis.TERTIARY) { dlg.dismiss() }, LinearLayout.LayoutParams(WRAP, WRAP))
+        box.addView(foot, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+        dlg = android.app.AlertDialog.Builder(this, Ui.dialogTheme).setView(box).show()
     }
 
     // ------------------------------------------------------------ legend + hidden classes

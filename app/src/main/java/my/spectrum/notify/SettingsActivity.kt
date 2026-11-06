@@ -19,7 +19,6 @@ import android.widget.Toast
 class SettingsActivity : BaseActivity() {
     companion object { const val EXTRA_OPEN = "open_section" }
     private lateinit var p: Prefs
-    private val fields = LinkedHashMap<String, EditText>()
     private lateinit var alarmBtn: Button
     private var alarmHelp: View? = null
     private lateinit var profileStatus: TextView
@@ -35,25 +34,9 @@ class SettingsActivity : BaseActivity() {
         val col = screen("Settings", navTo = SettingsActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
         var target: LinearLayout = col   // the open-able body of the current section
 
-        fun add(key: String, title: String, help: String, value: String, hint: String = "", kind: Int = 0) {
-            val f = target.setting(title, help, value, hint, kind)
-            fields[key] = f
-            // stored on every change; alarms are re-armed once, when you leave the screen
-            f.addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    val v = s?.toString()?.trim() ?: ""
-                    when (key) {
-                        "manualCourses" -> p.manualCourses = v
-                        "skipClasses" -> p.skipClasses = v
-                        "myGroups" -> if (v != p.myGroups) p.myGroups = v
-                    }
-                }
-            })
-        }
-
         col.label("Changes are saved as you make them.", Type.CAPTION, Ui.DIM, 4)
+        // group headings between the cards, so twelve cards read as five short lists
+        fun group(t: String) = col.addView(sectionLabel(t).apply { setPadding(dp(4), dp(24), 0, 0) })
 
         // search: type a keyword, matching sections are listed; tapping one opens it
         var searchBox: EditText? = null
@@ -188,6 +171,77 @@ class SettingsActivity : BaseActivity() {
             target.addView(tf.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         }
 
+        group("Classes")
+        target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
+            contents = listOf("My Occ", "Attendance reminder"),
+            summary = "Occ, attendance reminder " + if (p.attStartAlert) "on" else "off")
+        heading("Attendance reminder", "Sign attendance alerts during class, when signing works: when it starts, and 10 minutes before it ends. " +
+            "Not sent for classes where the lecturer takes attendance in class or attendance is by Teams recording.")
+        target.addView(android.widget.Switch(this).apply {
+            text = "Remind me to sign attendance"
+            textSize = Type.BODY * Ui.fontScale
+            setTextColor(Ui.TEXT)
+            minHeight = dp(Ui.touch(48))
+            isChecked = p.attStartAlert
+            setOnCheckedChangeListener { _, on -> p.attStartAlert = on; Scheduler.scheduleAll(this@SettingsActivity) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        // My Occ per course as a dropdown (like the UM-timetable picker):
+        // catalog occs first; if the course is missing from the catalog, fall back to learned occs.
+        val learned = Groups.learnedPerCourse(this)
+        val courses = LinkedHashSet<String>()
+        Courses.all(this).forEach { courses.add(it.code.uppercase()) }
+        learned.keys.forEach { courses.add(it.uppercase()) }
+        if (courses.isEmpty()) {
+            target.label("Your courses appear here after the first check (or pick one from the UM timetable below).", Type.LABEL, Ui.DIM, 8)
+        }
+        for (code in courses) {
+            val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
+            val occs = if (catOccs.isNotEmpty()) catOccs else (learned[code.uppercase()] ?: learned[code] ?: emptyList())
+            val current = Regex(Regex.escape(code) + ":occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
+            val names = listOf("Not set") + occs.map { "Occ $it" }
+            val sel = occs.indexOf(current) + 1
+            val sp = spinner(names, if (sel >= 0) sel else 0) { pos ->
+                val keep = p.myGroups.split(",").map { it.trim() }
+                    .filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
+                p.myGroups = (if (pos <= 0) keep else keep + "$code:occ${occs[pos - 1]}").joinToString(", ")
+                // the timetable follows: that Occ's classes from the UM list, as Courses does
+                if (pos <= 0) Timetable.clearCatalog(this, code) else if (catOccs.isNotEmpty()) Timetable.autoSetup(this, code, occs[pos - 1])
+            }
+            // one row per course: the short name ("WIX1001 · CM") on the left, a small Occ dropdown on the right (ticket SN-TG4DM)
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+            // the same name style as the Online or in person rows
+            row.addView(tv(Shorts.display(this, code), Type.BODY, Ui.TEXT, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(sp, LinearLayout.LayoutParams(dp(168), ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })  // same size as Online or in person
+            target.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            if (catOccs.isEmpty() && occs.isNotEmpty()) {
+                target.label("Occs learned from Spectrum (course not in the bundled UM list).", Type.CAPTION, Ui.DIM, 2)
+            }
+        }
+        if (Prefs.isUm(this)) target.action("Pick a course from the UM timetable", "Adds the class times and sets your Occ here.") {
+            startActivity(android.content.Intent(this, CatalogActivity::class.java))
+        }
+        // the typed fields (classes to ignore, Teams-recording courses, raw groups) are gone (ticket feedback): Occ above,
+        // Edit class (attendance: Lecturer) and Remove from my timetable cover them. What was saved still applies.
+
+        target = accordion(col, "ONLINE OR IN PERSON",
+            "The long-term setting for each course: it stays until you change it here. For one class, or just one week, " +
+                "tap the class in Timetable instead.",
+            key = "inperson", icon = R.drawable.ic_laptop, contents = listOf("In person", "Online again"),
+            summary = Courses.all(this).count { Timetable.inPerson(this, it.code) }.let { if (it == 0) "All as Spectrum says" else "$it in person" })
+        ClassModeEditor.render(this, target)
+
+        target = accordion(col, "DEADLINES", icon = R.drawable.ic_cat_deadline,
+            contents = listOf("Remind me before a deadline", "Hidden deadlines"),
+            summary = if (p.deadlineList.isEmpty()) "No reminders" else p.deadlineList.sortedDescending().joinToString(", ") { "${it}h" } + " before")
+        heading("Remind me before a deadline",
+            "Tap every time you want a reminder, for example 24h and 3h: one a day before, another 3 hours before. None selected = no deadline reminders.")
+        val dlHours = listOf(1, 3, 6, 12, 24, 48, 72)
+        target.chips(dlHours.map { "${it}h" }, dlHours.indices.filter { dlHours[it] in p.deadlineList }.toSet(), true) { sel ->
+            p.deadlineHours = sel.sorted().joinToString(",") { dlHours[it].toString() }
+        }
+        hiddenTaskList(target)
+
+        group("Alerts")
         target = accordion(col, "QUIET HOURS",
             "During these hours nothing pops up: no checks, class alerts, daily messages or event reminders. " +
                 "Anything that would have alerted you still goes into the Notifications list.",
@@ -219,87 +273,6 @@ class SettingsActivity : BaseActivity() {
         }.apply { contentDescription = "Open the Open-Meteo website (weather data source)" },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(-12) })
 
-        target = accordion(col, "YOUR CLASSES", key = "yourclasses", icon = R.drawable.ic_cat_class,
-            contents = listOf("My Occ", "Attendance reminder", "Classes to ignore", "Teams-recording courses"))
-        heading("Attendance reminder", "Sign attendance alerts during class, when signing works: when it starts, and 10 minutes before it ends. " +
-            "Not sent for classes where the lecturer takes attendance in class or attendance is by Teams recording.")
-        target.addView(android.widget.Switch(this).apply {
-            text = "Remind me to sign attendance"
-            textSize = Type.BODY * Ui.fontScale
-            setTextColor(Ui.TEXT)
-            minHeight = dp(Ui.touch(48))
-            isChecked = p.attStartAlert
-            setOnCheckedChangeListener { _, on -> p.attStartAlert = on; Scheduler.scheduleAll(this@SettingsActivity) }
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
-        // My Occ per course as a dropdown (like the UM-timetable picker):
-        // catalog occs first; if the course is missing from the catalog, fall back to learned occs.
-        val learned = Groups.learnedPerCourse(this)
-        val courses = LinkedHashSet<String>()
-        Courses.all(this).forEach { courses.add(it.code.uppercase()) }
-        learned.keys.forEach { courses.add(it.uppercase()) }
-        if (courses.isEmpty()) {
-            target.label("Your courses appear here after the first check (or pick one from the UM timetable below).", Type.LABEL, Ui.DIM, 8)
-        }
-        for (code in courses) {
-            val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
-            val occs = if (catOccs.isNotEmpty()) catOccs else (learned[code.uppercase()] ?: learned[code] ?: emptyList())
-            val current = Regex(Regex.escape(code) + ":occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
-            // show the course name too — users rarely recognise codes alone
-            val cname = Courses.all(this).firstOrNull { it.code.equals(code, true) }?.name
-                ?: Catalog.find(this, code)?.name ?: ""
-            target.label(if (cname.isNotEmpty()) "$code · $cname" else code, Type.BODY, Ui.TEXT, 14).setTypeface(null, android.graphics.Typeface.BOLD)
-            val names = listOf("Not set") + occs.map { "Occ $it" }
-            val sel = occs.indexOf(current) + 1
-            val sp = spinner(names, if (sel >= 0) sel else 0) { pos ->
-                val keep = p.myGroups.split(",").map { it.trim() }
-                    .filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
-                p.myGroups = (if (pos <= 0) keep else keep + "$code:occ${occs[pos - 1]}").joinToString(", ")
-                fields["myGroups"]?.setText(p.myGroups)
-            }
-            target.addView(sp, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
-            if (catOccs.isEmpty() && occs.isNotEmpty()) {
-                target.label("Occs learned from Spectrum (course not in the bundled UM list).", Type.CAPTION, Ui.DIM, 2)
-            }
-        }
-        if (Prefs.isUm(this)) target.action("Pick a course from the UM timetable", "Adds the class times and sets your Occ here.") {
-            startActivity(android.content.Intent(this, CatalogActivity::class.java))
-        }
-        add(
-            "skipClasses", "Classes to ignore",
-            "Use this when a course has classes for another group. Write the course code, then @ and the day. " +
-                "WIX1003@Mon ignores only Monday's WIX1003. Separate several with commas: WIX1003@Mon, WIA2010@Tue. " +
-                "Days: Mon Tue Wed Thu Fri Sat Sun. Without @day, every day of that course is ignored.",
-            p.skipClasses, "WIX1003@Mon",
-        )
-        add(
-            "manualCourses", "Courses marked by Teams recording",
-            "Courses where attendance is taken by watching the Teams recording, not a live class link. " +
-                "Write course codes separated by commas, for example WIA2010.",
-            p.manualCourses, "WIA2010",
-        )
-        // advanced escape hatch
-        target.label("Advanced: raw group text", Type.LABEL, Ui.TEXT, 18).setTypeface(null, android.graphics.Typeface.BOLD)
-        add(
-            "myGroups", "Raw groups",
-            "Format: COURSE:occN, comma separated. Write off to disable the filter.",
-            p.myGroups, "WIX1003:occ2, WIX1003:t3",
-        )
-
-        target = accordion(col, "ONLINE OR IN PERSON",
-            "When online classes end (e.g. the air quality is fine again), mark courses as in person: Join class and meeting links " +
-                "go away for them and the room is shown. Attendance reminders stay.",
-            key = "inperson", icon = R.drawable.ic_cat_class, contents = listOf("In person", "Online again"))
-        ClassModeEditor.render(this, target)
-
-        target = accordion(col, "DEADLINES", icon = R.drawable.ic_cat_deadline,
-            contents = listOf("Remind me before a deadline"))
-        heading("Remind me before a deadline",
-            "Tap every time you want a reminder, for example 24h and 3h: one a day before, another 3 hours before. None selected = no deadline reminders.")
-        val dlHours = listOf(1, 3, 6, 12, 24, 48, 72)
-        target.chips(dlHours.map { "${it}h" }, dlHours.indices.filter { dlHours[it] in p.deadlineList }.toSet(), true) { sel ->
-            p.deadlineHours = sel.sorted().joinToString(",") { dlHours[it].toString() }
-        }
-
         target = accordion(col, "BACKGROUND CHECKS", icon = R.drawable.ic_refresh,
             contents = listOf("Check every (minutes)"), summary = "Every ${p.pollMinutes} min")
         heading("Check Spectrum every",
@@ -311,6 +284,7 @@ class SettingsActivity : BaseActivity() {
             sel.firstOrNull()?.let { p.pollMinutes = pollOpts[it]; Scheduler.ensurePolling(this) }
         }
 
+        group("Getting around")
         target = accordion(col, "UM SHUTTLE",
             "Home shows which shuttle to take to your next class, or when walking is quicker, and an alert tells you when to leave.",
             key = "shuttle", icon = R.drawable.lk_bus,
@@ -353,6 +327,7 @@ class SettingsActivity : BaseActivity() {
         target.addView(linksBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         LinksEditor.renderSection(this, linksBox)
 
+        group("App")
         target = accordion(col, "APPEARANCE & ACCESSIBILITY",
             "Change how the app looks. Tap a chip to apply it right away — the screen redraws with your choice.",
             icon = R.drawable.ic_palette, contents = listOf("Colour mode", "Text size", "High contrast"), key = "appearance",
@@ -384,18 +359,23 @@ class SettingsActivity : BaseActivity() {
             }
         }
         target.label("High contrast uses stronger text colours. Big touch targets make every button and box 56 dp tall.", Type.CAPTION, Ui.DIM, 8)
+        target = accordion(col, "HELP & FEEDBACK", icon = R.drawable.lk_help, contents = listOf("Guide", "Feedback"),
+            summary = "Tour of the app, report a problem")
+        target.action("Show the guide again", "The short tour of Home and the tabs, from the start.") {
+            Guide.restart(this)
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        }
+        target.action("Send feedback", "Report a problem, suggest an idea or ask a question. You get a ticket number, see its status and get a notification when it is fixed.") {
+            FeedbackActivity.open(this)
+        }
         target = accordion(col, "APP & MAINTENANCE", icon = R.drawable.ic_settings,
-            contents = listOf("Check now", "Guide", "Update", "Test notification", "Alarms", "Battery", "Hidden deadlines", "Diagnostic lines"))
+            contents = listOf("Check now", "Update", "Test notification", "Alarms", "Battery", "Diagnostic lines"),
+            summary = "Version " + packageManager.getPackageInfo(packageName, 0).versionName)
         target.action("Check now", "Looks at Spectrum right away. A new notification appears in the list if something is new.") {
             save()
             Scheduler.pollNow(this)
             Toast.makeText(this, "Checking Spectrum...", Toast.LENGTH_SHORT).show()
         }
-        target.action("Show the guide again", "The short tour of Home and the tabs, from the start.") {
-            Guide.restart(this)
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        }
-        hiddenTaskList(target)
         target.action("Check for app update", "Compares this build with the latest release on GitHub. Shows the result here; a notification appears if a newer version exists.") {
             Thread {
                 val msg = Updater.check(this, manual = true)
@@ -484,9 +464,32 @@ class SettingsActivity : BaseActivity() {
         val all = Checker.hiddenTasks(this)
         all.filter { it.due in 1 until now }.forEach { t -> t.keys.forEach { NotifyLog.unhideEvent(this, it) } }
         val tasks = all.filter { it.due !in 1 until now }
-        box.label("Hidden deadlines", Type.LABEL, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
-        if (tasks.isEmpty()) { box.label("None. \"Hide this (wrong?)\" on a task puts it here, so you can bring it back.", Type.CAPTION, Ui.DIM, 2); return }
-        box.label("Not on Home, in Notifications or in reminders. Restore one to see it again after the next check.", Type.CAPTION, Ui.DIM, 2)
+        if (tasks.isEmpty()) {
+            box.label("Hidden deadlines", Type.LABEL, Ui.TEXT, 16).setTypeface(null, android.graphics.Typeface.BOLD)
+            box.label("None. \"Hide this (wrong?)\" on a task puts it here, so you can bring it back.", Type.CAPTION, Ui.DIM, 2)
+            return
+        }
+        // folded by default: a tap on the header shows the list (ticket SN-GPWAE)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        val arrow = ImageView(this).apply { setImageResource(R.drawable.ic_chevron_right); setColorFilter(Ui.DIM) }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            minimumHeight = dp(Ui.touch(48))
+            isClickable = true
+            background = rippleBg(0, 0, this@SettingsActivity, Radius.SM)
+            contentDescription = "Hidden deadlines, ${tasks.size}. Tap to show or hide"
+        }
+        head.addView(tv("Hidden deadlines (${tasks.size})", Type.LABEL, Ui.TEXT, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(arrow, LinearLayout.LayoutParams(dp(22), dp(22)))
+        head.setOnClickListener {
+            val open = list.visibility != View.VISIBLE
+            list.visibility = if (open) View.VISIBLE else View.GONE
+            arrow.rotation = if (open) 90f else 0f
+        }
+        box.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        box.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        list.label("Not on Home, in Notifications or in reminders. Restore one to see it again after the next check.", Type.CAPTION, Ui.DIM, 2)
         val fmt = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", java.util.Locale.ENGLISH)
         for (t in tasks) {
             val card = LinearLayout(this).apply {
@@ -504,10 +507,10 @@ class SettingsActivity : BaseActivity() {
             card.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             card.addView(button("Restore", Emphasis.SECONDARY) {
                 t.keys.forEach { NotifyLog.unhideEvent(this, it) }
-                box.removeView(card)
+                list.removeView(card)
                 Toast.makeText(this, "${t.name} shows again after the next check.", Toast.LENGTH_SHORT).show()
             }.apply { contentDescription = "Restore ${t.name}" })
-            box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            list.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
     }
 
@@ -591,7 +594,6 @@ class SettingsActivity : BaseActivity() {
         alarmBtn.visibility = vis
         alarmHelp?.visibility = vis
         refreshProfile()
-        fields["myGroups"]?.setText(p.myGroups)  // may have been set by the Occ list
     }
 
     override fun onPause() {
@@ -606,13 +608,10 @@ class SettingsActivity : BaseActivity() {
         profileStatus.setTextColor(if (loggedIn) Ui.GREEN else Ui.RED)
     }
 
-    private fun f(key: String) = fields[key]?.text?.toString()?.trim() ?: ""
 
     /** The remaining free-text boxes (course lists). Times, hours and choices save as soon as they change. */
     private fun save() {
-        p.manualCourses = f("manualCourses")
-        p.skipClasses = f("skipClasses")
-        // p.myGroups is owned by the Courses page now — never written here
+        // the typed fields are gone; their saved values are left as they are
         Scheduler.ensurePolling(this)
         Scheduler.scheduleAll(this)
     }

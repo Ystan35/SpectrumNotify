@@ -82,11 +82,13 @@ object DayTimeline {
     /** "Room BK2", "Online" or "" — your Location setting first, then the room from the UM list. */
     private fun placeOf(ctx: Context, s: Slot, meeting: String): String {
         val loc = Timetable.locationOf(ctx, s.course)
+        val fromUm = s.grp.startsWith("cat-")
+        val room = if (fromUm) Timetable.umRoom(ctx, s).takeUnless { Timetable.isOnline(it) }.orEmpty() else Timetable.roomAt(ctx, s.course, s.day, s.start)
         return when {
-            loc.startsWith("room:") && loc.length > 5 -> loc.removePrefix("room:")
-            Timetable.inPerson(ctx, s.course) -> s.note.ifEmpty { "In person" }
-            loc.startsWith("online:") -> "Online"
-            s.note.isNotEmpty() -> s.note
+            Timetable.inPerson(ctx, s.course) -> room.ifEmpty { "In person" }
+            loc.startsWith("online:") || (fromUm && room.isEmpty()) -> "Online"
+            room.isNotEmpty() -> room
+            !fromUm && s.note.isNotEmpty() -> s.note
             meeting.isNotEmpty() -> "Online"
             else -> ""
         }

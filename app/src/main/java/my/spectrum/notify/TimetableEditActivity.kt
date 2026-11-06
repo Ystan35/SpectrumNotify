@@ -159,7 +159,8 @@ class TimetableEditActivity : BaseActivity() {
         col.label("Attendance", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
         col.label("How is attendance taken for this class?", Type.CAPTION, Ui.DIM, 2)
         // mode: Spectrum link (auto/paste) or manual by lecturer (no link needed)
-        val attModes = listOf("Spectrum link", "Manual by lecturer", "None")
+        // short labels, so the three chips stay one line and line up (ticket SN-KGKUT)
+        val attModes = listOf("Spectrum", "Lecturer", "None")
         val modeKeys = listOf("link", "manual", "none")
         var attMode = when {
             legacyMode >= 0 -> legacyMode
@@ -167,15 +168,18 @@ class TimetableEditActivity : BaseActivity() {
             else -> 0
         }
         val attLinks = legacyLinks.ifEmpty { if (course.isNotEmpty()) Timetable.userAttLinkRaw(this, course) else "" }
-        val attLinksField = col.field(attLinks, "Paste attendance link(s), one per line (optional)")
-        attLinksField.visibility = if (attMode == 0) android.view.View.VISIBLE else android.view.View.GONE
+        lateinit var attLinksField: EditText
         col.chips(attModes, setOf(attMode), false) { sel ->
             attMode = sel.firstOrNull() ?: 2
             attLinksField.visibility = if (attMode == 0) android.view.View.VISIBLE else android.view.View.GONE
         }
-        col.label("Spectrum link = the app finds the attendance page automatically, and you can paste extra links. " +
-            "Manual by lecturer = the lecturer marks attendance in person, so no link is needed.", Type.CAPTION, Ui.DIM, 6)
+        col.label("Spectrum: the app finds the page. Lecturer: marked in class, no link.", Type.CAPTION, Ui.DIM, 6)
+        // only for Spectrum, so it sits under the choice
+        attLinksField = col.field(attLinks, "Extra attendance links, one per line (optional)")
+        attLinksField.visibility = if (attMode == 0) android.view.View.VISIBLE else android.view.View.GONE
 
+        // own entries have one slot per day ("m:grp:day"); the first one's value stands for the entry
+        val modePicked = usualMode(col, "m:$grp:${days.minOrNull() ?: 1}")
         val stopPicked = busStopPicker(col, course)
 
         col.label("Colour", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
@@ -189,10 +193,12 @@ class TimetableEditActivity : BaseActivity() {
                 days.isEmpty() -> toast("Choose at least one day")
                 end <= start -> toast("The end time must be after the start time")
                 else -> {
+                    val g = if (editing) grp else Timetable.newGroup()
                     Timetable.saveManual(
-                        this, if (editing) grp else Timetable.newGroup(), code, titleField.text.toString().trim(),
+                        this, g, code, titleField.text.toString().trim(),
                         days, start, end, kinds[kindIdx], noteField.text.toString().trim(),
                     )
+                    days.forEach { d -> Timetable.setClassMode(this, "m:$g:$d", null, modePicked()) }
                     Timetable.setAttMode(this, code, modeKeys[attMode])
                     // pasted links feed the same resolver as the Attendance buttons everywhere
                     if (attMode == 0) Timetable.setAttendanceLink(this, code, attLinksField.text.toString().trim())
@@ -295,6 +301,7 @@ class TimetableEditActivity : BaseActivity() {
         )
         col.chips(kindLabels, setOf(kindIdx), false) { kindIdx = it.first() }
 
+        val modePicked = usualMode(col, s.key)
         val stopPicked = busStopPicker(col, s.course)
 
         col.label("Colour", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
@@ -309,6 +316,7 @@ class TimetableEditActivity : BaseActivity() {
             Timetable.setKind(this, s.key, kinds[kindIdx])
             Timetable.setColourIndex(this, s.course, colourIdx)
             Timetable.setBusStop(this, s.course, stopPicked())
+            Timetable.setClassMode(this, s.key, null, modePicked())
             // write overrides only when they differ from Spectrum's values
             val hasChanged = newStart != specStart || newEnd != specEnd
             if (hasChanged) Timetable.setTimeOverride(this, s.key, newStart, newEnd)
@@ -357,6 +365,22 @@ class TimetableEditActivity : BaseActivity() {
         val auto = "Auto" + (guess?.let { " (${it.name})" } ?: " (not known)")
         col.addView(pickerField(places.firstOrNull { it.id == picked }?.label() ?: auto, "Nearest bus stop", none = auto) { id -> picked = id },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+        return { picked }
+    }
+
+    /**
+     * "Usually": this class online or in person every week, whatever the course is set to (a tutorial in person while
+     * the lecture stays online). The same value as Every week in the Timetable popup. Returns a getter, read on Save.
+     */
+    private fun usualMode(col: LinearLayout, key: String): () -> String {
+        val modes = listOf("", "online", "inperson")
+        val now = getSharedPreferences("timetable", MODE_PRIVATE).getString("cmode:$key", "") ?: ""
+        var picked = now
+        col.label("Usually", Type.LABEL, Ui.TEXT, 20).setTypeface(null, android.graphics.Typeface.BOLD)
+        col.label("Online or in person every week. Course = as set in Settings → Online or in person. For one week only, tap the class in Timetable.", Type.CAPTION, Ui.DIM, 2)
+        col.chips(listOf("Course", "Online", "In person"), setOf(modes.indexOf(now).coerceAtLeast(0)), false) { sel ->
+            picked = modes[sel.firstOrNull() ?: 0]
+        }
         return { picked }
     }
 

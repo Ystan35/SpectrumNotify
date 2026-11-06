@@ -66,10 +66,16 @@ fun relIn(secs: Long): String = when {
         val m = (secs % 3600) / 60
         if (m == 0L) "in ${h}h" else "in ${h}h ${m}m"
     }
-    else -> {
-        val d = (secs + 43200) / 86400
-        "in $d day" + if (d == 1L) "" else "s"
-    }
+    else -> daysAway(secs).let { d -> if (d == 1L) "tomorrow" else "in $d days" }
+}
+
+/**
+ * Calendar days from today to [secs] from now (Malaysian time): Monday is 2 days from Saturday at any hour. Rounding
+ * hours / 24 gave "2 days" for Mon 12:00 and "3 days" for Mon 17:00 when seen on Saturday night.
+ */
+fun daysAway(secs: Long): Long {
+    val now = System.currentTimeMillis() / 1000
+    return java.time.temporal.ChronoUnit.DAYS.between(localDt(now).toLocalDate(), localDt(now + secs).toLocalDate())
 }
 
 /** Short form for chips: "40 min", "5h", "3d" */

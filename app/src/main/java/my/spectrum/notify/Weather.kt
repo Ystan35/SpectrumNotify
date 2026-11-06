@@ -14,7 +14,7 @@ import java.time.LocalDateTime
  */
 object Weather {
     private const val URL_S = "https://api.open-meteo.com/v1/forecast?latitude=3.1209&longitude=101.6538" +
-        "&hourly=precipitation_probability&timezone=Asia%2FKuala_Lumpur&forecast_days=2"
+        "&hourly=precipitation_probability,temperature_2m&timezone=Asia%2FKuala_Lumpur&forecast_days=2"
     /** Rain counts from this chance (%) on. */
     const val RAIN_PCT = 60
     /** Credit (required by the data licence) and disclaimer, under every rain message. */
@@ -28,7 +28,8 @@ object Weather {
     fun refresh(ctx: Context) {
         val sp = sp(ctx)
         val now = System.currentTimeMillis()
-        if (now - sp.getLong("at", 0L) < REFRESH_MS) return
+        // a forecast kept from before temperatures were asked for is fetched again once
+        if (now - sp.getLong("at", 0L) < REFRESH_MS && sp.getString("json", "")!!.contains("temperature_2m")) return
         try {
             val conn = URL(URL_S).openConnection() as HttpURLConnection
             val text = try {
@@ -46,18 +47,31 @@ object Weather {
     }
 
     /** Chance of rain (%) per hour of [date] (hour 0–23 -> %); empty when unknown or too old. */
-    private fun hourly(ctx: Context, date: LocalDate): Map<Int, Int> {
+    private fun hourly(ctx: Context, date: LocalDate): Map<Int, Int> = series(ctx, date, "precipitation_probability")
+
+    /** Temperature (°C, rounded) per hour of [date]; empty when unknown, too old, or kept from before temperatures were asked for. */
+    fun temps(ctx: Context, date: LocalDate): Map<Int, Int> = series(ctx, date, "temperature_2m")
+
+    /** Oli: "Rain likely 2 – 5 pm (up to 70%)" or "No rain expected", from [fromHour] to the end of [date]; null when unknown. */
+    fun rainLine(ctx: Context, date: LocalDate, fromHour: Int): String? {
+        val h = hourly(ctx, date).filterKeys { it >= fromHour }
+        if (h.isEmpty()) return null
+        return rainBetween(ctx, date, fromHour * 60, 24 * 60)?.line()
+            ?: "No rain expected (the chance stays under $RAIN_PCT%, highest ${h.values.max()}%)"
+    }
+
+    private fun series(ctx: Context, date: LocalDate, field: String): Map<Int, Int> {
         val sp = sp(ctx)
         if (System.currentTimeMillis() - sp.getLong("at", 0L) > STALE_MS) return emptyMap()
         return try {
             val h = JSONObject(sp.getString("json", "{}") ?: "{}").optJSONObject("hourly") ?: return emptyMap()
             val times = h.optJSONArray("time") ?: return emptyMap()
-            val pct = h.optJSONArray("precipitation_probability") ?: return emptyMap()
+            val pct = h.optJSONArray(field) ?: return emptyMap()
             val out = HashMap<Int, Int>()
             for (i in 0 until times.length()) {
                 if (pct.isNull(i)) continue
                 val t = LocalDateTime.parse(times.optString(i))   // "2026-10-30T14:00", already Malaysian time
-                if (t.toLocalDate() == date) out[t.hour] = pct.optInt(i)
+                if (t.toLocalDate() == date) out[t.hour] = Math.round(pct.optDouble(i)).toInt()
             }
             out
         } catch (_: Exception) { emptyMap() }

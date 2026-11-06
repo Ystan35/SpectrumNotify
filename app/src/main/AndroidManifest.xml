@@ -59,6 +59,8 @@
             </intent-filter>
         </activity>
         <activity android:name=".MaterialsActivity" android:exported="false" />
+        <activity android:name=".FeedbackActivity" android:exported="false" />
+        <activity android:name=".AssistantActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
 
         <!-- downloaded course files, shared read-only with the app that opens them -->
         <provider

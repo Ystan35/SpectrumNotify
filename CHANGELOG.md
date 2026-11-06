@@ -2,6 +2,16 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.33.0 (versionCode 97)
+Oli, the on-device assistant, in-app feedback, and the UM timetable as the source of truth.
+- **Oli** (button on every tab, same place): next class or event, classes on a day, where a class is and how to get there (asks where you start, or uses your location), shuttle trips, deadlines (this week = the next 7 days), free time between classes, reminders (including "14 Nov, 9am, remind me 2 days before") added after a confirm, weather, help logging in. Emergency numbers first; no schoolwork; passwords refused. Runs on the phone; waves when left alone.
+- **Send feedback** (Settings → Help & feedback): Bug, Idea or Question with up to 3 screenshots; My feedback shows each ticket's status and the developer's reply. A ticket is no longer filed twice.
+- **Room and lecturer from the UM timetable:** classes picked from the UM list always show the room and lecturer of your own Occ; changing the Occ in Settings rebuilds those classes; Spectrum's guesses no longer add extra classes for those courses.
+- **Venue everywhere:** Home's card, week blocks and day cards show the room, or Online in its own colour.
+- **Online or in person per class:** in the class popup, for this week only or as usual; the same setting is in Edit class. Settings → Online or in person is the long-term setting per course, now as compact rows with a dropdown each.
+- **Settings tidied:** grouped into Classes, Alerts, Getting around and App; the typed fields (classes to ignore, groups) are gone; hidden deadlines fold away under Deadlines.
+- **Fixed:** "starts in 2 days" and "3 days" switching (now counted in calendar days); hero buttons and chips cut off with large text; 1-hour week blocks overflowing; the class popup and Edit class attendance chips crowded.
+
 ## 0.32.0 (versionCode 96)
 Redesign, a first-run guide, and releases on GitHub.
 - **New look:** jade palette, soft pill buttons, light mode by default, firmer outlines, a clearer current-tab marker. Home's header stays put while the page scrolls.

@@ -72,8 +72,7 @@ class NextClassWidget : AppWidgetProvider() {
                         val locPref = Timetable.locationOf(ctx, next.course)
                         val locLine = when {
                             locPref.startsWith("online:") -> "💻 Online"
-                            locPref.startsWith("room:") -> "📍 " + locPref.removePrefix("room:")
-                            else -> ""
+                            else -> Timetable.roomAt(ctx, next.course, next.start).let { if (it.isEmpty()) "" else "📍 $it" }
                         }
                         v.setTextViewText(R.id.widget_location, locLine)
                         v.setViewVisibility(R.id.widget_location, if (locLine.isEmpty() || compact) android.view.View.GONE else android.view.View.VISIBLE)

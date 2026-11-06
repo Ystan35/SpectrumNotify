@@ -66,7 +66,7 @@ class MainActivity : BaseActivity() {
     private lateinit var eventsList: LinearLayout
     private lateinit var navBar: LinearLayout
     private lateinit var bellDot: View
-    private lateinit var themeBtn: ImageButton
+    private var themeBtn: ImageButton? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var heroSig = ""
@@ -120,6 +120,8 @@ class MainActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         recreateIfLookChanged()
+        // the timetable's UM classes follow your saved Occ (repairs ones Settings left on an old Occ)
+        if (Timetable.syncOccs(this).isNotEmpty()) Scheduler.scheduleAll(this)
         ovAt = 0L
         handler.post(ticker)
         if (refreshing) handler.post(refreshWatch)
@@ -634,7 +636,7 @@ class MainActivity : BaseActivity() {
 
     /** Sun/moon on the title row: shows what a tap switches to. */
     private fun updateThemeBtn() {
-        themeBtn.setImageResource(if (Ui.dark) R.drawable.ic_sun else R.drawable.ic_moon)
+        themeBtn?.setImageResource(if (Ui.dark) R.drawable.ic_sun else R.drawable.ic_moon)
     }
 
 
@@ -684,8 +686,10 @@ class MainActivity : BaseActivity() {
         tv(label, Type.BODY, if (filled) onFill(Ui.SIGNAL) else 0xFFFFFFFF.toInt(), true).apply {
             gravity = Gravity.CENTER
             minHeight = dp(44)
-            maxLines = 2
-            setPadding(dp(10), dp(4), dp(10), dp(4))
+            // three in a row: one line each, the label shrinks a little rather than breaking mid-word ("Attendan / ce")
+            maxLines = 1
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+            setAutoSizeTextTypeUniformWithConfiguration(11, (Type.BODY * Ui.fontScale).toInt(), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
             background = GradientDrawable().apply {
                 cornerRadius = dp(Radius.PILL).toFloat()
                 if (filled) setColor(Ui.SIGNAL) else { setColor(0x00000000); setStroke(outline(), 0xB3FFFFFF.toInt()) }
@@ -874,11 +878,13 @@ class MainActivity : BaseActivity() {
             }
             if (!c.link.isJoinable() || c.manual) {
                 val inPerson = Timetable.inPerson(this, c.code.ifEmpty { c.course })
-                val room = Timetable.locationOf(this, c.code.ifEmpty { c.course }).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
-                val note = if (c.manual) "Attendance for this course is by Teams recording."
-                    else if (inPerson) "In person" + (if (room.isNotEmpty()) " · $room" else "") + ". Online links are ignored for this course."
-                    else "No online link yet. It may be in person, or not posted. The app keeps checking."
-                card.addView((if (inPerson && !c.manual) iconText(R.drawable.ic_place, note, Type.LABEL, soft) else tv(note, Type.LABEL, soft))
+                val room = Timetable.roomAt(this, c.code.ifEmpty { c.course }, c.start)
+                // the venue itself, from the UM timetable, rather than "In person. Online links are ignored"
+                val venue = room.ifEmpty { if (inPerson) "In person" else "" }
+                if (c.manual) card.addView(tv("Attendance for this course is by Teams recording.", Type.LABEL, soft).apply { setPadding(0, dp(10), 0, 0) })
+                else if (venue.isNotEmpty()) card.addView(iconText(R.drawable.ic_place, venue, Type.BODY_L, 0xFFFFFFFF.toInt(), true)
+                    .apply { setPadding(0, dp(10), 0, 0); contentDescription = "Venue: $venue" })
+                else card.addView(tv("No online link yet. It may be in person, or not posted. The app keeps checking.", Type.LABEL, soft)
                     .apply { setPadding(0, dp(10), 0, 0) })
             }
             // dismissed per course and times: a different clash of yours shows again

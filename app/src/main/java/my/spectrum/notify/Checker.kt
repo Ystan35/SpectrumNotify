@@ -1049,7 +1049,7 @@ object Checker {
             if (Timetable.inPerson(ctx, code)) {
                 // in person: a plain notice with the room (no attendance button: signing opens when class starts)
                 if (kok in sent) continue
-                val room = Timetable.locationOf(ctx, code).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
+                val room = Timetable.roomAt(ctx, code, start)
                 val cid = courseId(e)
                 val buttons = ArrayList<Pair<String, String>>()
                 if (cid != 0L) buttons.add(Pair("Course page", "${p.site}/course/view.php?id=$cid"))

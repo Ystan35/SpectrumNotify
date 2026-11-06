@@ -302,6 +302,19 @@ object Timetable {
         manual(ctx).map { it.grp }.filter { it.startsWith("cat-$c-") }.distinct().forEach { deleteManual(ctx, it) }
     }
 
+    /**
+     * Makes the classes picked from the UM list match your saved Occ ("CODE:occN"). Settings used to change the Occ
+     * without swapping the classes, so the timetable kept the old Occ's times and rooms (WIX1001 showed DK2 while
+     * Occ 2 says DK1). Only courses already set up from the UM list are touched. Returns the courses it rebuilt.
+     */
+    fun syncOccs(ctx: Context): List<String> {
+        val want = Regex("""([A-Z]{3,4}\d{4}):occ([0-9]+[a-z]?)""", RegexOption.IGNORE_CASE)
+            .findAll(Prefs(ctx).myGroups).associate { it.groupValues[1].uppercase(Locale.ROOT) to it.groupValues[2] }
+        val have = manual(ctx).filter { it.grp.startsWith("cat-") }
+            .associate { it.course.uppercase(Locale.ROOT) to (it.grp.split('-').getOrNull(3) ?: "") }
+        return want.filter { (code, occ) -> have[code] != null && have[code] != occ && autoSetup(ctx, code, occ) }.keys.toList()
+    }
+
     fun autoSetup(ctx: Context, code: String, occ: String): Boolean {
         val course = Catalog.find(ctx, code) ?: return false
         // the previous Occ's classes go first, so changing Occ never leaves two sets
@@ -339,6 +352,22 @@ object Timetable {
         }
         e.apply()
     }
+
+    /**
+     * Online or in person for one class (slot [key]), since courses switch week by week and a tutorial can be in person
+     * while the lecture stays online: "online", "inperson" or "" = as usual. A choice for one [date] beats the every-week one.
+     */
+    fun classMode(ctx: Context, key: String, date: LocalDate): String =
+        sp(ctx).getString("cmode:$key:$date", null) ?: sp(ctx).getString("cmode:$key", "") ?: ""
+
+    /** Saves [mode] for [date] only, or for every week when [date] is null; "" clears that choice. */
+    fun setClassMode(ctx: Context, key: String, date: LocalDate?, mode: String) {
+        val k = if (date == null) "cmode:$key" else "cmode:$key:$date"
+        sp(ctx).edit().apply { if (mode.isEmpty()) remove(k) else putString(k, mode) }.apply()
+    }
+
+    /** The date of weekday [day] (1 = Mon) in the current Monday-to-Sunday week. */
+    fun thisWeek(day: Int): LocalDate = LocalDate.now(zone()).with(java.time.DayOfWeek.of(day))
 
     /** Meeting link override for a course (user pasted); empty = use the auto-detected one. */
     fun meetingLinkOf(ctx: Context, course: String): String =
@@ -425,6 +454,38 @@ object Timetable {
     /** The location line shown for a course: user-set first, else the catalog room. */
     fun locationOf(ctx: Context, course: String): String =
         sp(ctx).getString("loc:$course", "") ?: ""
+
+    /**
+     * The room of [course]'s class on [day] (1 = Mon) nearest [startMin]: the UM timetable's room first (kept as the
+     * note of the classes picked from it), else a room typed for the whole course. The typed one used to win, so a
+     * room typed once showed on every class of the course.
+     */
+    fun roomAt(ctx: Context, course: String, day: Int, startMin: Int): String {
+        val um = all(ctx).filter { it.course.equals(course, true) && it.grp.startsWith("cat-") && it.day == day }
+            .minByOrNull { kotlin.math.abs(it.start - startMin) }?.let { umRoom(ctx, it) }?.takeIf { it.isNotEmpty() }
+        // the UM timetable's "ONLINE" is not a room: no room line rather than "In person · ONLINE"
+        if (um != null) return if (isOnline(um)) "" else um
+        return locationOf(ctx, course).takeIf { it.startsWith("room:") }?.removePrefix("room:")?.trim().orEmpty()
+    }
+
+    /**
+     * The room of a class picked from the UM timetable, read from the UM list now for your own Occ (its grp is
+     * "cat-CODE-KIND-OCC-i"). The room copied into the class when you picked the Occ goes stale when the list is
+     * updated (WIX1002's tutorial showed MM3 after the list said MM4), so the copy is only the fallback.
+     */
+    fun umRoom(ctx: Context, s: Slot): String {
+        val occ = s.grp.split('-').getOrNull(3) ?: return s.note
+        return Catalog.find(ctx, s.course)?.choices(s.kind)?.firstOrNull { it.occ == occ }
+            ?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ")
+            ?.takeIf { it.isNotEmpty() } ?: s.note
+    }
+
+    /** The UM timetable writes "ONLINE" where a room would be. */
+    fun isOnline(room: String) = room.trim().equals("ONLINE", true)
+
+    /** [roomAt] for a class starting at epoch second [ts]. */
+    fun roomAt(ctx: Context, course: String, ts: Long): String =
+        localDt(ts).let { roomAt(ctx, course, it.dayOfWeek.value, it.hour * 60 + it.minute) }
 
     /** Sets the user location override; empty text clears it. */
     fun setLocation(ctx: Context, course: String, value: String) {
@@ -582,7 +643,10 @@ object Timetable {
         }.filter { inSem(it, sem) }
         val hidden = hiddenKeys(ctx)
         val overrides = readObj(ctx, "kinds")
-        val auto = merged.filter { it.key !in hidden && !isSkipped(it, p) }.map { s ->
+        // a course picked from the UM timetable follows it alone: Spectrum's attendance sessions name other Occs too,
+        // and their one-offs replaced the real class on that date (ticket SN-H4XVU)
+        val umCourses = manual(ctx).filter { it.grp.startsWith("cat-") && inSem(it, sem) }.map { it.course.uppercase(Locale.ROOT) }.toSet()
+        val auto = merged.filter { it.key !in hidden && !isSkipped(it, p) && it.course.uppercase(Locale.ROOT) !in umCourses }.map { s ->
             var out = if (overrides.has(s.key)) s.copy(kind = SlotKind.parse(overrides.optString(s.key))) else s
             timeOverride(ctx, s.key)?.let { (t0, t1) -> out = out.copy(start = t0, end = t1) }
             out

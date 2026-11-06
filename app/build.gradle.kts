@@ -12,8 +12,8 @@ android {
         applicationId = "my.spectrum.notify"
         minSdk = 26
         targetSdk = 34
-        versionCode = 96
-        versionName = "0.32.0"
+        versionCode = 97
+        versionName = "0.33.0"
     }
 
     signingConfigs {
@@ -31,6 +31,8 @@ android {
             isDebuggable = false
             // same fixed key as debug builds, so release APKs install over existing installs
             signingConfig = signingConfigs.getByName("debug")
+            // phones only: the assistant's TensorFlow Lite engine for emulators (x86) would add ~2 MB nobody uses
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         }
     }
     compileOptions {
@@ -48,4 +50,6 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging:24.0.0")
     // OpenStreetMap map on the Shuttle screen (no API key; tiles from openstreetmap.org)
     implementation("org.osmdroid:osmdroid-android:6.1.20")
+    // the assistant's on-device model (assets/assistant.tflite, trained in tools/assistant)
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
 }

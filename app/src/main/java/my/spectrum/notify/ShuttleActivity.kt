@@ -31,6 +31,9 @@ class ShuttleActivity : BaseActivity() {
     companion object {
         const val EXTRA_ROUTE = "route"
         const val EXTRA_FROM = "from"
+        const val EXTRA_TO = "to"
+        /** Find where you are and show the next buses at the nearest stop (Oli: "nearest bus stop"). */
+        const val EXTRA_NEAREST = "nearest"
         /** fromId / toId of your current location (not a place in bus.json). */
         const val ME = "@me"
         private const val REQ_LOCATION = 41
@@ -69,6 +72,7 @@ class ShuttleActivity : BaseActivity() {
         fromId = intent.getStringExtra(EXTRA_FROM)?.takeIf { it in d.places }
             ?: Shuttle.homeId(this).takeIf { id -> id in d.places }
             ?: "UMC"
+        toId = intent.getStringExtra(EXTRA_TO)?.takeIf { it in d.places && it != fromId } ?: ""
         routeIdx = d.routes.indexOfFirst { it.id == intent.getStringExtra(EXTRA_ROUTE) }.coerceAtLeast(0)
         // from Home's bus line: Explore, on that route and stop
         if (intent.hasExtra(EXTRA_ROUTE)) tab = 1
@@ -86,6 +90,8 @@ class ShuttleActivity : BaseActivity() {
             tab = 0
             MyPlaces.fromShare(this, text) { id -> setTrip(fromId.takeIf { it != id } ?: "", id) }
         }
+        // EXTRA_NEAREST: Explore at the nearest stop; EXTRA_FROM = ME (Oli's "Use my location"): plan the trip from here
+        if (intent.getBooleanExtra(EXTRA_NEAREST, false) || intent.getStringExtra(EXTRA_FROM) == ME) locate()
     }
 
     private fun placeOf(d: ShuttleModel.Data, id: String): ShuttleModel.Place? = if (id == ME) me else d.places[id]
@@ -111,6 +117,13 @@ class ShuttleActivity : BaseActivity() {
         // the nearest stop, for "Next buses from" and for a start too far from any stop to walk to
         val nearest = d.places.values.filter { it.isStop }.mapNotNull { s -> ShuttleModel.meters(here, s)?.let { Pair(s, it) } }.minByOrNull { it.second }
         me = ShuttleModel.Place(ME, "Your location", false, nearest?.first?.id ?: "", here.query, loc.latitude, loc.longitude)
+        if (nearest != null && intent.getBooleanExtra(EXTRA_NEAREST, false)) {
+            intent.removeExtra(EXTRA_NEAREST)
+            stopId = nearest.first.id; tab = 1
+            Toast.makeText(this, "Nearest stop: ${nearest.first.name}, about ${nearest.second.toInt()} m away.", Toast.LENGTH_LONG).show()
+            render()
+            return
+        }
         if (nearest != null && nearest.second > 3000) {
             Toast.makeText(this, "You are ${"%.1f".format(nearest.second / 1000.0)} km from the nearest stop (${nearest.first.name}).", Toast.LENGTH_LONG).show()
         }
