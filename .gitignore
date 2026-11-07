@@ -17,3 +17,4 @@ worker/
 .wrangler/
 adminkey.txt
 .dev.vars
+__pycache__/
