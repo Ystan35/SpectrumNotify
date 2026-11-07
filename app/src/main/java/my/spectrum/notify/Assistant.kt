@@ -148,6 +148,7 @@ object Assistant {
         if (CARE.containsMatchIn(q)) return care(ctx)
         if (WEATHER.containsMatchIn(q)) return weather(ctx, q)
         if (JOKE.containsMatchIn(q)) return joke()
+        if (isGreeting(q)) return greet(ctx)
         if (THANKS.matches(q.trim().trimEnd('!', '.', ' '))) return Reply(listOf("Anytime!", "You're welcome. Good luck today!", "Happy to help.").random())
         val p = try { classify(ctx, q) } catch (e: Exception) {
             Log.e("Assistant", "model failed", e)
@@ -249,6 +250,37 @@ object Assistant {
     )
 
     private fun joke() = Reply(JOKES.random(), suggestions = listOf("Another joke", "When is my next class?"))
+
+    // ticket SN-VNH33: "hi hows the day" got "I couldn't answer"
+    private val GREET = Regex("""\b(hi+|hello|hey|hai|helo|yo|morning|good (morning|afternoon|evening)|selamat (pagi|petang|malam)|""" +
+        """how'?s? (is |was )?(the |your |my )?day( going)?|how are (you|u)|how'?s it going|what'?s up|sup|oli)\b""", RegexOption.IGNORE_CASE)
+
+    /** Only greeting words: "hi what's my next class" is a question, not a greeting. */
+    fun isGreeting(q: String) = GREET.containsMatchIn(q) && GREET.replace(q, "").replace(Regex("""[\s,.!?]"""), "").isEmpty()
+
+    private fun greet(ctx: Context): Reply {
+        val h = ZonedDateTime.now(zone()).hour
+        val hello = if (h < 12) "Good morning!" else if (h < 18) "Good afternoon!" else "Good evening!"
+        if (Prefs(ctx).token.isEmpty()) return Reply("$hello I'm Oli. Log in to Spectrum and I can tell you about your day.", suggestions = EXAMPLES.take(3))
+        val today = LocalDate.now(zone())
+        val ov = Checker.overview(ctx)
+        val left = ov.classes.filter { localDt(it.start).toLocalDate() == today }
+        val due = ov.due.filter { localDt(it.ts).toLocalDate() == today }
+        val hm = DateTimeFormatter.ofPattern("HH:mm")
+        val day = buildString {
+            append(when (left.size) {
+                0 -> "No more classes today."
+                1 -> "One class left today: ${Shorts.display(ctx, left[0].code.ifEmpty { left[0].name })} at ${localDt(left[0].start).format(hm)}."
+                else -> "${left.size} classes left today, next ${Shorts.display(ctx, left[0].code.ifEmpty { left[0].name })} at ${localDt(left[0].start).format(hm)}."
+            })
+            append(when (due.size) {
+                0 -> if (left.isEmpty()) " Nothing due today either: a free day." else " Nothing due today."
+                1 -> " Due today: ${due[0].name}."
+                else -> " ${due.size} things due today, first ${due[0].name}."
+            })
+        }
+        return Reply("$hello $day", source = synced(ctx), suggestions = listOf("What's due this week?", "What classes do I have tomorrow?", "Tell me a joke"))
+    }
 
     private fun care(ctx: Context): Reply {
         val lines = listOf(
@@ -669,6 +701,8 @@ object Assistant {
         check(JOKE.containsMatchIn("tell me a joke") && THANKS.matches("thank you so much") && !THANKS.matches("thanks, when is my class"))
         check(REST.containsMatchIn("how long is my rest time") && REST.containsMatchIn("how much free time do i have") && REST.containsMatchIn("when am i free") &&
             !REST.containsMatchIn("when is my next class") && !REST.containsMatchIn("bus to FSKTM"))
+        check(isGreeting("hi hows the day") && isGreeting("Good morning Oli!") && isGreeting("hello, how are you?") &&
+            !isGreeting("hi what's my next class") && !isGreeting("history class"))
         check(dates(DATE_WORDS.find("list my class in monday")?.value, mon) == mon to mon)
         check(LOGIN.containsMatchIn("help me to login") && LOGIN.containsMatchIn("how to sign in") && !LOGIN.containsMatchIn("remind me to submit the logbook"))
         val devfest ="help me to set reminder on 14 nov 2026, event: dev fest 2026, at sunway university, time: 9am - 5pm remind me 2days before"

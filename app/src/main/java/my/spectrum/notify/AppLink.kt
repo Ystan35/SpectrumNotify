@@ -18,11 +18,13 @@ object AppLink {
 
     fun online(code: String) = "app:online?code=" + Uri.encode(code)
     fun keepInPerson(code: String) = "app:inperson?code=" + Uri.encode(code)
+    const val LOGIN = "app:login"
 
     /** The intent for an "app:" button, or null for an ordinary link. [nid] = the notification to close. */
     fun intent(ctx: Context, url: String, nid: Int = 0): Intent? {
         if (!url.startsWith("app:")) return null
         val u = Uri.parse(url.replaceFirst("app:", "app://"))
+        if (u.host == "login") return Intent(ctx, LoginWebActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return Intent(ctx, SettingsActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .putExtra(SettingsActivity.EXTRA_OPEN, "inperson")

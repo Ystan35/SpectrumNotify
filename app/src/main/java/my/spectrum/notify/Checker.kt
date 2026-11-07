@@ -329,15 +329,16 @@ object Checker {
     fun linksForCourse(
         ctx: Context, code: String, courseId: Long,
         extraTokens: Set<String> = emptySet(), preferLec: Boolean? = null,
-        day: Int = 0, startMin: Int = -1, endMin: Int = -1,
+        day: Int = 0, startMin: Int = -1, endMin: Int = -1, online: Boolean = false,
     ): Triple<String, String, String> {
         val p = Prefs(ctx)
         val id = if (courseId != 0L) courseId else courseIdForCode(ctx, code)
         // your choice for this kind of class (Attendance picker) first, then the app's guess
         val att = Timetable.attFor(ctx, code, preferLec).ifEmpty { attendanceUrl(ctx, id, preferLec) }
-        val meeting = if (Timetable.inPerson(ctx, code)) "" else Timetable.meetingLinkOf(ctx, code).ifEmpty {
+        // [online]: you set this class online, so the course being back in person does not hide its link
+        val meeting = if (!online && Timetable.inPerson(ctx, code)) "" else Timetable.meetingLinkOf(ctx, code, preferLec).ifEmpty {
             if (id == 0L) "" else {
-                val ls = linksFromJson(State(ctx).j.optJSONObject("links") ?: JSONObject())
+                val ls = linksFromJson(State.readOnly(ctx).j.optJSONObject("links") ?: JSONObject())
                     .get(id.toString()) ?: emptyList()
                 // Score links against EVERYTHING the requesting class knows (user request:
                 // "filter every detail like time, date, lecture name, occ, course"):
@@ -347,7 +348,7 @@ object Checker {
                 // Captured labels carry text like
                 //   "Attendance k ( L ) @ Bilik Kuliah Monday 12:00 - 02:00 (Rasha Atallah)"
                 // so day-name and start-hour matching against the label is reliable.
-                val mine = Groups.mine(State(ctx), Prefs(ctx), code.uppercase())
+                val mine = Groups.mine(State.readOnly(ctx), Prefs(ctx), code.uppercase())
                 val dayName = if (day in 1..7) Timetable.DAYS[day - 1] else ""
                 val startHour = startMin / 60
                 // "9" must also match "09:00", and a 2 pm class "02:00" / "2pm"
@@ -480,7 +481,7 @@ object Checker {
         val cands = ArrayList<Cand>()
         val seen = HashSet<String>()
         // a link you pasted for this course beats anything detected, on every screen and in the class alert
-        Timetable.meetingLinkOf(ctx, Timetable.courseCode(e.optJSONObject("course"))).takeIf { it.isNotEmpty() }?.let { u ->
+        Timetable.meetingLinkOf(ctx, Timetable.courseCode(e.optJSONObject("course")), preferLecOf(e.str("name"))).takeIf { it.isNotEmpty() }?.let { u ->
             seen.add(u); cands.add(Cand(1000, true, 0L, u, "your link"))
         }
         for (u in findLinks(e.str("description"))) if (seen.add(u)) cands.add(Cand(100, linkIsMeeting(u), 0L, u, "calendar event"))
@@ -1355,9 +1356,14 @@ object Checker {
                 p.lastError = msg.take(200)
                 NotifyLog.sys(ctx, "Check failed: ${friendly(msg).take(150)}")
                 if ((p.fails >= 3 || "invalidtoken" in msg) && !p.alerted) {
-                    Notifier.push(
+                    // Spectrum rejected the login: say so plainly, with a button straight to the sign-in (ticket SN-N3UAY)
+                    if ("invalidtoken" in msg) Notifier.push(
+                        ctx, "Log in to Spectrum again",
+                        "Spectrum ended this app's login, so classes and deadlines are not being checked. Log in again to continue.", true,
+                        listOf(Pair("Log in", AppLink.LOGIN)),
+                    ) else Notifier.push(
                         ctx, "Spectrum Notify is failing",
-                        "${friendly(msg).take(300)}\n\nIf this says invalidtoken, log in again in the app.", true,
+                        "${friendly(msg).take(300)}\n\nThe app keeps trying.", true,
                     )
                     p.alerted = true
                 }

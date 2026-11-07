@@ -20,12 +20,13 @@ assert.strictEqual(redact("token=abc"), "token: [removed]");
 assert.ok(!redact("here eyJhbGciOiJIUzI1NiJ9abcdefghijklmnopqrstuvwxyz0123 end").includes("eyJ"));
 assert.strictEqual(redact("WIX1001 lecture at 10am"), "WIX1001 lecture at 10am");
 
-assert.deepStrictEqual(statusOf({ state: "open", labels: [] }, []), { status: "received" });
-assert.deepStrictEqual(statusOf({ state: "open", labels: [{ name: "in-progress" }] }, []), { status: "working" });
+assert.deepStrictEqual(statusOf({ state: "open", labels: [] }, []), { status: "received", reply: null });
+assert.deepStrictEqual(statusOf({ state: "open", labels: [{ name: "in-progress" }] }, []), { status: "working", reply: null });
 assert.deepStrictEqual(statusOf({ state: "closed", state_reason: "completed", labels: [{ name: "bug" }, { name: "fixed-in:0.33.0" }] },
   [{ body: "looking" }, { body: "Reply: Fixed, thanks for reporting!" }]),
   { status: "fixed", version: "0.33.0", reply: "Fixed, thanks for reporting!" });
 assert.deepStrictEqual(statusOf({ state: "closed", state_reason: "not_planned", labels: [] }, []), { status: "closed", reply: null });
+assert.deepStrictEqual(statusOf({ state: "open", labels: [] }, [{ body: "Reply: Looking into it" }]), { status: "received", reply: "Looking into it" });
 console.log("feedback script checks pass");
 
 // screenshots

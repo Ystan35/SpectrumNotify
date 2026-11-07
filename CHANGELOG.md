@@ -2,6 +2,18 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.34.0 (versionCode 99)
+A page for each course, tap feedback, and your own meeting links.
+- **Course page:** tap a course for everything about it on one page: next class with Join, its classes with room and lecturer, Online or in person, meeting links, deadlines, materials, notification pages and recent notifications. The Occ is set there; the list shows "Set your Occ" or "Check your Occ" when it needs a look.
+- **Meeting links you can change:** each course page has Meeting links, with Lectures and Tutorials apart when the course has both; a link you saved before starts both. Choosing Online for a class or course that has no link asks you to paste one (or Later).
+- **Fixed: no Join class for a class set to Online** while its course was set to In person.
+- **Tap feedback:** rows, cards, week blocks and Home's buttons show a ripple when tapped.
+- **Loading you can see:** a progress bar while checking Spectrum, placeholder cards on first load, and "Checking Spectrum…" in the sync line. Today's classes that are over show Done.
+- **Login ended:** Home and the alert say so and open the login page.
+- **Feedback:** tickets grouped into Waiting, Replied and Fixed and closed; a new reply shows a notification; screenshots open full screen.
+- **"Next class only (9 Nov)"** in the class popup now means the coming class (it showed last Monday at the weekend); "Course" under Usually says which setting the course uses.
+- **Faster:** the Courses list and Home no longer re-read all saved data for each class; the UM course list loads in the background at start.
+
 ## 0.33.1 (versionCode 98)
 - **Fixed: Check for app update did nothing.** Finding a newer version showed only a short message with the address cut off, and stopped the automatic update notice for that version. It now starts the download, like Get the update in the notification.
 

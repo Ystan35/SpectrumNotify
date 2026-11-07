@@ -447,6 +447,7 @@ class NotificationsActivity : BaseActivity() {
             applyOpen()
         }
         applyOpen()
+        card.pressRipple()
         card.setOnClickListener { toggle() }
         body?.setOnClickListener { toggle() }       // tapping plain text still expands; tapping a link opens it
         return card

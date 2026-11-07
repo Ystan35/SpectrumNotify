@@ -74,20 +74,23 @@ object Catalog {
             val app = ctx.applicationContext
             // The downloaded copy wins over the bundled one when it is not older.
             // A corrupt or empty stored copy counts as "no stored copy".
-            val (bundledDate, bundledSem, bundled) =
-                readText(app.assets.open("catalog.json").bufferedReader().use { it.readText() })
+            val bundledText = app.assets.open("catalog.json").bufferedReader().use { it.readText() }
             val stored = prefs(app).getString("json", null)
-            val picked = if (stored != null) try {
-                val (storedDate, storedSem, storedMap) = readText(stored)
-                if (storedMap.isNotEmpty() && storedDate >= bundledDate) Triple(storedDate, storedSem, storedMap) else null
+            // compare dates first, so only the copy in use is parsed (parsing both doubled the start-up cost)
+            val picked = if (stored != null && dateOf(stored) >= dateOf(bundledText)) try {
+                readText(stored).takeIf { it.third.isNotEmpty() }
             } catch (_: Exception) { null } else null
-            val (date, sem, map) = picked ?: Triple(bundledDate, bundledSem, bundled)
+            val (date, sem, map) = picked ?: readText(bundledText)
             semester = sem
             generatedAt = date
             cache = map
             return map
         }
     }
+
+    private val GENERATED = Regex(""""generatedAt"\s*:\s*"([^"]*)"""")
+    /** The catalogue's generatedAt date without parsing it; "" when missing (counts as oldest). */
+    fun dateOf(text: String): String = GENERATED.find(text)?.groupValues?.get(1) ?: ""
 
     /** Parses one catalogue; returns its generatedAt date, semester and courses. */
     private fun readText(text: String): Triple<String, String, LinkedHashMap<String, Course>> {

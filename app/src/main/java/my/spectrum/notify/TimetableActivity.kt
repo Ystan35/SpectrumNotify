@@ -27,6 +27,8 @@ class TimetableActivity : BaseActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+        /** A slot key: open on that class's day with its popup showing (from the course page). */
+        const val EXTRA_SLOT = "slot"
     }
 
     private lateinit var box: LinearLayout
@@ -48,6 +50,10 @@ class TimetableActivity : BaseActivity() {
         super.onResume()
         recreateIfLookChanged()
         render()
+        intent.getStringExtra(EXTRA_SLOT)?.let { k ->
+            intent.removeExtra(EXTRA_SLOT)   // once: coming back must not reopen it
+            slots.firstOrNull { it.key == k }?.let { s -> mode = 0; day = s.day; render(); slotDetail(s) }
+        }
         Timetable.justHidden?.let { key ->
             Timetable.justHidden = null
             undoBar("Class removed from your timetable") { Timetable.unhide(this, key); render() }
@@ -156,6 +162,7 @@ class TimetableActivity : BaseActivity() {
             orientation = LinearLayout.HORIZONTAL
             background = roundBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, Radius.MD)
             isClickable = true
+            pressRipple()
             setOnClickListener { openEdit(s) }
         }
         val r = dp(14).toFloat()
@@ -222,7 +229,7 @@ class TimetableActivity : BaseActivity() {
             mode == "online" -> "💻 Online"
             mode == "inperson" -> "📍 " + room.ifEmpty { "In person" }
             Timetable.inPerson(this, s.course) -> "📍 " + room.ifEmpty { "In person" }
-            userLoc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
+            userLoc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course, preferLecOf(s)).isNotEmpty()) " · your link" else "")
             umOnline(s) -> "💻 Online"
             userLoc.startsWith("room:") && room.isNotEmpty() -> "📍 $room"
             autoMeeting.isNotEmpty() -> "💻 Online (auto)"
@@ -362,8 +369,8 @@ class TimetableActivity : BaseActivity() {
                         }
                         // the Join buttons read the meeting-link override: a pasted link must land there,
                         // and keeping the found link means "follow whatever Spectrum posts next"
-                        val pinned = Timetable.meetingLinkOf(this, course).isNotEmpty()
-                        Timetable.setMeetingLink(this, course, if (link.isEmpty() || (link == autoMeeting && !pinned)) "" else link)
+                        val pinned = Timetable.meetingLinkOf(this, course, preferLecOf(s)).isNotEmpty()
+                        Timetable.setMeetingLink(this, course, if (link.isEmpty() || (link == autoMeeting && !pinned)) "" else link, mlinkKind(s))
                         Timetable.setLocation(this, course, "online:")
                     }
                     1 -> Timetable.setLocation(this, course, "room:" + roomField.text.toString().trim())
@@ -376,36 +383,11 @@ class TimetableActivity : BaseActivity() {
             .show()
     }
 
-    /** The UM catalog choice this slot matches (room, lecturer), or null. */
-    private fun choiceOf(s: Slot): Catalog.Choice? {
-        val choices = Catalog.find(this, s.course)?.choices(s.kind) ?: return null
-        // your own Occ (the picked class's, else Settings' "CODE:occN"); matching by time alone found another Occ
-        // meeting at the same hour, with its room and lecturer (WIX1002's tutorial showed MM3 and the wrong lecturer)
-        val occ = occOf(s).ifEmpty {
-            Regex(Regex.escape(s.course) + """:occ([0-9]+[a-z]?)""", RegexOption.IGNORE_CASE).find(Prefs(this).myGroups)?.groupValues?.get(1).orEmpty()
-        }
-        return if (occ.isNotEmpty()) choices.firstOrNull { it.occ == occ }
-        else choices.firstOrNull { ch -> ch.parts.any { it.day == s.day && it.start == s.start } }
-    }
-
-    /** This class's room: the UM timetable's (its catalog choice, else the UM class's note), else the typed course room. */
-    private fun roomOf(s: Slot): String =
-        (if (s.grp.startsWith("cat-")) Timetable.umRoom(this, s)
-        else choiceOf(s)?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ").orEmpty())
-            .takeUnless { Timetable.isOnline(it) }.orEmpty()
-            .ifEmpty { Timetable.roomAt(this, s.course, s.day, s.start) }
-
-    /** Your online / in-person choice for this class this week ("" = as usual). */
+    // shared with the course page: in Timetable
+    private fun choiceOf(s: Slot) = Timetable.choiceOf(this, s)
+    private fun roomOf(s: Slot) = Timetable.roomOf(this, s)
     private fun modeOf(s: Slot): String = Timetable.classMode(this, s.key, Timetable.thisWeek(s.day))
-
-    /** The UM timetable lists this class's room as "ONLINE". */
-    private fun umOnline(s: Slot): Boolean =
-        if (s.grp.startsWith("cat-")) Timetable.isOnline(Timetable.umRoom(this, s))
-        else choiceOf(s)?.parts?.any { it.day == s.day && Timetable.isOnline(it.room) } == true
-
-    /** Which Occ this slot belongs to: from the picker group id (cat-CODE-kind-N), else empty. */
-    private fun occOf(s: Slot): String =
-        if (s.grp.startsWith("cat-")) s.grp.split('-').getOrNull(3) ?: "" else ""
+    private fun umOnline(s: Slot) = Timetable.umOnline(this, s)
 
     private fun pasteAttendance(course: String) {
         val field = android.widget.EditText(this).apply {
@@ -552,6 +534,7 @@ class TimetableActivity : BaseActivity() {
                 setStroke(outline(), c)
             }
             isClickable = true
+            pressRipple(Radius.SM, c)
             setOnClickListener { slotDetail(s) }   // tap anywhere: full detail popup
         }
         // line 1: the code, then the type in a lighter tone ("WIX1002 TUT"); the short name only fit as "WIX1002 · …"
@@ -597,8 +580,12 @@ class TimetableActivity : BaseActivity() {
     /** The meeting link for this exact class, resolved the same way as on the Home screen. */
     private fun meetingOf(s: Slot): String = Checker.linksForCourse(
         this, s.course, courseIdOf(s.course), Checker.groupTokens(s.title + " " + s.note),
-        preferLecOf(s), s.day, s.start, s.end,
+        preferLecOf(s), s.day, s.start, s.end, online = modeOf(s) == "online",
     ).first
+
+    /** Which of the course's meeting links this class uses: its lecture or tutorial one when the course has both. */
+    private fun mlinkKind(s: Slot): String =
+        if (meetingKinds(s.course).size < 2) "" else when (preferLecOf(s)) { true -> "lec"; false -> "tut"; null -> "" }
 
     /** Popup with the full class detail: name, time, location, lecturer, attendance link(s). */
     private fun slotDetail(s: Slot) {
@@ -618,7 +605,7 @@ class TimetableActivity : BaseActivity() {
             // a room means in person: the room alone, big and clear
             mode == "inperson" -> room.ifEmpty { "In person" }
             Timetable.inPerson(this, s.course) -> room.ifEmpty { "In person" }
-            loc.startsWith("online:") -> "Online" + (if (Timetable.meetingLinkOf(this, s.course).isNotEmpty()) " · your link" else "")
+            loc.startsWith("online:") -> "Online" + (if (Timetable.meetingLinkOf(this, s.course, preferLecOf(s)).isNotEmpty()) " · your link" else "")
             umOnline(s) -> "Online"
             room.isNotEmpty() -> room
             autoMeeting.isNotEmpty() -> "Online (auto)"
@@ -659,14 +646,18 @@ class TimetableActivity : BaseActivity() {
                 val m = modes[sel.firstOrNull() ?: 0]
                 if (d == null) usualKeys.forEach { Timetable.setClassMode(this, it, null, m) } else Timetable.setClassMode(this, s.key, d, m)
                 render()
-                dlg.dismiss(); slotDetail(s)
+                dlg.dismiss()
+                // chose Online and Join class would have nothing to open: ask for the link now
+                if (m == "online" && meetingOf(s).isEmpty()) editMeetingLink(s.course, mlinkKind(s), ask = true) { render(); slotDetail(s) }
+                else slotDetail(s)
             }
         }
-        modeRow("This week (${date.dayOfMonth} ${date.month.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH)})",
+        modeRow("Next class only (${date.dayOfMonth} ${date.month.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH)})",
             listOf("Usual", "Online", "In person"), date)
         // short labels: three chips fit one row inside the popup ("As the course" wrapped and pushed the row out)
         modeRow("Usually", listOf("Course", "Online", "In person"), null)
-        box.addView(tv("Course = as set in Settings → Online or in person.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
+        box.addView(tv("Course = follow the course's own setting (now " + (if (Timetable.inPerson(this, s.course)) "in person" else "online") +
+            "). Change it on the course page.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
         // Spectrum's note, unless it only repeats the room
         if (s.note.isNotEmpty() && !s.grp.startsWith("cat-") && !s.note.equals(room, true)) box.addView(tv(s.note, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
         // action buttons: attendance page (primary), meeting link, course page — whichever exist

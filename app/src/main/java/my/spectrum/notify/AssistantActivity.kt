@@ -53,6 +53,7 @@ class AssistantActivity : BaseActivity() {
             setColorFilter(onFill(Ui.SIGNAL))
             background = roundBg(Ui.SIGNAL, Ui.SIGNAL, this@AssistantActivity, Radius.PILL)
             contentDescription = "Send question"
+            pressRipple(Radius.PILL, onFill(Ui.SIGNAL))
             setOnClickListener { send() }
         }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply { leftMargin = dp(8) })
         root.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

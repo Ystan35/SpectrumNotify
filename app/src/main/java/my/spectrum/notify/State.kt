@@ -27,5 +27,17 @@ class State(ctx: Context) {
 
     companion object {
         val lock = ReentrantLock()
+        private var ro: State? = null
+        private var roStamp = 0L
+
+        /**
+         * One shared copy for read-only hot paths (the link resolver ran once per class and parsed the whole file,
+         * ~0.5 MB, each time); read again when the file changes. Never put() into it or save() it.
+         */
+        fun readOnly(ctx: Context): State = synchronized(this) {
+            val f = File(ctx.applicationContext.filesDir, "state.json")
+            val stamp = f.lastModified() * 31 + f.length()
+            ro?.takeIf { stamp == roStamp } ?: State(ctx).also { ro = it; roStamp = stamp }
+        }
     }
 }

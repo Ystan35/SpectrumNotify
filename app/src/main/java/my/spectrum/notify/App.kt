@@ -10,6 +10,8 @@ import android.app.Application
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        // the UM course list (2 000+ courses) is parsed once per process; doing it on first use froze Home (ANR)
+        Thread { try { Catalog.load(this) } catch (_: Exception) { } }.start()
         try {
             val p = Prefs(this)
             val code = packageManager.getPackageInfo(packageName, 0).let {

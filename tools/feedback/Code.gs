@@ -82,7 +82,7 @@ function doGet(e) {
     if (!num) { out[t] = { status: "unknown" }; return; }
     props.setProperty("t:" + t, String(num));
     var issue = gh("get", "/issues/" + num);
-    var comments = issue.state === "closed" && issue.comments > 0 ? gh("get", "/issues/" + num + "/comments?per_page=100") : [];
+    var comments = issue.comments > 0 ? gh("get", "/issues/" + num + "/comments?per_page=100") : [];
     out[t] = statusOf(issue, comments);
     console.log(t + " -> issue #" + num + " " + issue.state + " (" + (issue.state_reason || "") + "), labels " + (issue.labels || []).map(function (l) { return l.name; }).join(","));
     cache.put("s:" + t, JSON.stringify(out[t]), 120);  // GitHub is asked at most every 2 min per ticket
@@ -114,7 +114,8 @@ function statusOf(issue, comments) {
   var labels = (issue.labels || []).map(function (l) { return typeof l === "string" ? l : l.name; });
   var reply = null;
   (comments || []).forEach(function (c) { var m = /^Reply:\s*([\s\S]+)/.exec((c.body || "").trim()); if (m) reply = m[1].trim(); });
-  if (issue.state !== "closed") return { status: labels.indexOf("in-progress") >= 0 ? "working" : "received" };
+  // a Reply: on an open issue reaches the app too, not only once it is closed
+  if (issue.state !== "closed") return { status: labels.indexOf("in-progress") >= 0 ? "working" : "received", reply: reply };
   if (issue.state_reason === "not_planned") return { status: "closed", reply: reply };
   var v = null;
   labels.forEach(function (l) { var m = /^fixed-in:(\S+)$/.exec(l); if (m) v = m[1]; });

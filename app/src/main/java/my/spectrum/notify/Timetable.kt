@@ -48,6 +48,11 @@ data class Slot(
  * Learned slots are remembered in state.json for a few weeks so the timetable does not empty out between calendar windows.
  */
 object Timetable {
+    init {
+        // Saturday 7 Nov: Monday's class is 9 Nov; Saturday's own class is today
+        LocalDate.of(2026, 11, 7).let { sat -> check(thisWeek(1, sat) == LocalDate.of(2026, 11, 9) && thisWeek(6, sat) == sat) }
+    }
+
     private const val KEEP_SECS = 42L * 86400
 
     val DAYS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -366,18 +371,45 @@ object Timetable {
         sp(ctx).edit().apply { if (mode.isEmpty()) remove(k) else putString(k, mode) }.apply()
     }
 
-    /** The date of weekday [day] (1 = Mon) in the current Monday-to-Sunday week. */
-    fun thisWeek(day: Int): LocalDate = LocalDate.now(zone()).with(java.time.DayOfWeek.of(day))
+    /**
+     * The next date of weekday [day] (1 = Mon), today included: the class a "this week" choice is about. The
+     * Monday-to-Sunday week pointed at days already past at the weekend (Saturday showed Monday 2 Nov, not 9 Nov).
+     */
+    fun thisWeek(day: Int, today: LocalDate = LocalDate.now(zone())): LocalDate =
+        today.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.of(day)))
 
-    /** Meeting link override for a course (user pasted); empty = use the auto-detected one. */
-    fun meetingLinkOf(ctx: Context, course: String): String =
-        (sp(ctx).getString("mlink:$course", "") ?: "").ifEmpty {
+    /**
+     * Your meeting link for a course's lectures ([preferLec] true) or tutorials (false), else the one for the whole
+     * course (what older versions saved); empty = use the auto-detected one.
+     */
+    fun meetingLinkOf(ctx: Context, course: String, preferLec: Boolean? = null): String {
+        val k = when (preferLec) { true -> "lec"; false -> "tut"; null -> "" }
+        val own = if (k.isEmpty()) "" else sp(ctx).getString("mlink:$course:$k", "") ?: ""
+        return own.ifEmpty { sp(ctx).getString("mlink:$course", "") ?: "" }.ifEmpty {
             // links pasted in the Location dialog before v0.25.1 were only stored as the location
             locationOf(ctx, course).takeIf { it.startsWith("online:") }?.removePrefix("online:")?.trim() ?: ""
         }
+    }
 
-    fun setMeetingLink(ctx: Context, course: String, url: String) {
-        sp(ctx).edit().putString("mlink:$course", url.trim()).apply()
+    /**
+     * Saves the meeting link for [kind] ("lec", "tut", or "" for every class of the course); "" clears it.
+     * Same rules as [setAttFor]: clearing one kind while a whole-course link exists keeps that link for the other kind.
+     */
+    fun setMeetingLink(ctx: Context, course: String, url: String, kind: String = "") {
+        val e = sp(ctx).edit()
+        val key = if (kind.isEmpty()) "mlink:$course" else "mlink:$course:$kind"
+        if (url.isNotBlank()) e.putString(key, url.trim())
+        else if (kind.isEmpty()) { e.remove(key); e.remove("mlink:$course:lec"); e.remove("mlink:$course:tut") }
+        else {
+            e.remove(key)
+            val wide = sp(ctx).getString("mlink:$course", "") ?: ""
+            if (wide.isNotEmpty()) {
+                val other = if (kind == "lec") "tut" else "lec"
+                if ((sp(ctx).getString("mlink:$course:$other", "") ?: "").isEmpty()) e.putString("mlink:$course:$other", wide)
+                e.remove("mlink:$course")
+            }
+        }
+        e.apply()
     }
 
     /** Time override for one learned slot: stored as "start,end" minutes, keyed by slot key. */
@@ -479,6 +511,51 @@ object Timetable {
             ?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ")
             ?.takeIf { it.isNotEmpty() } ?: s.note
     }
+
+    /** The UM catalog choice this slot matches (room, lecturer), or null. */
+    fun choiceOf(ctx: Context, s: Slot): Catalog.Choice? {
+        val choices = Catalog.find(ctx, s.course)?.choices(s.kind) ?: return null
+        // your own Occ (the picked class's, else Settings' "CODE:occN"); matching by time alone found another Occ
+        // meeting at the same hour, with its room and lecturer (WIX1002's tutorial showed MM3 and the wrong lecturer)
+        val occ = occOf(s).ifEmpty {
+            Regex(Regex.escape(s.course) + """:occ([0-9]+[a-z]?)""", RegexOption.IGNORE_CASE).find(Prefs(ctx).myGroups)?.groupValues?.get(1).orEmpty()
+        }
+        return if (occ.isNotEmpty()) choices.firstOrNull { it.occ == occ }
+        else choices.firstOrNull { ch -> ch.parts.any { it.day == s.day && it.start == s.start } }
+    }
+
+    /** This class's room: the UM timetable's (its catalog choice, else the UM class's note), else the typed course room. */
+    fun roomOf(ctx: Context, s: Slot): String =
+        (if (s.grp.startsWith("cat-")) umRoom(ctx, s)
+        else choiceOf(ctx, s)?.parts?.filter { it.day == s.day }?.map { it.room }?.filter { it.isNotEmpty() }?.distinct()?.joinToString(", ").orEmpty())
+            .takeUnless { isOnline(it) }.orEmpty()
+            .ifEmpty { roomAt(ctx, s.course, s.day, s.start) }
+
+    /** Your online / in-person choice for this class this week ("" = as usual). */
+    fun modeOf(ctx: Context, s: Slot): String = classMode(ctx, s.key, thisWeek(s.day))
+
+    /** The UM timetable lists this class's room as "ONLINE". */
+    fun umOnline(ctx: Context, s: Slot): Boolean =
+        if (s.grp.startsWith("cat-")) isOnline(umRoom(ctx, s))
+        else choiceOf(ctx, s)?.parts?.any { it.day == s.day && isOnline(it.room) } == true
+
+    /** Where this class is this week: "Online", the room, "In person", or "" when not known (the week view's rule). */
+    fun venueOf(ctx: Context, s: Slot): String {
+        val room = roomOf(ctx, s)
+        return when (modeOf(ctx, s)) {
+            "online" -> "Online"
+            "inperson" -> room.ifEmpty { "In person" }
+            else -> when {
+                inPerson(ctx, s.course) -> room.ifEmpty { "In person" }
+                locationOf(ctx, s.course).startsWith("online:") || umOnline(ctx, s) -> "Online"
+                else -> room
+            }
+        }
+    }
+
+    /** Which Occ this slot belongs to: from the picker group id (cat-CODE-kind-N), else empty. */
+    fun occOf(s: Slot): String =
+        if (s.grp.startsWith("cat-")) s.grp.split('-').getOrNull(3) ?: "" else ""
 
     /** The UM timetable writes "ONLINE" where a room would be. */
     fun isOnline(room: String) = room.trim().equals("ONLINE", true)

@@ -119,10 +119,12 @@ object Feedback {
         for (t in open) {
             val s = res.optJSONObject(t.id) ?: continue
             val before = t.status
+            val oldReply = t.reply
             t.o.put("status", s.optString("status", before))
             if (!s.isNull("version")) t.o.put("version", s.optString("version"))
             if (!s.isNull("reply")) t.o.put("reply", s.optString("reply"))
             if (before != t.status && t.status in setOf("fixed", "closed")) tell(ctx, t)
+            else if (t.reply.isNotEmpty() && t.reply != oldReply) tell(ctx, t)   // a reply while the ticket is still open
         }
         save(ctx, list)
     }
@@ -130,7 +132,7 @@ object Feedback {
     private fun tell(ctx: Context, t: Ticket) {
         val older = t.version.isNotEmpty() && newer(t.version, versionName(ctx))
         val title = if (t.status == "fixed") "${t.id} is fixed" + (if (t.version.isNotEmpty()) " in ${t.version}" else "")
-            else "${t.id} is closed"
+            else if (t.status == "closed") "${t.id} is closed" else "Reply to ${t.id}"
         val body = buildString {
             append("Your ${kindLabel(t.kind).lowercase()}: \"${t.message.take(80)}\"")
             if (t.reply.isNotEmpty()) append("\n\nDeveloper: ${t.reply}")
@@ -324,7 +326,9 @@ class FeedbackActivity : BaseActivity() {
                 scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
                 background = roundBg(Ui.BAR, Ui.BORDER, this@FeedbackActivity, Radius.SM)
                 clipToOutline = true
-                contentDescription = "Screenshot ${i + 1}"
+                contentDescription = "Screenshot ${i + 1}, tap to view"
+                pressRipple(Radius.SM)
+                setOnClickListener { preview(f, i) }
             }, android.widget.FrameLayout.LayoutParams(dp(88), dp(120)))
             cell.addView(android.widget.ImageButton(this).apply {
                 setImageResource(R.drawable.ic_close)
@@ -338,6 +342,19 @@ class FeedbackActivity : BaseActivity() {
         addPic.visibility = if (picked.size < MAX_IMAGES) android.view.View.VISIBLE else android.view.View.GONE
     }
 
+    /** A picked screenshot full screen, to check it before sending (ticket SN-N3UAY); tap or Back closes it. */
+    private fun preview(f: java.io.File, i: Int) {
+        val d = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        d.setContentView(android.widget.ImageView(this).apply {
+            setImageBitmap(android.graphics.BitmapFactory.decodeFile(f.absolutePath))
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(0xFF000000.toInt())
+            contentDescription = "Screenshot ${i + 1}. Tap to close."
+            setOnClickListener { d.dismiss() }
+        })
+        d.show()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // picked but never sent: nothing should linger on the phone
@@ -348,6 +365,36 @@ class FeedbackActivity : BaseActivity() {
         list.removeAllViews()
         val ts = Feedback.tickets(this)
         if (ts.isEmpty()) { list.label("Nothing sent yet.", Type.BODY, Ui.DIM, 6); return }
+        // grouped so finished tickets don't make the page endless (ticket SN-N3UAY): open ones first, then the
+        // developer's replies, then fixed and closed folded away
+        val finished = ts.filter { it.status in setOf("fixed", "closed") }
+        val replied = ts.filter { it.reply.isNotEmpty() }
+        group("Waiting", ts - finished.toSet() - replied.toSet(), true)
+        group("Replied", replied, true)
+        group("Fixed and closed", finished - replied.toSet(), false)
+    }
+
+    private val unfolded = mutableSetOf<String>()
+
+    private fun group(name: String, ts: List<Feedback.Ticket>, openByDefault: Boolean) {
+        if (ts.isEmpty()) return
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun isOpen() = (name in unfolded) != openByDefault   // a tap flips the default
+        val head = tv("", Type.LABEL, Ui.TEXT, true).apply {
+            minHeight = dp(Ui.touch(48))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(12), 0, 0)
+        }
+        fun show() {
+            head.text = (if (isOpen()) "▾  " else "▸  ") + "$name (${ts.size})"
+            head.contentDescription = "$name, ${ts.size} tickets, " + if (isOpen()) "shown" else "hidden"
+            body.visibility = if (isOpen()) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        head.pressRipple(Radius.SM)
+        head.setOnClickListener { if (!unfolded.add(name)) unfolded.remove(name); show() }
+        show()
+        list.addView(head)
+        list.addView(body)
         val fmt = java.time.format.DateTimeFormatter.ofPattern("d MMM")
         for (t in ts) {
             val card = LinearLayout(this).apply {
@@ -364,7 +411,7 @@ class FeedbackActivity : BaseActivity() {
                 .apply { setPadding(0, dp(6), 0, 0) })
             if (t.reply.isNotEmpty()) card.addView(tv("Developer: ${t.reply}", Type.BODY, Ui.TEXT).apply { setPadding(0, dp(4), 0, 0) })
             card.contentDescription = "Ticket ${t.id.replace("-", " ")}, ${Feedback.kindLabel(t.kind)}, ${Feedback.statusText(t)}. ${t.message.take(200)}"
-            list.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            body.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
     }
 

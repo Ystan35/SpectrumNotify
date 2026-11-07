@@ -79,6 +79,11 @@ class MainActivity : BaseActivity() {
     private var refreshStart = 0L
     private var refreshBase = 0L
     private var spin: ObjectAnimator? = null
+    private lateinit var refreshBar: android.widget.ProgressBar
+    private var skelAnim: ObjectAnimator? = null
+    private var wasLoading = false
+    /** Logged in, but the first check has not finished yet: Home has nothing to show. */
+    private fun firstLoad() = p.token.isNotEmpty() && p.lastRunTs == 0L && p.lastError.isEmpty()
     private var heroClasses: List<Checker.ClassItem> = emptyList()
     private var heroPos = 0
     private var heroDragging = false
@@ -95,7 +100,8 @@ class MainActivity : BaseActivity() {
     private val ticker = object : Runnable {
         override fun run() {
             render()
-            handler.postDelayed(this, 30000)  // 30s: only the countdown text needs frequent updates, and now it comes from sig-free rebuilds
+            // 30s: only the countdown text needs frequent updates; during the first check, look for its result every 1.5 s
+            handler.postDelayed(this, if (firstLoad()) 1500 else 30000)
         }
     }
 
@@ -520,7 +526,15 @@ class MainActivity : BaseActivity() {
             setOnClickListener { startRefresh() }
         }
         header.addView(refreshBtn, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
-        content.addView(header, lp(MATCH, WRAP).apply { bottomMargin = dp(16) })
+        content.addView(header, lp(MATCH, WRAP).apply { bottomMargin = dp(8) })
+        // shows a check is running, so you are not left counting (ticket SN-N3UAY)
+        refreshBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Ui.CYAN)
+            visibility = View.INVISIBLE
+            contentDescription = "Checking Spectrum"
+        }
+        content.addView(refreshBar, lp(MATCH, dp(4)).apply { bottomMargin = dp(8) })
 
         // the next class leads; the setup guide comes after it (it used to push the class below the fold)
         heroBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; tag = "guide:hero" }
@@ -575,6 +589,10 @@ class MainActivity : BaseActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
             return
         }
+        if ("invalidtoken" in p.lastError) {
+            startActivity(Intent(this, LoginWebActivity::class.java))
+            return
+        }
         if (refreshing) return
         if (Checker.inQuiet(java.time.ZonedDateTime.now(zone()), p)) {
             Toast.makeText(this, "Quiet hours (${p.quietStart}:00–${p.quietEnd}:00): checks are paused until they end.", Toast.LENGTH_LONG).show()
@@ -594,6 +612,8 @@ class MainActivity : BaseActivity() {
             interpolator = LinearInterpolator()
             start()
         }
+        refreshBar.visibility = View.VISIBLE
+        syncLabel.text = "● Checking Spectrum…"; syncLabel.setTextColor(Ui.CYAN)
         Scheduler.pollNow(this)
         handler.removeCallbacks(refreshWatch)
         handler.postDelayed(refreshWatch, 1000)
@@ -644,6 +664,11 @@ class MainActivity : BaseActivity() {
     private fun render() {
         checkRefreshDone()
         val loggedIn = p.token.isNotEmpty()
+        val loading = firstLoad()
+        // the first check just finished: read its data now, not up to 15 s later
+        if (wasLoading && !loading) { ovAt = 0L; heroSig = ""; dueSig = "" }
+        wasLoading = loading
+        refreshBar.visibility = if (refreshing || loading) View.VISIBLE else View.INVISIBLE
         val nowMs = System.currentTimeMillis()
         if (nowMs - ovAt > 15000) {
             ov = try { Checker.overview(this) } catch (e: Exception) { Checker.Overview(emptyList(), emptyList()) }
@@ -675,6 +700,8 @@ class MainActivity : BaseActivity() {
         val ts = p.lastRunTs
         when {
             !loggedIn -> { syncLabel.text = "● Not logged in"; syncLabel.setTextColor(Ui.RED) }
+            refreshing || firstLoad() -> { syncLabel.text = "● Checking Spectrum…"; syncLabel.setTextColor(Ui.CYAN) }
+            "invalidtoken" in p.lastError -> { syncLabel.text = "● Spectrum ended the login. Tap refresh to log in again."; syncLabel.setTextColor(Ui.RED) }
             p.lastError.isNotEmpty() -> { syncLabel.text = "● Last check failed. Tap refresh to retry."; syncLabel.setTextColor(Ui.RED) }
             ts == 0L -> { syncLabel.text = "● Not checked yet. Tap refresh."; syncLabel.setTextColor(Ui.DIM) }
             else -> { syncLabel.text = "● Synced ${ago(ts)}"; syncLabel.setTextColor(Ui.GREEN) }
@@ -694,20 +721,43 @@ class MainActivity : BaseActivity() {
                 cornerRadius = dp(Radius.PILL).toFloat()
                 if (filled) setColor(Ui.SIGNAL) else { setColor(0x00000000); setStroke(outline(), 0xB3FFFFFF.toInt()) }
             }
+            pressRipple(Radius.PILL, 0xFFFFFFFF.toInt())
             setOnClickListener { onClick() }
         }
+
+    /** Grey placeholders in the shape of the class card and the deadline cards, pulsing while the first check runs. */
+    private fun skeleton(): View {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val blocks = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun block() = View(this).apply { background = roundBg(Ui.BORDER, Ui.BORDER, this@MainActivity, Radius.LG) }
+        blocks.addView(block(), lp(MATCH, dp(170)))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(block(), lp(0, dp(110), 1f).apply { rightMargin = dp(10) })
+        row.addView(block(), lp(0, dp(110), 1f))
+        blocks.addView(row, lp(MATCH, WRAP).apply { topMargin = dp(40) })
+        box.addView(tv("Getting your classes and deadlines from Spectrum…", Type.LABEL, Ui.DIM).apply { setPadding(dp(2), 0, 0, dp(10)) })
+        box.addView(blocks, lp(MATCH, WRAP))
+        // with animations off in system settings this ends at once and the blocks stay still
+        skelAnim = ObjectAnimator.ofFloat(blocks, View.ALPHA, 1f, 0.4f).apply {
+            duration = 800; repeatMode = ValueAnimator.REVERSE; repeatCount = ValueAnimator.INFINITE; start()
+        }
+        return box
+    }
 
     private fun renderHero(loggedIn: Boolean) {
         val now = System.currentTimeMillis() / 1000
         val next = ov.classes.firstOrNull()
         val sig = when {
             !loggedIn -> "out"
+            firstLoad() -> "loading"
             next == null -> "none:${ov.due.firstOrNull()?.ts}:${ov.due.firstOrNull()?.let { relShort(it.ts - now) }}"
             // the minute is part of the signature so "Starts in …" and the progress bar stay current
             else -> ov.classes.joinToString("|") { "${it.start}:${it.end}:${it.link}" } + ":" + now / 60
         }
         if (sig == heroSig || heroDragging) return
         heroSig = sig
+        skelAnim?.cancel(); skelAnim = null
+        if (sig == "loading") { heroBox.removeAllViews(); heroBox.addView(skeleton(), lp(MATCH, WRAP)); return }
 
         // today's classes become swipeable slides, then tomorrow's — capped at TWO days
         val slides: List<Checker.ClassItem> = when {
@@ -1055,6 +1105,7 @@ class MainActivity : BaseActivity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
                 background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
+                pressRipple()
             }
             r.addView(tv(title, Type.BODY_L, Ui.TEXT, true))
             r.addView(tv(subText, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
@@ -1125,6 +1176,7 @@ class MainActivity : BaseActivity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
                 background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
+                pressRipple()
             }
             r.addView(tv(if (canEdit) "Edit this class" else "Open timetable", Type.BODY_L, Ui.TEXT, true))
             r.addView(tv(
@@ -1145,6 +1197,7 @@ class MainActivity : BaseActivity() {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(14), dp(12), dp(14), dp(12))
                     background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
+                    pressRipple()
                 }
                 r.addView(tv(title, Type.BODY_L, Ui.TEXT, true))
                 r.addView(tv(subText, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
@@ -1177,72 +1230,7 @@ class MainActivity : BaseActivity() {
     /** One task (deadline) in a bottom sheet, matching the course sheet's look. */
     private fun dueSheet(d: Checker.DueItem) {
         sheetDismiss()
-        val isDone = Checker.isTaskDone(this, d.name, d.eventId, d.ts)
-        val sheet = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(20))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(Radius.LG).toFloat()
-                setColor(Ui.RAISED)
-                setStroke(dp(1), Ui.RAISED_BORDER)
-            }
-        }
-        val left = d.ts - System.currentTimeMillis() / 1000
-        val col = if (left < 86400) Ui.RED else if (left < 3 * 86400) Ui.ORANGE else Ui.GREEN
-        sheet.addView(tv("Due in " + relShort(left) + " · " + dayLabel(d.ts) + ", " + hhmm(d.ts), Type.LABEL, col, true))
-        sheet.addView(tv(d.name, Type.HEADLINE, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END })
-        if (d.course.isNotEmpty()) sheet.addView(tv(Shorts.display(this, d.course), Type.LABEL, Ui.DIM).apply { setPadding(0, dp(2), 0, 0) })
-        if (isDone) sheet.addView(iconText(R.drawable.ic_check, "Marked as done", Type.CAPTION, Ui.GREEN, true).apply { setPadding(0, dp(8), 0, 0) })
-
-        fun row(title: String, subText: String, go: () -> Unit) {
-            val r = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
-            }
-            r.addView(tv(title, Type.BODY_L, Ui.TEXT, true))
-            r.addView(tv(subText, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
-            r.isClickable = true
-            r.setOnClickListener { sheetDismiss(); go() }
-            sheet.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
-        }
-        if (d.url.isNotEmpty()) row("View task", d.url) { openUrl(d.url) }
-        row(
-            if (isDone) "Mark as not done" else "Mark as done",
-            if (isDone) "Puts it back on your active list, with reminders" else "Keeps it on the list, struck through; no more reminders",
-        ) {
-            Checker.setTaskDone(this, d.name, !isDone, d.eventId, d.ts)
-            ovAt = 0L; dueSig = ""
-            render()
-        }
-        row("Hide this (wrong?)", "Removes it from Home, Notifications and reminders — you can undo right after") {
-            // by id, and by name so its reminders leave the Notifications list too
-            if (d.eventId != 0L) NotifyLog.hideEvent(this, "dl:" + d.eventId, d.name, d.course, d.ts)
-            NotifyLog.hideEvent(this, Checker.hiddenNameKey(d.name), d.name, d.course, d.ts)
-            sheetDismiss()
-            // the task list is rebuilt from a copy kept up to 15 s: drop it so the card goes at once
-            ovAt = 0L; dueSig = ""
-            render()
-            undoBar("Deadline hidden") {
-                if (d.eventId != 0L) NotifyLog.unhideEvent(this, "dl:" + d.eventId)
-                NotifyLog.unhideEvent(this, Checker.hiddenNameKey(d.name))
-                ovAt = 0L; dueSig = ""
-                render()
-            }
-        }
-        val dialog = android.app.AlertDialog.Builder(this, Ui.dialogTheme)
-            .setView(sheet)
-            .create()
-        sheetTag = dialog
-        dialog.show()
-        dialog.window?.setLayout(
-            android.view.WindowManager.LayoutParams.MATCH_PARENT,
-            android.view.WindowManager.LayoutParams.WRAP_CONTENT,
-        )
-        dialog.window?.setGravity(android.view.Gravity.BOTTOM)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
-        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        dialog.window?.setDimAmount(0.55f)
+        sheetTag = showDueSheet(d) { ovAt = 0L; dueSig = ""; render() }
     }
 
     /** Home "YOUR EVENTS": occurrences in the next 7 days, tap to edit. */
@@ -1256,15 +1244,21 @@ class MainActivity : BaseActivity() {
         eventsSection.visibility = if (rows.isEmpty()) View.GONE else View.VISIBLE
         if (rows.isEmpty()) return
         eventsList.removeAllViews()
+        val nowMin = LocalDateTime.now(zone()).let { it.hour * 60 + it.minute }
         for ((e, d, min) in rows.take(5)) {
+            // over for today (ticket SN-N3UAY): greyed with a Done label; it drops off tomorrow as before
+            val over = !e.allDay && d == today && e.endTime > e.startTime && e.endTime <= nowMin
             val row = LinearLayout(this).apply {
+                if (over) alpha = 0.55f
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
                 background = roundBg(Ui.BAR, Ui.BORDER, this@MainActivity, Radius.MD)
                 isClickable = true
+                pressRipple()
                 setOnClickListener { EventsUi.editor(this@MainActivity, e, { dueSig = ""; render() }) }
             }
-            row.addView(tv(if (e.allDay) EventsUi.whenLabel(e, d) else EventsUi.fmtDate(d) + " · " + EventsUi.fmtMin(min), Type.CAPTION, e.tint(), true))
+            row.addView(tv(if (e.allDay) EventsUi.whenLabel(e, d) else EventsUi.fmtDate(d) + " · " + EventsUi.fmtMin(min) + (if (over) " · Done" else ""),
+                Type.CAPTION, if (over) Ui.DIM else e.tint(), true))
             row.addView(tv(e.title, Type.BODY, Ui.TEXT, true).apply {
                 setPadding(0, dp(4), 0, 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             })
@@ -1292,6 +1286,7 @@ class MainActivity : BaseActivity() {
                 setPadding(dp(14), dp(12), dp(14), dp(14))
                 background = roundBg(Ui.BAR, if (isDone) Ui.CYAN else Ui.BORDER, this@MainActivity, Radius.MD)
                 isClickable = true
+                pressRipple()
                 setOnClickListener { dueSheet(d) }
             }
             // urgency stripe across the top edge: readable at a glance without the badge

@@ -323,13 +323,13 @@ class TimetableEditActivity : BaseActivity() {
             else Timetable.clearTimeOverride(this, s.key)
             // saved only when edited, so an untouched field keeps following the app's pick
             val m = mlinkField.text.toString().trim()
-            if (m != shownMeeting) Timetable.setMeetingLink(this, s.course, m)
+            if (m != shownMeeting) Timetable.setMeetingLink(this, s.course, m, attKind)
             val a = attLinkField.text.toString().trim()
             if (a != shownAtt) Timetable.setAttFor(this, s.course, attKind, a)
             Scheduler.scheduleAll(this)   // the class alarm moves with the new time right away
             finish()
         }
-        if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course).isNotEmpty() ||
+        if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course, preferLec).isNotEmpty() ||
             Timetable.attFor(this, s.course, preferLec).isNotEmpty()
         ) {
             dangerBtn(col, "Reset to Spectrum values") {

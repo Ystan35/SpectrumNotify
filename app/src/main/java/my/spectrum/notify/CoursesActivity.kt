@@ -21,13 +21,17 @@ class CoursesActivity : BaseActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+        /** A course code: this screen becomes that course's page, with everything about the course in one place. */
+        const val EXTRA_CODE = "code"
     }
 
     private lateinit var box: LinearLayout
+    private val only: String? by lazy { intent.getStringExtra(EXTRA_CODE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        box = screen("Courses", navTo = CoursesActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
+        box = only?.let { screen(Shorts.display(this, it)) }
+            ?: screen("Courses", navTo = CoursesActivity::class.java, onRefresh = { Scheduler.pollNow(this) })
     }
 
     override fun onResume() {
@@ -50,6 +54,7 @@ class CoursesActivity : BaseActivity() {
 
     private fun render() {
         val fresh = Courses.all(this)
+        only?.let { code -> renderCourse(code, fresh); return }
         for (c in fresh) if (c.code !in order) order[c.code] = order.size
         val list = fresh.sortedBy { order[it.code] }
         // read once for the whole page: state.json is large, and every read parses all of it
@@ -75,6 +80,7 @@ class CoursesActivity : BaseActivity() {
             return
         }
         val colours = Timetable.colours(this, list.map { it.code }.toSet())
+        val ov = try { Checker.overview(this) } catch (_: Exception) { Checker.Overview(emptyList(), emptyList()) }
         box.label("${list.size} course" + (if (list.size == 1) "" else "s"), Type.BODY, Ui.DIM, 8)
         // page actions: two equal SECONDARY buttons, then a quiet text action (none outshouts the courses)
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; isBaselineAligned = false }
@@ -89,11 +95,17 @@ class CoursesActivity : BaseActivity() {
             startActivity(Intent(this, CatalogActivity::class.java))
         }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(4) })
         for (c in list) {
-            box.addView(card(c, colours[c.code] ?: Ui.CYAN, learned[c.code.uppercase()] ?: emptyList(), st), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+            box.addView(card(c, colours[c.code] ?: Ui.CYAN, learned[c.code.uppercase()] ?: emptyList(), st, ov, full = false).apply {
+                if (c == list.first()) tag = "guide:course"
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
         }
     }
 
-    private fun card(c: Courses.Course, colour: Int, learned: List<String>, st: State): View {
+    /**
+     * One course. [full] = the top of its course page (short name, rich class times, attendance, the Occ check);
+     * otherwise the compact card on the list, which opens that page when tapped.
+     */
+    private fun card(c: Courses.Course, colour: Int, learned: List<String>, st: State, ov: Checker.Overview, full: Boolean): View {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             background = roundBg(Ui.BAR, Ui.BORDER, this@CoursesActivity, Radius.MD)
@@ -108,7 +120,7 @@ class CoursesActivity : BaseActivity() {
 
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(10))
+            setPadding(dp(16), dp(14), dp(16), if (full) dp(10) else dp(14))
         }
 
         // the Occ is worked out first: its pill sits on the code line
@@ -122,15 +134,20 @@ class CoursesActivity : BaseActivity() {
         // header: code (and your short form) in the course colour, the Occ pill at the end of the same line
         val short = Shorts.get(this, c.code)
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        // short names are set for all courses at once (Short names, above); tapping this line changes just this one
-        head.addView(tv(c.code.uppercase() + if (short.isNotEmpty()) "  ($short)" else "", Type.LABEL, colour, true).apply {
-            isClickable = true
+        head.addView(tv(c.code.uppercase() + (if (short.isNotEmpty()) "  ($short)" else "") +
+                (if (!full && current.isNotEmpty()) "  ·  Occ $current" else ""), Type.LABEL, colour, true).apply {
             minHeight = dp(Ui.touch(48))
             gravity = Gravity.CENTER_VERTICAL
-            contentDescription = c.code + (if (short.isNotEmpty()) ", short name $short" else "") + ". Tap to change the short name"
-            setOnClickListener { editShortName(c.code, short) }
+            // on the course page, tapping the code changes the short name; on the list the whole card opens the page
+            if (full) {
+                isClickable = true
+                contentDescription = c.code + (if (short.isNotEmpty()) ", short name $short" else "") + ". Tap to change the short name"
+                pressRipple(Radius.SM, colour)
+                setOnClickListener { editShortName(c.code, short) }
+            }
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
-        if (occs.isNotEmpty()) {
+        // the Occ is picked on the course page only; the list just names it
+        if (full && occs.isNotEmpty()) {
             // not set: a mint "Set Occ" you cannot miss; set: a quiet outlined "Occ 3"
             head.addView(chip(if (occMissing) "Set Occ" else "Occ $current", occMissing, Ui.SIGNAL, Type.LABEL, 14) {
                 pickOcc(c.code, occs, current, catOccs.isEmpty())
@@ -146,11 +163,52 @@ class CoursesActivity : BaseActivity() {
         val title = titleCase(Timetable.classTitle(c.code, c.name, "").ifEmpty { c.code })
         col.addView(tv(title, Type.TITLE, Ui.TEXT, true).apply {
             if (Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+            if (!full) { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         })
 
-        // class times, one line each
+        // ONE notice when the Occ needs a look: just picked (check it against MAYA), or Spectrum has
+        // weekly classes this Occ does not (the Occ may be wrong). "Looks right" settles both.
+        val fromList = c.slots.filter { it.grp.startsWith("cat-") }
+        val notInOcc = c.slots.filter { s -> !s.manual && fromList.none { it.day == s.day && it.start < s.end && s.start < it.end } }
+        val okKey = "${c.code.uppercase()}|$current"
+        val mismatch = current.isNotEmpty() && fromList.isNotEmpty() && notInOcc.isNotEmpty() && okKey !in occOk()
+        val occCheck = current.isNotEmpty() && (pp.occNeedsCheck(c.code) || mismatch)
+
+        if (!full) {
+            // the next class, or the weekly times when none is coming up in the next two weeks
+            val next = ov.classes.firstOrNull { it.code.equals(c.code, true) }
+            val whenText = when {
+                next != null -> {
+                    val online = next.link.isNotEmpty() && !Timetable.inPerson(this, c.code)
+                    val venue = if (online) "Online" else Timetable.roomAt(this, c.code, next.start)
+                    "Next: " + dayLabel(next.start) + " " + hhmm(next.start) + if (venue.isNotEmpty()) " · $venue" else ""
+                }
+                c.slots.isNotEmpty() -> c.slots.take(3).joinToString(", ") { "${Timetable.DAYS[it.day - 1]} ${Timetable.fmtMin(it.start)}" }
+                else -> "No class times known yet"
+            }
+            col.addView(iconText(R.drawable.ic_cat_deadline, whenText, Type.BODY, Ui.TEXT).apply { setPadding(0, dp(8), 0, 0) })
+            if (occMissing || occCheck) col.addView(tv(if (occMissing) "Set your Occ" else "Check your Occ", Type.LABEL, Ui.TEXT, true).apply {
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                background = roundBg(Ui.tint(Ui.YELLOW, 0x2A), Ui.tint(Ui.YELLOW, 0x2A), this@CoursesActivity, Radius.PILL)
+            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
+            card.addView(col, LinearLayout.LayoutParams(0, WRAP, 1f))
+            card.addView(android.widget.ImageView(this).apply {
+                setImageResource(R.drawable.ic_chevron_right)
+                setColorFilter(Ui.DIM)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { gravity = Gravity.CENTER_VERTICAL; rightMargin = dp(10) })
+            card.isClickable = true
+            card.pressRipple()
+            card.contentDescription = "${c.code}, $title. $whenText. Tap for its classes, deadlines and materials"
+            card.setOnClickListener { startActivity(Intent(this, CoursesActivity::class.java).putExtra(EXTRA_CODE, c.code)) }
+            return card
+        }
+
+        // class times: each one with where it is and who teaches it; tap for the class popup in Timetable
         if (c.slots.isEmpty()) {
-            val nh = tv("No class times known yet", Type.BODY, Ui.DIM).apply { setPadding(0, dp(10), 0, 0) }
+            // without an Occ the UM times are not in the timetable yet, though Spectrum may still show a next class
+            val nh = tv(if (occMissing) "Set your Occ to add the class times from the UM timetable." else "No class times known yet",
+                Type.BODY, Ui.DIM).apply { setPadding(0, dp(10), 0, 0) }
             col.addView(nh)
             col.addView(button("Refresh class times", Emphasis.TERTIARY) {
                 Scheduler.pollNow(this)
@@ -161,9 +219,26 @@ class CoursesActivity : BaseActivity() {
             val times = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, 0) }
             for (s in c.slots) {
                 val kind = if (s.kind == SlotKind.CLASS) "" else "  ·  ${s.kind.label}"
-                times.addView(iconText(R.drawable.ic_cat_deadline,
+                val venue = Timetable.venueOf(this, s)
+                val online = venue == "Online"
+                val lecturer = Timetable.choiceOf(this, s)?.detail().orEmpty()
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    background = rippleBg(Ui.BAR, 0, this@CoursesActivity, Radius.SM)
+                    contentDescription = "${Timetable.DAY_FULL[s.day - 1]} ${Timetable.fmtMin(s.start)} to ${Timetable.fmtMin(s.end)}$kind, " +
+                        venue.ifEmpty { "place not known" } + (if (lecturer.isNotEmpty()) ", $lecturer" else "") + ". Tap for details"
+                    setOnClickListener {
+                        startActivity(Intent(this@CoursesActivity, TimetableActivity::class.java).putExtra(TimetableActivity.EXTRA_SLOT, s.key))
+                    }
+                }
+                row.addView(iconText(R.drawable.ic_cat_deadline,
                     "${Timetable.DAY_FULL[s.day - 1]}  ${Timetable.fmtMin(s.start)} – ${Timetable.fmtMin(s.end)}$kind",
-                    Type.BODY, Ui.TEXT).apply { setPadding(0, dp(4), 0, dp(4)) })
+                    Type.BODY, Ui.TEXT, trailing = R.drawable.ic_chevron_right))
+                if (venue.isNotEmpty()) row.addView(iconText(if (online) R.drawable.ic_laptop else R.drawable.ic_place, venue,
+                    Type.LABEL, if (online) Ui.CYAN else Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0) })
+                if (lecturer.isNotEmpty()) row.addView(tv(lecturer, Type.LABEL, Ui.DIM).apply { setPadding(dp(28), dp(2), 0, 0) })
+                times.addView(row, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(2) })
             }
             col.addView(times)
         }
@@ -183,14 +258,7 @@ class CoursesActivity : BaseActivity() {
             })
         }
 
-        // ONE notice when the Occ needs a look: just picked (check it against MAYA), or Spectrum has
-        // weekly classes this Occ does not (the Occ may be wrong). "Looks right" settles both.
-        val fromList = c.slots.filter { it.grp.startsWith("cat-") }
-        val notInOcc = c.slots.filter { s -> !s.manual && fromList.none { it.day == s.day && it.start < s.end && s.start < it.end } }
-        val okKey = "${c.code.uppercase()}|$current"
-        val acked = okKey in occOk()
-        val mismatch = current.isNotEmpty() && fromList.isNotEmpty() && notInOcc.isNotEmpty() && !acked
-        if (current.isNotEmpty() && (pp.occNeedsCheck(c.code) || mismatch)) {
+        if (occCheck) {
             val note = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
@@ -216,43 +284,117 @@ class CoursesActivity : BaseActivity() {
             col.addView(note, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
         }
 
-        // actions: the course page (a link out) and which pages notify you
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        // three equal buttons on one line: a long label shrinks a little instead of wrapping
-        fun TextView.fit() = apply {
-            setPadding(dp(6), dp(6), dp(6), dp(6)); maxLines = 1
-            setAutoSizeTextTypeUniformWithConfiguration(11, (Type.BODY * Ui.fontScale).toInt(), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
-        }
-        if (c.id > 0L) {
-            // the course's files, folders and links, one tap each (downloaded in the app)
-            actions.addView(button("Materials", Emphasis.PRIMARY, Ui.SIGNAL) {
-                startActivity(Intent(this, MaterialsActivity::class.java)
-                    .putExtra(MaterialsActivity.EXTRA_ID, c.id)
-                    .putExtra(MaterialsActivity.EXTRA_CODE, c.code + Timetable.classTitle(c.code, c.name, "").let { if (it.isNotEmpty()) ", " + titleCase(it) else "" }))
-            }.fit().apply { contentDescription = "Materials for ${c.code}: files, folders and links"; tag = "guide:materials" },
-                LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
-        }
-        if (c.url.isNotEmpty()) {
-            actions.addView(button("Course page", Emphasis.SECONDARY, Ui.CYAN) { open(c.url) }.fit().apply {
-                contentDescription = "Open ${c.code} home page on Spectrum"
-            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
-        }
-        if (c.id > 0L) {
-            actions.addView(button("Notifications", Emphasis.SECONDARY, Ui.CYAN) {
-                startActivity(
-                    Intent(this, SectionsActivity::class.java)
-                        .putExtra(SectionsActivity.EXTRA_ID, c.id)
-                        .putExtra(SectionsActivity.EXTRA_NAME, c.code + Timetable.classTitle(c.code, c.name, "").let { if (it.isNotEmpty()) " · $it" else "" })
-                )
-            }.fit().apply { contentDescription = "Notification pages for ${c.code}: " + Sections.summary(this@CoursesActivity, c.id, st) },
-                LinearLayout.LayoutParams(0, WRAP, 1f))
-        }
-        if (actions.childCount > 0) col.addView(actions, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14) })
-
         card.addView(col, LinearLayout.LayoutParams(0, WRAP, 1f))
         return card
     }
 
+    /** The course page: its card at the top, then next class, online or in person, deadlines, materials and notifications. */
+    private fun renderCourse(code: String, all: List<Courses.Course>) {
+        box.removeAllViews()
+        val c = all.firstOrNull { it.code.equals(code, true) }
+        if (c == null) {
+            box.label("$code is not in your courses any more.", Type.BODY, Ui.DIM, 8)
+            return
+        }
+        val st = State(this)
+        val colour = Timetable.colours(this, all.map { it.code }.toSet())[c.code] ?: Ui.CYAN
+        val ov = try { Checker.overview(this) } catch (_: Exception) { Checker.Overview(emptyList(), emptyList()) }
+        box.addView(card(c, colour, Groups.learnedPerCourse(this, st)[c.code.uppercase()] ?: emptyList(), st, ov, full = true),
+            LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+
+        fun section(t: String) = box.addView(sectionLabel(t).apply { setPadding(dp(2), dp(24), 0, dp(8)) })
+        fun navRow(title: String, sub: String, go: () -> Unit) {
+            box.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(12), dp(10), dp(12))
+                background = roundBg(Ui.BAR, Ui.BORDER, this@CoursesActivity, Radius.MD)
+                pressRipple()
+                isClickable = true
+                contentDescription = "$title. $sub"
+                setOnClickListener { go() }
+                addView(LinearLayout(this@CoursesActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(tv(title, Type.BODY_L, Ui.TEXT, true))
+                    if (sub.isNotEmpty()) addView(tv(sub, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(2), 0, 0); maxLines = 2 })
+                }, LinearLayout.LayoutParams(0, WRAP, 1f))
+                addView(android.widget.ImageView(this@CoursesActivity).apply {
+                    setImageResource(R.drawable.ic_chevron_right); setColorFilter(Ui.DIM)
+                }, LinearLayout.LayoutParams(dp(24), dp(24)))
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        }
+
+        // next class, with Join when it has a meeting link (the same rule as Home)
+        ov.classes.firstOrNull { it.code.equals(c.code, true) }?.let { n ->
+            section("Next class")
+            val online = n.link.isNotEmpty() && !Timetable.inPerson(this, c.code)
+            val venue = if (online) "Online" else Timetable.roomAt(this, c.code, n.start).ifEmpty { "In person" }
+            box.addView(tv(dayLabel(n.start) + ", " + hhmm(n.start) + "–" + hhmm(n.end) + " · " + relIn(n.start - System.currentTimeMillis() / 1000),
+                Type.BODY_L, Ui.TEXT, true))
+            box.addView(iconText(if (online) R.drawable.ic_laptop else R.drawable.ic_place, venue, Type.BODY, if (online) Ui.CYAN else Ui.TEXT, true)
+                .apply { setPadding(0, dp(4), 0, 0) })
+            if (online) box.addView(button("Join class", Emphasis.PRIMARY, Ui.SIGNAL) { open(n.link) },
+                LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+        }
+
+        // the long-term setting for the whole course, the same as the row in Settings → Online or in person
+        section("Online or in person")
+        val code = c.code.uppercase()
+        val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        modeRow.addView(tv("Usually", Type.BODY, Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        modeRow.addView(spinner(listOf("Online", "In person"), if (Timetable.inPerson(this, code)) 1 else 0) { pos ->
+            if ((pos == 1) != Timetable.inPerson(this, code)) {
+                Timetable.setInPerson(this, listOf(code), pos == 1)
+                Scheduler.scheduleAll(this)
+                render()
+                if (pos == 0) askMissingMeetingLinks(code) { render() }
+            }
+        }.apply { contentDescription = "$code: usually online or in person" }, LinearLayout.LayoutParams(dp(168), WRAP))
+        box.addView(modeRow)
+        box.addView(tv("For one class, or just one week, tap the class above.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
+
+        // the links Join class opens: yours, else the one found on Spectrum; lectures and tutorials apart when both exist
+        section("Meeting links")
+        for (k in meetingKinds(code)) {
+            val own = Timetable.meetingLinkOf(this, code, when (k) { "lec" -> true; "tut" -> false; else -> null })
+            val host = try { android.net.Uri.parse(own).host ?: own } catch (_: Exception) { own }
+            // no Spectrum lookup here: it parses the whole sync state, too slow to do per row on every render
+            navRow(meetingKindName(k), if (own.isNotEmpty()) "Your link · $host"
+                else "The one found on Spectrum, if any. Tap to paste your own.") { editMeetingLink(code, k) { render() } }
+        }
+
+        // this course's deadlines, each opening the same sheet as on Home
+        section("Due")
+        val due = ov.due.filter { it.course.contains(c.code, true) }
+        if (due.isEmpty()) box.addView(tv("Nothing due for ${c.code} in what the app has synced.", Type.BODY, Ui.DIM))
+        for (d in due.take(10)) {
+            val left = d.ts - System.currentTimeMillis() / 1000
+            navRow(d.name, "Due in " + relShort(left) + " · " + dayLabel(d.ts) + ", " + hhmm(d.ts)) { showDueSheet(d) { render() } }
+        }
+
+        section("Materials and notifications")
+        if (c.id > 0L) {
+            navRow("Materials", "Files, folders and links, by Spectrum page") {
+                startActivity(Intent(this, MaterialsActivity::class.java)
+                    .putExtra(MaterialsActivity.EXTRA_ID, c.id)
+                    .putExtra(MaterialsActivity.EXTRA_CODE, c.code + Timetable.classTitle(c.code, c.name, "").let { if (it.isNotEmpty()) ", " + titleCase(it) else "" }))
+            }
+            navRow("Notification pages", Sections.summary(this, c.id, st)) {
+                startActivity(Intent(this, SectionsActivity::class.java)
+                    .putExtra(SectionsActivity.EXTRA_ID, c.id)
+                    .putExtra(SectionsActivity.EXTRA_NAME, c.code + Timetable.classTitle(c.code, c.name, "").let { if (it.isNotEmpty()) " · $it" else "" }))
+            }
+        }
+        if (c.url.isNotEmpty()) navRow("Open on Spectrum", "The course's own page") { open(c.url) }
+
+        // the latest notifications that mention this course, newest first
+        val recent = NotifyLog.entries(this).filter { it.kind == "notif" && (it.title.contains(c.code, true) || it.body.contains(c.code, true)) }
+            .asReversed().take(5)
+        if (recent.isNotEmpty()) {
+            section("Recent notifications")
+            for (e in recent) navRow(e.title, ago(NotifyLog.atOf(e))) { startActivity(Intent(this, NotificationsActivity::class.java)) }
+        }
+    }
 
     /** The Occ picker (from the pill or "Change Occ"): same saving and Undo as the old dropdown. */
     private fun pickOcc(code: String, occs: List<String>, current: String, learnedOnly: Boolean) {

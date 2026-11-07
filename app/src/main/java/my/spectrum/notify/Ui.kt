@@ -414,6 +414,14 @@ fun roundBg(fill: Int, stroke: Int, ctx: Context, radius: Int = Radius.SM): Grad
 }
 
 /** roundBg with a ripple, so taps give visible feedback (HCI: pressed state on every control). */
+/** Tap feedback for a card or row: a ripple drawn over the view's own background, clipped to its corners. */
+fun View.pressRipple(radius: Int = Radius.MD, colour: Int = Ui.CYAN) {
+    foreground = android.graphics.drawable.RippleDrawable(
+        android.content.res.ColorStateList.valueOf(Ui.tint(colour, 80)), null,
+        GradientDrawable().apply { cornerRadius = context.dp(radius).toFloat(); setColor(0xFFFFFFFF.toInt()) },
+    )
+}
+
 fun rippleBg(fill: Int, stroke: Int, ctx: Context, radius: Int = Radius.SM): android.graphics.drawable.RippleDrawable {
     val bg = roundBg(fill, stroke, ctx, radius)
     return android.graphics.drawable.RippleDrawable(
