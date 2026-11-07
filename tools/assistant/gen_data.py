@@ -170,13 +170,23 @@ def typo(w, rng):
     return w[:i] + w[i + 1:] if rng.random() < 0.5 else w[:i] + w[i + 1] + w[i] + w[i + 2:]
 
 
-def generate(per_intent=1500, seed=7):
+def extra_templates():
+    """Ways of asking written by Gemini and checked by paraphrase.py (empty when the file is not there)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "extra_templates.json")
+    return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
+
+
+def generate(per_intent=1500, seed=7, extra=None, extra_share=0.4):
+    """extra: {intent: [templates]}, default extra_templates(); extra_share of each intent's sentences come from them."""
     rng = random.Random(seed)
     places, codes, names = fillers()
+    extra = extra_templates() if extra is None else extra
     data = []
     for intent, temps in T.items():
+        more = extra.get(intent, [])
         for _ in range(per_intent if intent not in ("help", "other", "emergency", "schoolwork") else per_intent // 2):
-            toks, tags = fill(rng.choice(temps), rng, places, codes, names)
+            t = rng.choice(more) if more and rng.random() < extra_share else rng.choice(temps)
+            toks, tags = fill(t, rng, places, codes, names)
             if rng.random() < 0.15:  # phone typing: a dropped or swapped letter
                 i = rng.randrange(len(toks)); toks[i] = typo(toks[i], rng)
             if rng.random() < 0.1:

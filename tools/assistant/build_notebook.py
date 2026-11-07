@@ -4,6 +4,9 @@ import json, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 gen = open(os.path.join(HERE, "gen_data.py"), encoding="utf-8").read()
 tests = open(os.path.join(HERE, "test_sentences.txt"), encoding="utf-8").read()
+para = open(os.path.join(HERE, "paraphrase.py"), encoding="utf-8").read()
+extra_path = os.path.join(HERE, "extra_templates.json")
+extra = open(extra_path, encoding="utf-8").read() if os.path.exists(extra_path) else "{}\n"
 
 cells = [
     ("md", """# Spectrum Notify assistant: train the on-device model
@@ -14,9 +17,42 @@ Trains a small model **from scratch** that reads a question and gives
 The app answers with its own data (classes, shuttle planner, deadlines), so the model never makes up a class time.
 
 **Run:** Runtime → Change runtime type → GPU (a CPU also works, in a few minutes), then Runtime → Run all.
-At the end `assistant.tflite` and `assistant_meta.json` download: put both in `app/src/main/assets/`."""),
+At the end `assistant.tflite` and `assistant_meta.json` download: put both in `app/src/main/assets/`.
+If you ran the Gemini step, `extra_templates.json` downloads too: read it, then put it in `tools/assistant/`."""),
     ("code", "%%writefile gen_data.py\n" + gen),
     ("code", "%%writefile test_sentences.txt\n" + tests),
+    ("code", "%%writefile paraphrase.py\n" + para),
+    ("code", "%%writefile extra_templates.json\n" + extra),
+    ("md", """## Optional: more ways of asking, from Gemini
+Gemini writes new question **templates** per intent (English, Manglish, Malay; short and long) with the same gaps
+(`{course}`, `{date}`, ...). `paraphrase.py` drops any that use a wrong gap, repeat a template, appear under two
+intents, or match a hand-written test sentence, so the test score stays honest. The training data then takes about
+40% of each intent's sentences from these; the app itself is unchanged and still never sends anything off the phone.
+
+Only the existing templates and intent descriptions are sent to Google. Nothing from users.
+
+**To use it:** get a key at aistudio.google.com, add it in Colab's 🔑 Secrets panel as `GOOGLE_API_KEY` (notebook
+access on), and set `USE_GEMINI = True`. Each run adds to the templates already in `extra_templates.json`."""),
+    ("code", """USE_GEMINI = False
+MODEL = "gemini-flash-latest"  # any Gemini model your key can use
+PER_INTENT = 40                # templates asked for per intent and run
+
+import json, importlib, paraphrase
+importlib.reload(paraphrase)
+have = paraphrase.load_extra()
+if USE_GEMINI:
+    !pip -q install -U google-genai
+    from google import genai
+    from google.colab import userdata
+    client = genai.Client(api_key=userdata.get("GOOGLE_API_KEY"))
+    kept, dropped = paraphrase.clean(paraphrase.ask_gemini(client, MODEL, n=PER_INTENT), have)
+    for intent, t, why in dropped:
+        print(f"drop  {intent:<15} {why:<22} {t}")
+    for intent, ts in kept.items():
+        print(f"\\n{intent}: {len(ts)} kept"); print("\\n".join("  " + t for t in ts))
+    have = paraphrase.merge(have, kept)
+    json.dump(have, open("extra_templates.json", "w"), ensure_ascii=False, indent=1)
+print(sum(map(len, have.values())), "extra templates will be used:", {i: len(t) for i, t in have.items()})"""),
     ("code", """import json, numpy as np, tensorflow as tf, random
 from gen_data import generate, tokens, INTENTS, TAGS
 print("TensorFlow", tf.__version__, "| GPU:", tf.config.list_physical_devices("GPU"))
@@ -91,7 +127,8 @@ checks = [{"text": s.strip(), "ids": enc(tokens(s.strip())), "intent": tfl_inten
 json.dump({"maxlen": MAXLEN, "vocab": VOCAB, "intents": INTENTS, "tags": TAGS, "checks": checks},
           open("assistant_meta.json", "w"), ensure_ascii=False)
 from google.colab import files
-files.download("assistant.tflite"); files.download("assistant_meta.json")"""),
+files.download("assistant.tflite"); files.download("assistant_meta.json")
+if USE_GEMINI: files.download("extra_templates.json")"""),
 ]
 
 nb = {"nbformat": 4, "nbformat_minor": 5,
