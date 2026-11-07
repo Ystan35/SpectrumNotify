@@ -31,8 +31,8 @@ intents, or match a hand-written test sentence, so the test score stays honest. 
 
 Only the existing templates and intent descriptions are sent to Google. Nothing from users.
 
-**To use it:** get a key at aistudio.google.com, add it in Colab's 🔑 Secrets panel as `GOOGLE_API_KEY` (notebook
-access on), and set `USE_GEMINI = True`. Each run adds to the templates already in `extra_templates.json`."""),
+**To use it:** get a key at aistudio.google.com and set `USE_GEMINI = True`. Either add the key in Colab's 🔑 Secrets
+panel as `GOOGLE_API_KEY` (notebook access on), or just run: a box below the cell asks for it (hidden, not saved). Each run adds to the templates already in `extra_templates.json`."""),
     ("code", """USE_GEMINI = False
 MODEL = "gemini-flash-latest"  # any Gemini model your key can use
 PER_INTENT = 40                # templates asked for per intent and run
@@ -44,7 +44,12 @@ if USE_GEMINI:
     !pip -q install -U google-genai
     from google import genai
     from google.colab import userdata
-    client = genai.Client(api_key=userdata.get("GOOGLE_API_KEY"))
+    try:
+        key = userdata.get("GOOGLE_API_KEY")
+    except Exception:  # no secret (e.g. Colab on a phone has no Secrets panel): ask, hidden, never saved
+        from getpass import getpass
+        key = getpass("Paste your Gemini API key, then press Enter: ").strip()
+    client = genai.Client(api_key=key)
     kept, dropped = paraphrase.clean(paraphrase.ask_gemini(client, MODEL, n=PER_INTENT), have)
     for intent, t, why in dropped:
         print(f"drop  {intent:<15} {why:<22} {t}")
