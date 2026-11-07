@@ -81,17 +81,8 @@ object DayTimeline {
 
     /** "Room BK2", "Online" or "" — your Location setting first, then the room from the UM list. */
     private fun placeOf(ctx: Context, s: Slot, meeting: String): String {
-        val loc = Timetable.locationOf(ctx, s.course)
-        val fromUm = s.grp.startsWith("cat-")
-        val room = if (fromUm) Timetable.umRoom(ctx, s).takeUnless { Timetable.isOnline(it) }.orEmpty() else Timetable.roomAt(ctx, s.course, s.day, s.start)
-        return when {
-            Timetable.inPerson(ctx, s.course) -> room.ifEmpty { "In person" }
-            loc.startsWith("online:") || (fromUm && room.isEmpty()) -> "Online"
-            room.isNotEmpty() -> room
-            !fromUm && s.note.isNotEmpty() -> s.note
-            meeting.isNotEmpty() -> "Online"
-            else -> ""
-        }
+        // the one trusted rule; Spectrum's own note for a class not from the UM list, never "a link was found"
+        return Timetable.venueOf(ctx, s).ifEmpty { if (!s.grp.startsWith("cat-")) s.note else "" }
     }
 
     fun build(
@@ -237,9 +228,8 @@ object DayTimeline {
                 } catch (_: Exception) { Toast.makeText(activity, "Cannot open link", Toast.LENGTH_SHORT).show() }
                 val pills = mutableListOf<View>()
                 if (meeting.isNotEmpty()) pills.add(pill("Join class", true) { open(meeting) })
-                if (Timetable.attMode(activity, s.course) == "manual") pills.add(pill("Attendance", meeting.isEmpty()) {
-                    Toast.makeText(activity, "Attendance for ${s.course} is taken in class by the lecturer.", Toast.LENGTH_LONG).show()
-                }) else if (att.isNotEmpty()) pills.add(pill("Attendance", meeting.isEmpty()) { open(att) })
+                // taken in class by the lecturer: no Attendance button
+                if (att.isNotEmpty() && !Timetable.attByLecturer(activity, s.course)) pills.add(pill("Attendance", meeting.isEmpty()) { open(att) })
                 if (coursePage.isNotEmpty()) pills.add(pill("Course page", false) { open(coursePage) })
                 if (onClass != null) pills.add(pill("Details", false) { onClass(s) })
                 // two pills per line; one per line at large text sizes, where two would wrap and clip

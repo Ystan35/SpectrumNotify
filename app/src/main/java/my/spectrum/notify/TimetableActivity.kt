@@ -225,15 +225,11 @@ class TimetableActivity : BaseActivity() {
         val userLoc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
         val mode = modeOf(s)
+        // the one trusted rule (Timetable.venueOf): a meeting link found on Spectrum no longer means "Online (auto)"
+        val venue = Timetable.venueOf(this, s)
         val locLine = when {
-            mode == "online" -> "💻 Online"
-            mode == "inperson" -> "📍 " + room.ifEmpty { "In person" }
-            Timetable.inPerson(this, s.course) -> "📍 " + room.ifEmpty { "In person" }
-            userLoc.startsWith("online:") -> "💻 Online" + (if (Timetable.meetingLinkOf(this, s.course, preferLecOf(s)).isNotEmpty()) " · your link" else "")
-            umOnline(s) -> "💻 Online"
-            userLoc.startsWith("room:") && room.isNotEmpty() -> "📍 $room"
-            autoMeeting.isNotEmpty() -> "💻 Online (auto)"
-            room.isNotEmpty() -> "📍 $room"
+            venue == "Online" -> "💻 Online" + (if (userLoc.startsWith("online:") && Timetable.meetingLinkOf(this, s.course, preferLecOf(s)).isNotEmpty()) " · your link" else "")
+            venue.isNotEmpty() -> "📍 $venue"
             else -> "📍 Tap to set location"
         }
         // the venue reads clearly: bold label size; Online in the accent colour
@@ -274,7 +270,7 @@ class TimetableActivity : BaseActivity() {
         val pick = { AttendancePicker.open(this, s.course, courseIdOf(s.course), if (AttendancePicker.hasBothKinds(this, s.course)) kind else "") { render() } }
         // the edit icon at the right end of Attendance chooses which attendance page this class uses (the app's
         // guess can be wrong); holding Attendance does the same
-        if (link.isNotEmpty()) att.addView(android.widget.FrameLayout(this).apply {
+        if (link.isNotEmpty() && !Timetable.attByLecturer(this, s.course)) att.addView(android.widget.FrameLayout(this).apply {
             addView(openBtn("Attendance", link, true).apply {
                 setPadding(dp(6), dp(6), dp(50), dp(6)) // room for the icon so the label never sits under it
                 setOnLongClickListener { pick(); true }
@@ -334,8 +330,8 @@ class TimetableActivity : BaseActivity() {
         val mode = intArrayOf(if (current.isEmpty()) 0 else initial)
         val linkField = android.widget.EditText(this).apply {
             hint = "Meeting link (https://…)"
-            setText(if (current.startsWith("online:")) current.removePrefix("online:")
-                    else if (autoMeeting.isNotEmpty()) autoMeeting else "")
+            // the link this class uses now: yours (lecture / tutorial, else the course's), else the one found
+            setText(Timetable.meetingLinkOf(this@TimetableActivity, course, preferLecOf(s)).ifEmpty { autoMeeting })
             setTextIsSelectable(true)
         }
         val roomField = android.widget.EditText(this).apply {
@@ -548,15 +544,7 @@ class TimetableActivity : BaseActivity() {
         // venue on every block (narrow ones too), so the week shows where each class is without opening it
         val loc = Timetable.locationOf(this, s.course)
         val room = roomOf(s)
-        val line = when (modeOf(s)) {
-            "online" -> "Online"
-            "inperson" -> room.ifEmpty { "In person" }
-            else -> when {
-                Timetable.inPerson(this, s.course) -> room.ifEmpty { "In person" }
-                loc.startsWith("online:") || umOnline(s) -> "Online"
-                else -> room
-            }
-        }
+        val line = Timetable.venueOf(this, s)
         // line 2: the venue, bold with its icon; Online in the accent colour with a laptop, so it reads at a glance.
         // Two lines fit a 1-hour block at 100% (54 dp); the start time is on the grid's axis already.
         // Too short for two lines (zoomed out): the course alone; the venue is still read out and in the popup
@@ -600,16 +588,11 @@ class TimetableActivity : BaseActivity() {
         val attUrl = Timetable.attFor(this, s.course, preferLecOf(s)).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
         val room = roomOf(s)
         val mode = modeOf(s)
+        // the one trusted rule, the same as the week view, Home and the course page
+        val venueNow = Timetable.venueOf(this, s)
         val locLine = when {
-            mode == "online" -> "Online"
-            // a room means in person: the room alone, big and clear
-            mode == "inperson" -> room.ifEmpty { "In person" }
-            Timetable.inPerson(this, s.course) -> room.ifEmpty { "In person" }
-            loc.startsWith("online:") -> "Online" + (if (Timetable.meetingLinkOf(this, s.course, preferLecOf(s)).isNotEmpty()) " · your link" else "")
-            umOnline(s) -> "Online"
-            room.isNotEmpty() -> room
-            autoMeeting.isNotEmpty() -> "Online (auto)"
-            else -> "Set the room or online link"
+            venueNow == "Online" && loc.startsWith("online:") && Timetable.meetingLinkOf(this, s.course, preferLecOf(s)).isNotEmpty() -> "Online · your link"
+            else -> venueNow.ifEmpty { "Set the room or online link" }
         }
         // one venue line with a pencil: tap to change this class's room (or make the course online)
         lateinit var dlg: android.app.AlertDialog
@@ -656,8 +639,11 @@ class TimetableActivity : BaseActivity() {
             listOf("Usual", "Online", "In person"), date)
         // short labels: three chips fit one row inside the popup ("As the course" wrapped and pushed the row out)
         modeRow("Usually", listOf("Course", "Online", "In person"), null)
-        box.addView(tv("Course = follow the course's own setting (now " + (if (Timetable.inPerson(this, s.course)) "in person" else "online") +
-            "). Change it on the course page.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
+        box.addView(tv("Course = this course's own setting, now " + when (Timetable.courseMode(this, s.course)) {
+            "online" -> "Online (every class online)"
+            "inperson" -> "In person (every class in its room)"
+            else -> "As timetable (the room or Online the UM timetable lists)"
+        } + ". Change it on the course page.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
         // Spectrum's note, unless it only repeats the room
         if (s.note.isNotEmpty() && !s.grp.startsWith("cat-") && !s.note.equals(room, true)) box.addView(tv(s.note, Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(6), 0, 0) })
         // action buttons: attendance page (primary), meeting link, course page — whichever exist
@@ -678,7 +664,7 @@ class TimetableActivity : BaseActivity() {
             }
         }
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(16), 0, 0) }
-        if (attUrl.isNotEmpty()) btnRow.addView(pillBtn("Attendance", attUrl, true), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
+        if (attUrl.isNotEmpty() && !Timetable.attByLecturer(this, s.course)) btnRow.addView(pillBtn("Attendance", attUrl, true), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
         val meeting = autoMeeting
         if (meeting.isNotEmpty()) btnRow.addView(pillBtn("Join class", meeting, attUrl.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
         val courseUrl = Prefs(this).site.let { if (it.isNotEmpty()) "$it/course/view.php?id=${courseIdOf(s.course)}" else "" }

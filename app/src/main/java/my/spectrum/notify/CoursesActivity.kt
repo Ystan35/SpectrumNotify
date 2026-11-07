@@ -179,8 +179,7 @@ class CoursesActivity : BaseActivity() {
             val next = ov.classes.firstOrNull { it.code.equals(c.code, true) }
             val whenText = when {
                 next != null -> {
-                    val online = next.link.isNotEmpty() && !Timetable.inPerson(this, c.code)
-                    val venue = if (online) "Online" else Timetable.roomAt(this, c.code, next.start)
+                    val venue = Timetable.venueAt(this, c.code, next.start)
                     "Next: " + dayLabel(next.start) + " " + hhmm(next.start) + if (venue.isNotEmpty()) " · $venue" else ""
                 }
                 c.slots.isNotEmpty() -> c.slots.take(3).joinToString(", ") { "${Timetable.DAYS[it.day - 1]} ${Timetable.fmtMin(it.start)}" }
@@ -327,13 +326,14 @@ class CoursesActivity : BaseActivity() {
         // next class, with Join when it has a meeting link (the same rule as Home)
         ov.classes.firstOrNull { it.code.equals(c.code, true) }?.let { n ->
             section("Next class")
-            val online = n.link.isNotEmpty() && !Timetable.inPerson(this, c.code)
-            val venue = if (online) "Online" else Timetable.roomAt(this, c.code, n.start).ifEmpty { "In person" }
+            // the same rule as the class rows above and Home: trusted data only, never "a link was found"
+            val venue = Timetable.venueAt(this, c.code, n.start)
+            val online = venue == "Online"
             box.addView(tv(dayLabel(n.start) + ", " + hhmm(n.start) + "–" + hhmm(n.end) + " · " + relIn(n.start - System.currentTimeMillis() / 1000),
                 Type.BODY_L, Ui.TEXT, true))
-            box.addView(iconText(if (online) R.drawable.ic_laptop else R.drawable.ic_place, venue, Type.BODY, if (online) Ui.CYAN else Ui.TEXT, true)
+            if (venue.isNotEmpty()) box.addView(iconText(if (online) R.drawable.ic_laptop else R.drawable.ic_place, venue, Type.BODY, if (online) Ui.CYAN else Ui.TEXT, true)
                 .apply { setPadding(0, dp(4), 0, 0) })
-            if (online) box.addView(button("Join class", Emphasis.PRIMARY, Ui.SIGNAL) { open(n.link) },
+            if (n.link.isNotEmpty() && (online || venue.isEmpty())) box.addView(button("Join class", Emphasis.PRIMARY, Ui.SIGNAL) { open(n.link) },
                 LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
         }
 
@@ -342,16 +342,19 @@ class CoursesActivity : BaseActivity() {
         val code = c.code.uppercase()
         val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         modeRow.addView(tv("Usually", Type.BODY, Ui.TEXT, true), LinearLayout.LayoutParams(0, WRAP, 1f))
-        modeRow.addView(spinner(listOf("Online", "In person"), if (Timetable.inPerson(this, code)) 1 else 0) { pos ->
-            if ((pos == 1) != Timetable.inPerson(this, code)) {
-                Timetable.setInPerson(this, listOf(code), pos == 1)
+        val modes = Timetable.COURSE_MODES
+        modeRow.addView(spinner(modes.map { it.second }, modes.indexOfFirst { it.first == Timetable.courseMode(this, code) }.coerceAtLeast(0)) { pos ->
+            val m = modes[pos].first
+            if (m != Timetable.courseMode(this, code)) {
+                Timetable.setCourseMode(this, code, m)
                 Scheduler.scheduleAll(this)
                 render()
-                if (pos == 0) askMissingMeetingLinks(code) { render() }
+                if (m == "online") askMissingMeetingLinks(code) { render() }
             }
-        }.apply { contentDescription = "$code: usually online or in person" }, LinearLayout.LayoutParams(dp(168), WRAP))
+        }.apply { contentDescription = "$code: usually as timetable, online or in person" }, LinearLayout.LayoutParams(dp(176), WRAP))
         box.addView(modeRow)
-        box.addView(tv("For one class, or just one week, tap the class above.", Type.CAPTION, Ui.DIM).apply { setPadding(0, dp(4), 0, 0) })
+        box.addView(tv(Timetable.COURSE_MODES_HELP + " For one class, or just one week, tap the class above.", Type.CAPTION, Ui.DIM)
+            .apply { setPadding(0, dp(4), 0, 0) })
 
         // the links Join class opens: yours, else the one found on Spectrum; lectures and tutorials apart when both exist
         section("Meeting links")

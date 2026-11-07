@@ -69,10 +69,8 @@ class NextClassWidget : AppWidgetProvider() {
                             if (live) "Ends ${relIn(next.end - now)}" else "Starts ${relIn(next.start - now)}",
                         )
                         // location: user override -> online auto -> catalog room
-                        val locPref = Timetable.locationOf(ctx, next.course)
-                        val locLine = when {
-                            locPref.startsWith("online:") -> "💻 Online"
-                            else -> Timetable.roomAt(ctx, next.course, next.start).let { if (it.isEmpty()) "" else "📍 $it" }
+                        val locLine = Timetable.venueAt(ctx, next.course, next.start).let {
+                            when { it.isEmpty() -> ""; it == "Online" -> "💻 Online"; else -> "📍 $it" }
                         }
                         v.setTextViewText(R.id.widget_location, locLine)
                         v.setViewVisibility(R.id.widget_location, if (locLine.isEmpty() || compact) android.view.View.GONE else android.view.View.VISIBLE)
@@ -83,7 +81,8 @@ class NextClassWidget : AppWidgetProvider() {
                         } else {
                             v.setViewVisibility(R.id.widget_actions, android.view.View.VISIBLE)
                             val (meeting, att, coursePage) = Checker.linksForCourse(ctx, next.course, next.courseId, Checker.groupTokens(next.name), preferLec = Checker.preferLecOf(next.name), day = localDt(next.start).dayOfWeek.value, startMin = localDt(next.start).let { it.hour * 60 + it.minute }, endMin = localDt(next.end).let { it.hour * 60 + it.minute })
-                            if (meeting.isNotEmpty()) {
+                            // a class known to be in a room gets no Join, as on Home
+                            if (meeting.isNotEmpty() && !locLine.startsWith("📍")) {
                                 v.setTextViewText(R.id.widget_meeting, "Join")
                                 v.setOnClickPendingIntent(
                                     R.id.widget_meeting,

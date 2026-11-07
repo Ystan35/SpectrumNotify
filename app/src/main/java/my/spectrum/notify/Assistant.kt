@@ -158,6 +158,12 @@ object Assistant {
         // real danger words were already caught by DANGER above
         // "help me to login" got the reminder question: the model was never trained on signing in
         if (LOGIN.containsMatchIn(q)) return login(ctx)
+        // "send previous question to developer" got the reminder question: the model never saw feedback requests
+        if (TO_DEV.containsMatchIn(q)) return toDeveloper(previous)
+        // "attendance link for monday classes" was refused as coursework
+        if (ATTEND.containsMatchIn(q)) return attendance(ctx, p, q)
+        // "where are fsktm" looked for a class called FSKTM: a place named exactly gets the place
+        WHERE_IS.find(q)?.let { m -> exactPlace(ctx, m.groupValues[1])?.let { return placeReply(ctx, it) } }
         if (REMIND.containsMatchIn(q)) {
             // "remind me 2 days before" answers the reminder question just asked
             if (previous != null && OFFSET.containsMatchIn(q) && absDate(q) == null && REMIND.containsMatchIn(previous)) return answer(ctx, "$previous $q")
@@ -173,6 +179,10 @@ object Assistant {
         // deadline words always list deadlines ("deadline for nextweek?" got the "ask your lecturer" reply); asking to
         // extend one stays with the model (schoolwork / other)
         if (DUE.containsMatchIn(q) && !q.contains("extend", true) && p.intent != "add_reminder") return deadlines(ctx, p, q)
+        // ticket SN-Q7D6X: "who are my professor for cso" had no answer; the UM timetable lists each class's lecturer
+        if (LECTURER.containsMatchIn(q)) return lecturers(ctx, q)
+        // ticket SN-WY76Y: "my friday class?" was too short for the model; a day and the word class lists that day
+        if (DATE_WORDS.containsMatchIn(q) && CLASS_WORD.containsMatchIn(q) && !q.contains("where", true)) return classesOn(ctx, p, q)
         if (p.confidence < SURE) {
             // a short follow-up makes sense with the question before it: "go to kps" + "from kk10"
             if (previous != null && q.split(Regex("\\s+")).size <= 5) return answer(ctx, "$previous $q")
@@ -381,7 +391,7 @@ object Assistant {
     private fun label(ctx: Context, c: Checker.ClassItem) = Shorts.display(ctx, c.code.ifEmpty { c.course })
 
     private fun room(ctx: Context, c: Checker.ClassItem): String =
-        Timetable.roomAt(ctx, c.code.ifEmpty { c.course }, c.start)
+        Timetable.venueAt(ctx, c.code.ifEmpty { c.course }, c.start)
 
     private val openTimetable = Action("Open Timetable") { it.startActivity(Intent(it, TimetableActivity::class.java)) }
 
@@ -395,8 +405,34 @@ object Assistant {
         val now = System.currentTimeMillis() / 1000
         val inText = if (c.start <= now) "on now" else "starts ${untilText(c.start - now)}"
         return Reply("Your next ${if (p.slots["COURSE"] != null) "" else "class "}${label(ctx, c)} ${kindOf(c)}: ${whenText(c)} ($inText)." +
-            (if (r.isNotEmpty()) " Room: $r." else ""), source = synced(ctx), actions = listOf(openTimetable))
+            (when { r == "Online" -> " Online."; r.isNotEmpty() -> " Room: $r."; else -> "" }), source = synced(ctx),
+            actions = classActions(ctx, c, r) + openTimetable)
     }
+
+    // ------------------------------------------------------------ buttons that only open pages (Oli changes nothing)
+
+    /** The class's attendance page: the one you chose, else the one found on Spectrum; "" = none. */
+    private fun attUrlOf(ctx: Context, c: Checker.ClassItem): String {
+        val code = c.code.ifEmpty { c.course }
+        val pref = Checker.preferLecOf(c.name)
+        return c.attUrl.ifEmpty { Timetable.attFor(ctx, code, pref) }.ifEmpty { Checker.attendanceUrl(ctx, c.courseId, pref) }
+    }
+
+    private fun openUrl(label: String, url: String) = Action(label) { a ->
+        try { a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) { }
+    }
+
+    /** The course's own page in the app: classes, links, deadlines and materials in one place. */
+    private fun courseAction(ctx: Context, c: Checker.ClassItem, label: String = "Open ${label(ctx, c)}") = Action(label) { a ->
+        a.startActivity(Intent(a, CoursesActivity::class.java).putExtra(CoursesActivity.EXTRA_CODE, c.code.ifEmpty { c.course }))
+    }
+
+    /** Join class (online with a link), Attendance (when a page is known), then the course page. */
+    private fun classActions(ctx: Context, c: Checker.ClassItem, venue: String): List<Action> = listOfNotNull(
+        c.link.takeIf { it.isNotEmpty() && !it.contains("/mod/attendance/") && (venue == "Online" || venue.isEmpty()) }?.let { openUrl("Join class", it) },
+        attUrlOf(ctx, c).takeIf { it.isNotEmpty() && !Timetable.attByLecturer(ctx, c.code.ifEmpty { c.course }) }?.let { openUrl("Attendance", it) },
+        courseAction(ctx, c, "Course page"),
+    )
 
     /** Free time: until the next class, or after the one on now; says so when nothing else is on today. */
     private fun restTime(ctx: Context): Reply {
@@ -473,16 +509,19 @@ object Assistant {
             "• " + (if (many) localDt(c.start).format(DAY_FMT) + " " else "") + "${hm(c.start)}–${hm(c.end)} ${label(ctx, c)} ${kindOf(c)}" +
                 room(ctx, c).let { if (it.isNotEmpty()) " ($it)" else "" }
         }
-        return Reply("${list.size} class${if (list.size > 1) "es" else ""} ${rangeText(r)}:\n$lines", source = synced(ctx), actions = listOf(openTimetable))
+        // each course once, as a button to its page (up to 4, so the reply stays short)
+        val courses = list.distinctBy { it.code.ifEmpty { it.course }.uppercase() }.take(4).map { courseAction(ctx, it) }
+        return Reply("${list.size} class${if (list.size > 1) "es" else ""} ${rangeText(r)}:\n$lines", source = synced(ctx), actions = courses + openTimetable)
     }
 
     private fun classWhere(ctx: Context, p: Parsed): Reply {
         val c = Checker.overview(ctx).classes.firstOrNull { matchesCourse(it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"]) }
             ?: return Reply("I don't see that class in the next two weeks.", source = synced(ctx), actions = listOf(openTimetable))
         val r = room(ctx, c)
-        val page = Action("Open course page") { a -> a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(c.courseUrl))) }
-        if (r.isEmpty()) return Reply("I don't have a room for ${label(ctx, c)} (${whenText(c)}). Check the course page on Spectrum or ask your lecturer.",
-            source = synced(ctx), actions = listOf(page))
+        val page = courseAction(ctx, c, "Course page")
+        if (r == "Online") return Reply("${label(ctx, c)} (${whenText(c)}) is online.", source = synced(ctx), actions = classActions(ctx, c, r))
+        if (r.isEmpty()) return Reply("I don't have a room for ${label(ctx, c)} (${whenText(c)}). Its course page may say, or ask your lecturer.",
+            source = synced(ctx), actions = listOf(page, openUrl("Open on Spectrum", c.courseUrl)))
         val walk = Action("How to get there") { a ->
             val to = Shuttle.data(a).let { d -> d.faculties.entries.filter { c.code.uppercase().startsWith(it.key) }.maxByOrNull { it.key.length }?.value }
             a.startActivity(Intent(a, ShuttleActivity::class.java).apply { if (to != null) putExtra(ShuttleActivity.EXTRA_TO, to) })
@@ -645,6 +684,93 @@ object Assistant {
         return Reply("Add this reminder?\n${task}\n${d.format(DAY_FMT)} at ${"%02d:%02d".format(mins!! / 60, mins!! % 60)}", confirm = e)
     }
 
+    private val CLASS_WORD = Regex("""\b(class|classes|lectures?|tutorials?|labs?|schedule)\b""", RegexOption.IGNORE_CASE)
+    private val LECTURER = Regex("""\b(lecturers?|professors?|profs?|tutors?|teachers?|teach(es|ing)?|who\s+(is|are)\s+(my|the)\s+(lecturer|prof|tutor))\b""", RegexOption.IGNORE_CASE)
+
+    /** Who teaches each class, from the UM timetable for your Occ; one course when named (code or short name), else all. */
+    private fun lecturers(ctx: Context, q: String): Reply {
+        val slots = Timetable.all(ctx)
+        val codes = slots.map { it.course.uppercase(Locale.ROOT) }.distinct()
+        val named = codes.filter { c ->
+            q.contains(c, true) || Shorts.get(ctx, c).takeIf { it.length >= 2 }
+                ?.let { Regex("""\b""" + Regex.escape(it) + """\b""", RegexOption.IGNORE_CASE).containsMatchIn(q) } == true
+        }
+        val pick = named.ifEmpty { codes }
+        val lines = pick.flatMap { code ->
+            slots.filter { it.course.equals(code, true) }.mapNotNull { s ->
+                val who = Timetable.choiceOf(ctx, s)?.detail().orEmpty()
+                if (who.isEmpty()) null else "• ${Shorts.display(ctx, code)} ${s.kind.label.lowercase(Locale.ROOT)}: $who"
+            }.distinct()
+        }
+        val open = pick.take(3).map { code ->
+            Action("Open ${Shorts.display(ctx, code)}") { a -> a.startActivity(Intent(a, CoursesActivity::class.java).putExtra(CoursesActivity.EXTRA_CODE, code)) }
+        }
+        if (lines.isEmpty()) return Reply(
+            if (named.isEmpty() && codes.isNotEmpty()) "The UM timetable doesn't list lecturers for your classes. The course page on Spectrum usually names them."
+            else "The UM timetable doesn't list a lecturer for ${named.joinToString { Shorts.display(ctx, it) }.ifEmpty { "that course" }}. " +
+                "Its course page on Spectrum usually names them.", source = "UM timetable", actions = open)
+        return Reply((if (named.isEmpty()) "Your lecturers:\n" else "") + lines.joinToString("\n"), source = "UM timetable, for your Occ", actions = open)
+    }
+
+    private val TO_DEV = Regex("""\b(send|report|forward|tell|pass)\b.*\b(developers?|devs?|feedback)\b""", RegexOption.IGNORE_CASE)
+
+    /** Rule 11: you see the ticket and send it yourself; the question before this one is filled in. */
+    private fun toDeveloper(previous: String?): Reply =
+        if (previous == null) Reply("Tap below to write to the developer. You see the ticket before it is sent.",
+            actions = listOf(Action("Send feedback") { FeedbackActivity.open(it, "question") }))
+        else Reply("Tap below to send \"$previous\" to the developer. You see the ticket before it is sent.", feedback = previous)
+
+    private val ATTEND = Regex("""\battend(ance|ence)?\b""", RegexOption.IGNORE_CASE)
+
+    /** The attendance page of each class on the day asked (today when none), as buttons. */
+    private fun attendance(ctx: Context, p: Parsed, q: String): Reply {
+        val r = dates(p.slots["DATE"] ?: DATE_WORDS.find(q)?.value)
+        val all = Checker.overview(ctx).classes
+        // the model can take a word like "link" for a course: a course name none of your classes has is ignored
+        val course = p.slots["COURSE"]?.takeIf { cs -> all.any { matchesCourse(it, cs) } }
+        val list = all.filter {
+            val d = localDt(it.start).toLocalDate()
+            !d.isBefore(r.first) && !d.isAfter(r.second) && matchesCourse(it, course) && matchesKind(it, p.slots["KIND"])
+        }
+        if (list.isEmpty()) return Reply("No classes ${rangeText(r)} in what the app has synced, so no attendance pages.",
+            source = synced(ctx), actions = listOf(openTimetable))
+        val many = r.first != r.second
+        // taken in class by the lecturer: said in words, no button
+        val byLecturer = list.filter { Timetable.attByLecturer(ctx, it.code.ifEmpty { it.course }) }
+        val acts = (list - byLecturer.toSet()).take(6).map { c ->
+            val url = attUrlOf(ctx, c)
+            val title = (if (many) localDt(c.start).format(DAY_FMT) + " " else "") + "${hm(c.start)} ${label(ctx, c)}"
+            // no page found: the course's page in the app, where the attendance pencil chooses one
+            if (url.isNotEmpty()) openUrl("Attendance: $title", url) else courseAction(ctx, c, "$title: course page")
+        }
+        val missing = acts.count { it.label.endsWith("course page") }
+        return Reply("Attendance pages for your classes ${rangeText(r)}:" +
+            (if (missing > 0) " For $missing, no attendance page was found yet; its course page opens, where you can choose one." else "") +
+            (if (byLecturer.isNotEmpty()) " Taken in class by the lecturer: " + byLecturer.joinToString { label(ctx, it) } + "." else "") +
+            (if (list.size - byLecturer.size > acts.size) " Showing the first ${acts.size}." else ""),
+            source = synced(ctx), actions = acts)
+    }
+
+    private val WHERE_IS = Regex("""^\s*where\s*(?:is|are|'s|s)?\s+(?:the\s+)?(.+?)\s*\??\s*$""", RegexOption.IGNORE_CASE)
+
+    /** A shuttle place named exactly (its name or a short name like FSKTM, KK12); fuzzy matches stay with the model. */
+    private fun exactPlace(ctx: Context, text: String): ShuttleModel.Place? {
+        val t = text.lowercase(Locale.ROOT).trim()
+        return Shuttle.data(ctx).places.values.firstOrNull { pl -> (listOf(pl.name) + pl.aka).any { it.lowercase(Locale.ROOT) == t } }
+    }
+
+    private fun placeReply(ctx: Context, pl: ShuttleModel.Place): Reply {
+        // [near] is the id of the stop to use
+        val stop = Shuttle.data(ctx).places[pl.near]?.name.orEmpty()
+        val go = Action("How to get there") { a -> a.startActivity(Intent(a, ShuttleActivity::class.java).putExtra(ShuttleActivity.EXTRA_TO, pl.id)) }
+        val map = Action("Open in Maps") { a ->
+            val u = if (pl.lat != null && pl.lng != null) "geo:${pl.lat},${pl.lng}?q=${pl.lat},${pl.lng}(${Uri.encode(pl.name)})"
+                else "geo:0,0?q=" + Uri.encode(pl.query.ifEmpty { pl.name })
+            try { a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) } catch (_: Exception) { }
+        }
+        return Reply(pl.name + (if (stop.isNotEmpty() && !pl.isStop) ". The nearest shuttle stop is $stop." else "."), actions = listOf(go, map))
+    }
+
     private val LOGIN = Regex("""\b(log ?in|logged (in|out)|log ?out|sign ?in|signed out)\b""", RegexOption.IGNORE_CASE)
 
     private fun login(ctx: Context): Reply {
@@ -680,7 +806,7 @@ object Assistant {
 
     private fun coursePageAction(ctx: Context, p: Parsed): List<Action> {
         val c = Checker.overview(ctx).classes.firstOrNull { matchesCourse(it, p.slots["COURSE"]) && p.slots["COURSE"] != null } ?: return emptyList()
-        return listOf(Action("Open course page") { a -> a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(c.courseUrl))) })
+        return listOf(courseAction(ctx, c, "Course page"))
     }
 
     init {
@@ -715,6 +841,12 @@ object Assistant {
         check(NEXT_UP.containsMatchIn("what are my next event") && NEXT_UP.containsMatchIn("what's next") && !NEXT_UP.containsMatchIn("next week deadlines"))
         check(NEAREST.containsMatchIn("where is my nearest bus stop") && NEAREST.containsMatchIn("any bus stop near me") && !NEAREST.containsMatchIn("bus to FSKTM"))
         check(TRAILING_DAY.find("call mum tomorrow")?.groupValues?.get(1) == "tomorrow" && TRAILING_DAY.find("print notes") == null)
+        check(LECTURER.containsMatchIn("who are my professor for cso") && LECTURER.containsMatchIn("who teaches HCI") &&
+            !LECTURER.containsMatchIn("my tutorial on friday") && !LECTURER.containsMatchIn("open my profile"))
+        check(DATE_WORDS.containsMatchIn("my friday class?") && CLASS_WORD.containsMatchIn("my friday class?"))
+        check(TO_DEV.containsMatchIn("send previous question to developer") && !TO_DEV.containsMatchIn("remind me to send the report"))
+        check(ATTEND.containsMatchIn("give me the attendance link for monday classes") && !ATTEND.containsMatchIn("my assignment"))
+        check(WHERE_IS.find("where are fsktm")?.groupValues?.get(1) == "fsktm" && WHERE_IS.find("where is the KK12?")?.groupValues?.get(1) == "KK12")
         check(SCHOOLWORK.containsMatchIn("do my essay") && SCHOOLWORK.containsMatchIn("write the lab report for me") && !SCHOOLWORK.containsMatchIn("when is my essay due"))
         check(tokens("Bus from KK12 to FSKTM by 10 am, WIX1001!").map { it.second } == listOf("bus", "from", "kk12", "to", "fsktm", "by", "<time>", "<code>"))
     }

@@ -7,8 +7,8 @@ import android.widget.LinearLayout
 import java.util.Locale
 
 /**
- * Settings → Online or in person: one row per course with an Online / In person dropdown, and buttons to switch
- * every course at once (with Undo).
+ * Settings → Online or in person: one row per course with an As timetable / Online / In person dropdown, and buttons
+ * to switch every course at once (with Undo).
  */
 object ClassModeEditor {
 
@@ -31,36 +31,37 @@ object ClassModeEditor {
             val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             row.addView(activity.tv(Shorts.display(activity, code), Type.BODY, Ui.TEXT, true),
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(activity.spinner(listOf("Online", "In person"), if (Timetable.inPerson(activity, code)) 1 else 0) { pos ->
-                if ((pos == 1) != Timetable.inPerson(activity, code)) {
-                    Timetable.setInPerson(activity, listOf(code), pos == 1)
+            val modes = Timetable.COURSE_MODES
+            row.addView(activity.spinner(modes.map { it.second }, modes.indexOfFirst { it.first == Timetable.courseMode(activity, code) }.coerceAtLeast(0)) { pos ->
+                if (modes[pos].first != Timetable.courseMode(activity, code)) {
+                    Timetable.setCourseMode(activity, code, modes[pos].first)
                     Scheduler.scheduleAll(activity)
                 }
-            }.apply { contentDescription = "$code: online or in person" }, LinearLayout.LayoutParams(activity.dp(168), ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = activity.dp(8) })
+            }.apply { contentDescription = "$code: as timetable, online or in person" }, LinearLayout.LayoutParams(activity.dp(176), ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = activity.dp(8) })
             box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dp(8) })
         }
 
         // every course at once (after the haze), with Undo
-        fun switchAll(on: Boolean) {
+        // during the haze: All online; after it: All as timetable (each class back to its room)
+        fun switchAll(mode: String) {
             val all = courses.map { it.code.uppercase(Locale.ROOT) }
-            val before = all.associateWith { Timetable.inPerson(activity, it) }
-            Timetable.setInPerson(activity, all, on)
+            val before = all.associateWith { Timetable.courseMode(activity, it) }
+            all.forEach { Timetable.setCourseMode(activity, it, mode) }
             Scheduler.scheduleAll(activity)
             draw(activity, box)
-            activity.undoBar(if (on) "All courses in person" else "All courses online again") {
-                Timetable.setInPerson(activity, before.filterValues { it }.keys, true)
-                Timetable.setInPerson(activity, before.filterValues { !it }.keys, false)
+            activity.undoBar(if (mode == "online") "All courses online" else "All courses as the timetable says") {
+                before.forEach { (c, m) -> Timetable.setCourseMode(activity, c, m) }
                 Scheduler.scheduleAll(activity)
                 draw(activity, box)
             }
         }
         val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; isBaselineAligned = false }
-        row.addView(activity.button("All in person", Emphasis.SECONDARY) { switchAll(true) },
+        row.addView(activity.button("All as timetable", Emphasis.SECONDARY) { switchAll("") },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(activity.button("All online", Emphasis.SECONDARY) { switchAll(false) },
+        row.addView(activity.button("All online", Emphasis.SECONDARY) { switchAll("online") },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = activity.dp(8) })
         box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dp(14) })
-        box.label("In person: no Join class or meeting links; the room is shown. If a course posts a new meeting link, " +
-            "you are asked whether it is online again.", Type.CAPTION, Ui.DIM, 8)
+        box.label(Timetable.COURSE_MODES_HELP + " If an in-person course posts a new meeting link, you are asked whether it is online again.",
+            Type.CAPTION, Ui.DIM, 8)
     }
 }

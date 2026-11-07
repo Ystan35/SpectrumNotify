@@ -358,6 +358,36 @@ object Timetable {
         e.apply()
     }
 
+    /** The course-wide choices, in the order the dropdowns show them. */
+    val COURSE_MODES = listOf("" to "As timetable", "online" to "Online", "inperson" to "In person")
+
+    /** What each course-wide choice does, in words the dropdowns show under them. */
+    const val COURSE_MODES_HELP = "As timetable: each class shows the room or Online that the UM timetable lists. " +
+        "Online: every class of the course is online, with Join class. In person: every class is in its room, with no Join class."
+
+    /**
+     * The course-wide choice (ticket SN-HCTRV: "Online" used to be the default too, so it could not mean online):
+     * "" = as the timetable says, "online" = every class online, "inperson" = every class in its room.
+     * Online is kept as your location "online:" (which every screen already reads as Online), so nothing new is stored.
+     */
+    fun courseMode(ctx: Context, course: String): String = when {
+        inPerson(ctx, course) -> "inperson"
+        locationOf(ctx, course).startsWith("online:") -> "online"
+        else -> ""
+    }
+
+    fun setCourseMode(ctx: Context, course: String, mode: String) {
+        val loc = locationOf(ctx, course)
+        // a meeting link pasted before v0.25.1 lives in the location: keep it as the course's link before clearing it
+        if (mode != "online" && loc.startsWith("online:")) {
+            val legacy = loc.removePrefix("online:").trim()
+            if (legacy.isNotEmpty() && (sp(ctx).getString("mlink:$course", "") ?: "").isEmpty()) setMeetingLink(ctx, course, legacy)
+            setLocation(ctx, course, "")
+        }
+        setInPerson(ctx, listOf(course), mode == "inperson")
+        if (mode == "online" && !loc.startsWith("online:")) setLocation(ctx, course, "online:")
+    }
+
     /**
      * Online or in person for one class (slot [key]), since courses switch week by week and a tutorial can be in person
      * while the lecture stays online: "online", "inperson" or "" = as usual. A choice for one [date] beats the every-week one.
@@ -468,6 +498,10 @@ object Timetable {
     /** How attendance is taken for a course: "link" (Spectrum page), "manual" (lecturer, in class), "none", or "" = not set. */
     fun attMode(ctx: Context, course: String): String = sp(ctx).getString("attmode:$course", "") ?: ""
 
+    /** Attendance is taken in class by the lecturer: no Attendance button anywhere (nothing to open). */
+    fun attByLecturer(ctx: Context, course: String): Boolean =
+        attMode(ctx, course) == "manual" || attMode(ctx, course.uppercase(Locale.ROOT)) == "manual"
+
     fun setAttMode(ctx: Context, course: String, mode: String) {
         sp(ctx).edit().putString("attmode:$course", mode).apply()
     }
@@ -540,9 +574,9 @@ object Timetable {
         else choiceOf(ctx, s)?.parts?.any { it.day == s.day && isOnline(it.room) } == true
 
     /** Where this class is this week: "Online", the room, "In person", or "" when not known (the week view's rule). */
-    fun venueOf(ctx: Context, s: Slot): String {
+    fun venueOf(ctx: Context, s: Slot, date: LocalDate = thisWeek(s.day)): String {
         val room = roomOf(ctx, s)
-        return when (modeOf(ctx, s)) {
+        return when (classMode(ctx, s.key, date)) {
             "online" -> "Online"
             "inperson" -> room.ifEmpty { "In person" }
             else -> when {
@@ -551,6 +585,39 @@ object Timetable {
                 else -> room
             }
         }
+    }
+
+    /**
+     * Where [course]'s class starting at [ts] is: the ONE rule every screen and alert uses. Only trusted data: your
+     * choice for that class on that date, the course set In person, your saved location, then the UM timetable
+     * (ONLINE or a room). A meeting link found on Spectrum does not make a class online. "" = not known.
+     */
+    fun venueAt(ctx: Context, course: String, ts: Long): String {
+        val t = localDt(ts)
+        val s = slotAt(ctx, course, ts)
+        if (s != null) return venueOf(ctx, s, t.toLocalDate())
+        // not on your timetable: the course setting and your location only
+        val loc = locationOf(ctx, course)
+        return when {
+            inPerson(ctx, course) -> roomAt(ctx, course, ts).ifEmpty { "In person" }
+            loc.startsWith("online:") -> "Online"
+            else -> roomAt(ctx, course, ts)
+        }
+    }
+
+    /** The class on your timetable for [course] starting nearest [ts] (within an hour, same weekday), or null. */
+    fun slotAt(ctx: Context, course: String, ts: Long): Slot? {
+        val t = localDt(ts)
+        val min = t.hour * 60 + t.minute
+        return all(ctx).filter { it.course.equals(course, true) && it.day == t.dayOfWeek.value && kotlin.math.abs(it.start - min) <= 60 }
+            .minByOrNull { kotlin.math.abs(it.start - min) }
+    }
+
+    /** Lecture (true), tutorial (false) or not known (null) for the class at [ts], from your timetable. */
+    fun preferLecAt(ctx: Context, course: String, ts: Long): Boolean? = when (slotAt(ctx, course, ts)?.kind) {
+        SlotKind.LECTURE -> true
+        SlotKind.TUTORIAL -> false
+        else -> null
     }
 
     /** Which Occ this slot belongs to: from the picker group id (cat-CODE-kind-N), else empty. */

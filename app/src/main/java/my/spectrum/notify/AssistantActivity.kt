@@ -36,7 +36,7 @@ class AssistantActivity : BaseActivity() {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(8), dp(8), dp(12))
+            setPadding(dp(12), dp(8), dp(8), dp(4))
             setBackgroundColor(Ui.BG)
         }
         input = bar.field("", "Ask Oli about classes, deadlines, the bus…").apply {
@@ -57,6 +57,12 @@ class AssistantActivity : BaseActivity() {
             setOnClickListener { send() }
         }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply { leftMargin = dp(8) })
         root.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        // always in view under the box, not one message that scrolls away
+        root.addView(tv("Oli is an AI assistant and can make mistakes. Check important details on Spectrum.", Type.CAPTION, Ui.DIM).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(16), 0, dp(16), dp(10))
+            setBackgroundColor(Ui.BG)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         show(Assistant.Reply(
             "Hi, I'm Oli! Ask me about your classes, deadlines, reminders or the UM shuttle. I answer only from what this app has synced, " +

@@ -926,12 +926,14 @@ class MainActivity : BaseActivity() {
                     }, lp(MATCH, WRAP).apply { topMargin = dp(8) })
                 }
             }
-            if (!c.link.isJoinable() || c.manual) {
-                val inPerson = Timetable.inPerson(this, c.code.ifEmpty { c.course })
-                val room = Timetable.roomAt(this, c.code.ifEmpty { c.course }, c.start)
-                // the venue itself, from the UM timetable, rather than "In person. Online links are ignored"
-                val venue = room.ifEmpty { if (inPerson) "In person" else "" }
+            // where the class is, from trusted data only (your choice, the course setting, the UM timetable);
+            // a link found on Spectrum gives Join class only when the class is not known to be in a room
+            val venue = Timetable.venueAt(this, c.code.ifEmpty { c.course }, c.start)
+            val hasLink = c.link.isJoinable() && (venue == "Online" || venue.isEmpty())
+            if (!hasLink || c.manual) {
                 if (c.manual) card.addView(tv("Attendance for this course is by Teams recording.", Type.LABEL, soft).apply { setPadding(0, dp(10), 0, 0) })
+                else if (venue == "Online") card.addView(iconText(R.drawable.ic_laptop, "Online · no meeting link yet", Type.BODY_L, 0xFFFFFFFF.toInt(), true)
+                    .apply { setPadding(0, dp(10), 0, 0); contentDescription = "Online. No meeting link yet" })
                 else if (venue.isNotEmpty()) card.addView(iconText(R.drawable.ic_place, venue, Type.BODY_L, 0xFFFFFFFF.toInt(), true)
                     .apply { setPadding(0, dp(10), 0, 0); contentDescription = "Venue: $venue" })
                 else card.addView(tv("No online link yet. It may be in person, or not posted. The app keeps checking.", Type.LABEL, soft)
@@ -961,13 +963,9 @@ class MainActivity : BaseActivity() {
             }
             // a real meeting link exists → Join class is the primary action,
             // whatever kind of slot the class came from
-            val hasLink = c.link.isJoinable()
             if (hasLink) actionsRow.addView(pill("Join class", true) { openUrl(c.link) }, lp(0, WRAP, 1f).apply { rightMargin = dp(8) })
-            actionsRow.addView(pill("Attendance", !hasLink) {
-                if (Timetable.attMode(this@MainActivity, c.course) == "manual") {
-                    Toast.makeText(this@MainActivity, "Attendance for ${Shorts.display(this@MainActivity, c.course)} is taken in class by the lecturer.", Toast.LENGTH_LONG).show()
-                    return@pill
-                }
+            // taken in class by the lecturer: nothing to open, so no Attendance button
+            if (!Timetable.attByLecturer(this, c.code.ifEmpty { c.course })) actionsRow.addView(pill("Attendance", !hasLink) {
                 // Attendance needs the ATTENDANCE PAGE specifically — c.link often holds the
                 // MEETING link (the event description contains it, so it scores 100 in
                 // linksForEvent). Resolution order: pasted attendance link, occ-scored
@@ -975,7 +973,9 @@ class MainActivity : BaseActivity() {
                 val d1 = localDt(c.start).dayOfWeek.value
                 val s1 = localDt(c.start).let { it.hour * 60 + it.minute }
                 val e1 = localDt(c.end).let { it.hour * 60 + it.minute }
-                val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.course, c.courseId, Checker.groupTokens(c.name), preferLec = Checker.preferLecOf(c.name), day = d1, startMin = s1, endMin = e1)
+                // lecture or tutorial from your timetable when Spectrum's name does not say (ticket SN-6QMFL)
+                val pref = Checker.preferLecOf(c.name) ?: Timetable.preferLecAt(this@MainActivity, c.code.ifEmpty { c.course }, c.start)
+                val (_, att, coursePage) = Checker.linksForCourse(this@MainActivity, c.code.ifEmpty { c.course }, c.courseId, Checker.groupTokens(c.name), preferLec = pref, day = d1, startMin = s1, endMin = e1)
                 val eventIsAtt = c.link.contains("/mod/attendance/", true)
                 val target = att.ifEmpty { if (eventIsAtt) c.link else "" }.ifEmpty { coursePage }.ifEmpty { c.courseUrl }
                 if (target.isNotEmpty()) openUrl(target) else Toast.makeText(this@MainActivity, "No attendance page found for ${c.course} yet.", Toast.LENGTH_LONG).show()
@@ -1126,7 +1126,7 @@ class MainActivity : BaseActivity() {
         val wasInPerson = Timetable.inPerson(this, modeCode)
         val modeName = Shorts.display(this, modeCode)
         fun setMode(inPerson: Boolean) {
-            Timetable.setInPerson(this, listOf(modeCode), inPerson)
+            Timetable.setCourseMode(this, modeCode, if (inPerson) "inperson" else "online")
             Scheduler.scheduleAll(this)
             try { NextClassWidget.updateAll(this) } catch (_: Exception) { }
             ovAt = 0L; heroSig = ""; render()
@@ -1138,8 +1138,8 @@ class MainActivity : BaseActivity() {
             addView(iconText(if (wasInPerson) R.drawable.ic_laptop else R.drawable.ic_place,
                 if (wasInPerson) "Mark online" else "Mark in person", Type.BODY_L, Ui.TEXT, true))
             addView(tv(
-                if (wasInPerson) "In person now. Online: Join class and meeting links come back for $modeName."
-                else "No Join class or meeting links for $modeName; the room is shown instead.",
+                if (wasInPerson) "In person now. Online: every $modeName class shows Online with Join class."
+                else "Every $modeName class shows its room, with no Join class or meeting links.",
                 Type.CAPTION, Ui.DIM,
             ).apply { setPadding(0, dp(2), 0, 0); maxLines = 3 })
             isClickable = true

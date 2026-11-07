@@ -17,7 +17,9 @@ import android.widget.TextView
 import android.widget.Toast
 
 class SettingsActivity : BaseActivity() {
-    companion object { const val EXTRA_OPEN = "open_section" }
+    companion object { const val EXTRA_OPEN = "open_section"; private const val REQ_EXPORT = 41; private const val REQ_IMPORT = 42
+        /** The settings from before an import, for the Undo bar shown once the page is rebuilt. */
+        private var undoImport: String? = null }
     private lateinit var p: Prefs
     private lateinit var alarmBtn: Button
     private var alarmHelp: View? = null
@@ -226,8 +228,13 @@ class SettingsActivity : BaseActivity() {
         target = accordion(col, "ONLINE OR IN PERSON",
             "The long-term setting for each course: it stays until you change it here. For one class, or just one week, " +
                 "tap the class in Timetable instead.",
-            key = "inperson", icon = R.drawable.ic_laptop, contents = listOf("In person", "Online again"),
-            summary = Courses.all(this).count { Timetable.inPerson(this, it.code) }.let { if (it == 0) "All as Spectrum says" else "$it in person" })
+            key = "inperson", icon = R.drawable.ic_laptop, contents = listOf("As timetable", "Online", "In person"),
+            summary = Courses.all(this).map { Timetable.courseMode(this, it.code) }.let { ms ->
+                val on = ms.count { it == "online" }
+                val inp = ms.count { it == "inperson" }
+                if (on + inp == 0) "All as the timetable says"
+                else listOfNotNull(if (on > 0) "$on online" else null, if (inp > 0) "$inp in person" else null).joinToString(", ")
+            })
         ClassModeEditor.render(this, target)
 
         target = accordion(col, "DEADLINES", icon = R.drawable.ic_cat_deadline,
@@ -385,6 +392,20 @@ class SettingsActivity : BaseActivity() {
                     if (msg?.startsWith("Version ") == true) startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Updater.DOWNLOAD_URL)))
                 }
             }.start()
+        }
+        // a new phone without setting everything up again (feedback SN-QRXWL); the login is never in the file
+        target.action("Export settings", "Saves your course settings, links, reminders, alerts and shuttle places to a file. Your login is not included.") {
+            val stamp = java.time.LocalDate.now().toString()
+            try {
+                startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("application/json").putExtra(Intent.EXTRA_TITLE, "spectrum-notify-settings-$stamp.json"), REQ_EXPORT)
+            } catch (_: Exception) { Toast.makeText(this, "No app to save files with", Toast.LENGTH_LONG).show() }
+        }
+        target.action("Import settings", "Replaces your settings with ones from an exported file. You can undo right after.") {
+            try {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("*/*"), REQ_IMPORT)
+            } catch (_: Exception) { Toast.makeText(this, "No app to open files with", Toast.LENGTH_LONG).show() }
         }
         target.action("Send test notification", "Sends one test message so you can see how notifications look and that tapping opens the app.") {
             Notifier.push(this, "Test", "Notifications are working.\nTap the button below to open Spectrum.", true, listOf(Pair("Open Spectrum", p.site)), ignoreQuiet = true)
@@ -594,10 +615,60 @@ class SettingsActivity : BaseActivity() {
         super.onResume()
         recreateIfLookChanged()
         LinksEditor.renderSection(this, linksBox)
+        undoImport?.let { before ->
+            undoImport = null
+            undoBar("Settings imported") { SettingsBackup.apply(this, SettingsBackup.read(before)); afterImport() }
+        }
         val vis = if (Scheduler.canExact(this)) View.GONE else View.VISIBLE
         alarmBtn.visibility = vis
         alarmHelp?.visibility = vis
         refreshProfile()
+    }
+
+    @Deprecated("Activity result API: this app uses plain Activity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null) return
+        when (requestCode) {
+            REQ_EXPORT -> try {
+                contentResolver.openOutputStream(uri, "wt")!!.use { it.write(SettingsBackup.export(this).toByteArray()) }
+                Toast.makeText(this, "Settings exported", Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) { Toast.makeText(this, "Could not save the file", Toast.LENGTH_LONG).show() }
+            REQ_IMPORT -> {
+                // read at most MAX_BYTES + 1: a huge or endless file is refused without filling memory
+                val bytes = try { contentResolver.openInputStream(uri)!!.use { s -> s.readNBytesCompat(SettingsBackup.MAX_BYTES + 1) } }
+                    catch (_: Exception) { Toast.makeText(this, "Could not read the file", Toast.LENGTH_LONG).show(); return }
+                // checked in full before anything is written
+                val plan = try { SettingsBackup.read(String(bytes, Charsets.UTF_8)) }
+                    catch (e: IllegalArgumentException) { Toast.makeText(this, e.message, Toast.LENGTH_LONG).show(); return }
+                    catch (_: Exception) { Toast.makeText(this, "This file is not a Spectrum Notify settings export.", Toast.LENGTH_LONG).show(); return }
+                if (plan.count == 0) { Toast.makeText(this, "This file has no settings to import.", Toast.LENGTH_LONG).show(); return }
+                val from = (if (plan.version.isNotEmpty()) " from version ${plan.version}" else "") +
+                    (if (plan.exported > 0) ", saved " + java.time.Instant.ofEpochSecond(plan.exported).atZone(zone()).toLocalDate() else "")
+                android.app.AlertDialog.Builder(this, Ui.dialogTheme)
+                    .setTitle("Import settings?")
+                    .setMessage("${plan.count} settings$from. Your current settings are replaced; your login stays as it is." +
+                        if (plan.skipped > 0) "\n\n${plan.skipped} values in the file looked unsafe or damaged and are left out." else "")
+                    .setPositiveButton("Import") { _, _ -> importSettings(plan) }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+    }
+
+    private fun importSettings(plan: SettingsBackup.Plan) {
+        val before = SettingsBackup.export(this)
+        SettingsBackup.apply(this, plan)
+        undoImport = before
+        afterImport()
+    }
+
+    /** Alarms and checks follow the new settings; the page is rebuilt to show them. */
+    private fun afterImport() {
+        Scheduler.ensurePolling(this)
+        Scheduler.scheduleAll(this)
+        recreate()
     }
 
     override fun onPause() {
@@ -619,4 +690,16 @@ class SettingsActivity : BaseActivity() {
         Scheduler.ensurePolling(this)
         Scheduler.scheduleAll(this)
     }
+}
+
+/** Up to [max] bytes of the stream (InputStream.readNBytes needs Android 13). */
+private fun java.io.InputStream.readNBytesCompat(max: Int): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    val buf = ByteArray(8192)
+    while (out.size() < max) {
+        val n = read(buf, 0, minOf(buf.size, max - out.size()))
+        if (n < 0) break
+        out.write(buf, 0, n)
+    }
+    return out.toByteArray()
 }

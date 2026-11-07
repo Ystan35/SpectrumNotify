@@ -412,14 +412,20 @@ object Checker {
             val full = c?.str("fullname") ?: ""
             val cid = courseId(e)
             val (startShown, endShown) = classTimes(ctx, e)
+            val code = Timetable.courseCode(c)
+            // ticket SN-6QMFL: Spectrum's name often does not say lecture or tutorial, so the links of the other one were
+            // picked; your timetable knows (your own entry or the UM class at that time), and the links you saved for
+            // that kind win over anything found
+            val pref = preferLecOf(e.str("name")) ?: Timetable.preferLecAt(ctx, code, startShown)
+            val yours = if (Timetable.inPerson(ctx, code)) "" else Timetable.meetingLinkOf(ctx, code, pref)
             ClassItem(
                 unesc(e.str("name")), short.ifEmpty { full.ifEmpty { "Class" } }, full,
                 startShown, endShown,
-                linksForEvent(ctx, e, cal, links).firstOrNull()?.first ?: "",
+                yours.ifEmpty { linksForEvent(ctx, e, cal, links).firstOrNull()?.first ?: "" },
                 if (cid != 0L) "${p.site}/course/view.php?id=$cid" else p.site,
                 isManual(e, p), cid,
-                code = Timetable.courseCode(c),
-                attUrl = e.str("url"),
+                code = code,
+                attUrl = Timetable.attFor(ctx, code, pref).ifEmpty { e.str("url") },
             )
         }.filter { !localDt(it.end).toLocalDate().isBefore(today) }
         // manual timetable entries (user-added or catalog auto-setup) belong on the hero too;
@@ -436,7 +442,14 @@ object Checker {
                 }
         }.map { (slot, start, end) ->
             val cid = courseIdForCode(ctx, slot.course)
-            val (meeting, att, coursePage) = linksForCourse(ctx, slot.course, cid)
+            // ticket SN-VQ3YR: this class's kind, day and time, so its own lecture or tutorial links are used (asked
+            // without them, only a link saved for the whole course counted and HCI had no Join class)
+            val pref = when (slot.kind) { SlotKind.LECTURE -> true; SlotKind.TUTORIAL -> false; else -> preferLecOf(slot.title) }
+            val date = localDt(start).toLocalDate()
+            val (meeting, att, coursePage) = linksForCourse(
+                ctx, slot.course, cid, groupTokens(slot.title + " " + slot.note), pref, slot.day, slot.start, slot.end,
+                online = Timetable.classMode(ctx, slot.key, date) == "online",
+            )
             ClassItem(
                 slot.title.ifEmpty { "Class" }, slot.course,
                 slot.course, start, end,
@@ -1047,10 +1060,12 @@ object Checker {
             val classEnd = classTimes(ctx, e).second
             val signLine = if (!p.attStartAlert || isManual(e, p) || Timetable.attMode(ctx, code) == "manual") ""
                 else "\nAttendance: sign from ${hhmm(start)} to ${hhmm(classEnd)}. You'll get a reminder when class starts."
-            if (Timetable.inPerson(ctx, code)) {
-                // in person: a plain notice with the room (no attendance button: signing opens when class starts)
+            // in person (the same trusted rule as every screen): a plain notice with the room
+            // (no attendance button: signing opens when class starts)
+            val venue = Timetable.venueAt(ctx, code, start)
+            if (venue.isNotEmpty() && venue != "Online") {
                 if (kok in sent) continue
-                val room = Timetable.roomAt(ctx, code, start)
+                val room = venue.takeUnless { it == "In person" }.orEmpty()
                 val cid = courseId(e)
                 val buttons = ArrayList<Pair<String, String>>()
                 if (cid != 0L) buttons.add(Pair("Course page", "${p.site}/course/view.php?id=$cid"))

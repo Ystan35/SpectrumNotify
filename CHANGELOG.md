@@ -2,6 +2,15 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.35.0 (versionCode 100)
+Join class you can trust, settings backup, and a more helpful Oli.
+- **Online or in person from trusted data only:** every screen (Home, timetable day, week and month, course page, widget, alerts, Oli) shows the same venue, from your setting, else the UM timetable. Nothing is guessed any more.
+- **Course setting in 3 clear choices:** As timetable, Online or In person, with a line that says what each one does. "All as timetable" and "All online" can be undone.
+- **Join class for lectures and tutorials apart:** each class uses the link saved for its kind, on Home, the timetable, the course page and Oli. The Location box now shows the link you saved.
+- **No Attendance button** when attendance is taken in class by the lecturer.
+- **Export and import settings** (Settings → App): a backup file you can restore on another phone. Unsafe or broken values in a file are refused, and an import can be undone.
+- **Oli:** classes on a day ("my friday class?"), who teaches a course, the attendance link for a day, where FSKTM is, and "send that to the developer". Answers about classes come with Join class, Attendance and Course page buttons. A note under the chat says Oli can make mistakes.
+
 ## 0.34.0 (versionCode 99)
 A page for each course, tap feedback, and your own meeting links.
 - **Course page:** tap a course for everything about it on one page: next class with Join, its classes with room and lecturer, Online or in person, meeting links, deadlines, materials, notification pages and recent notifications. The Occ is set there; the list shows "Set your Occ" or "Check your Occ" when it needs a look.
