@@ -2,6 +2,15 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.36.0 (versionCode 101)
+Oli does more, asks before it changes anything, and understands more questions.
+- **Oli changes things only after a Yes:** mark a task done or hide it ("mark quiz 2 as done"), and set classes online or in person ("set fop tutorial to online", "set fop and cso to online", "fop to online and cso to offline", on named days or this/next week). With no day it asks how long, one week first.
+- **Oli opens things for you:** "where is the setting for dark mode" opens that Settings section, "give me maya link" opens a link from your UM links, "course page for fop" opens the course page.
+- **Better answers:** "my next class for cso" gives the next CSO class, not "no class today". "class for cso", "link for cso" and "location for lecture FOP classes" work. Slides and notes questions no longer skip the homework refusal. Holiday questions no longer swallow reminders. Short words like "pm" no longer pick a course.
+- **Safer emergencies:** a bare "tolong" shows the emergency numbers, but "tolong ingatkan saya..." is a normal request. More Malay emergency words are recognised.
+- **Wrong answer? button:** every Oli answer has a small link that sends the question and answer to the developer. You see the ticket before it is sent.
+- **Retrained model** with more Malay and Manglish sentences.
+
 ## 0.35.0 (versionCode 100)
 Join class you can trust, settings backup, and a more helpful Oli.
 - **Online or in person from trusted data only:** every screen (Home, timetable day, week and month, course page, widget, alerts, Oli) shows the same venue, from your setting, else the UM timetable. Nothing is guessed any more.

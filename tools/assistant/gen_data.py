@@ -80,7 +80,7 @@ T = {
         "what classes do i have {date}", "my classes {date}", "timetable for {date}", "{date} classes",
         "what's on {date}", "do i have class {date}", "any class {date}", "show my schedule {date}",
         "what do i have {date}", "schedule {date}", "am i free {date}", "how many classes {date}",
-        "what lectures do i have {date}", "is {date} free", "list my {kind}s {date}",
+        "what lectures do i have {date}", "is {date} free", "list my {kind} {date}",
     ],
     "class_where": [
         "where is my {course} class", "where is {course}", "which room is {course} {kind}",
@@ -133,7 +133,7 @@ T = {
         "help me cheat", "write my {course} essay", "do the tutorial questions", "explain this topic to me",
     ],
     "other": [
-        "tell me a joke", "what's the weather in kl", "who won the match", "write my essay", "what is love",
+        "tell me a joke", "what's the weather in kl", "who won the match", "what is love",
         "play some music", "how old are you", "translate this to malay", "what's 2 plus 2", "order food",
         "open youtube", "what is the capital of france", "sing a song", "recommend a movie",
         "what's bitcoin price", "how to cook rice", "who is the prime minister", "show my token", "what's my password",
@@ -141,6 +141,9 @@ T = {
         "extend my deadline", "email my lecturer for me",
     ],
 }
+# Malay / Manglish templates (extra_templates.json: intent -> templates), added to the English ones above
+for _k, _v in json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "extra_templates.json"), encoding="utf-8")).items():
+    T[_k] += _v
 SLOT_OF = {"course": "COURSE", "kind": "KIND", "date": "DATE", "time": "TIME", "from": "FROM", "to": "TO", "task": "TASK"}
 
 
@@ -170,7 +173,20 @@ def typo(w, rng):
     return w[:i] + w[i + 1:] if rng.random() < 0.5 else w[:i] + w[i + 1] + w[i] + w[i + 2:]
 
 
-def generate(per_intent=1500, seed=7):
+def extras(copies=20):
+    """Hand-written real-style questions (train_extra.txt: intent<TAB>sentence), repeated so they are not drowned out.
+    Their words carry no slot labels, so "slots": False keeps them out of the slot loss (the notebook masks them)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "train_extra.txt")
+    out = []
+    for l in open(path, encoding="utf-8"):
+        if l.strip() and not l.startswith("#"):
+            intent, sent = l.rstrip("\n").split("\t")
+            toks = tokens(sent)
+            out += [{"intent": intent, "tokens": toks, "tags": ["O"] * len(toks), "slots": False}] * copies
+    return out
+
+
+def generate(per_intent=1500, seed=7, with_extras=True):
     rng = random.Random(seed)
     places, codes, names = fillers()
     data = []
@@ -183,6 +199,8 @@ def generate(per_intent=1500, seed=7):
                 toks = toks + [rng.choice(["please", "pls", "lah", "ah", "now", "again", "?"])][:1]
                 tags = tags + ["O"]
             data.append({"intent": intent, "tokens": toks, "tags": tags})
+    if with_extras:
+        data += extras()
     rng.shuffle(data)
     return data
 

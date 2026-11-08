@@ -124,6 +124,10 @@ object Assistant {
     // ---------------------------------------------------------------- answering
 
     private const val SURE = 0.7f
+    /** The model alone shows the emergency card only this sure ("i need to be at UM Central by 9am" scored 0.86 once).
+     *  Real danger words never wait for it: DANGER is checked first. */
+    private const val EMERGENCY_SURE = 0.9f
+    private const val ASK_FOR_HELP = "I need emergency help"
 
     val EXAMPLES = listOf("When is my next class?", "What classes do I have tomorrow?", "Where is my next class?",
         "Bus to FSKTM", "What's due this week?", "Remind me to submit the lab report tomorrow at 9pm")
@@ -132,8 +136,12 @@ object Assistant {
     private val DANGER = Regex(
         "\\b(emergency|accident|fire|attack(ed)?|assault(ed)?|injur(ed|y)|bleeding|faint(ed)?|collapsed?|unconscious|" +
             "not breathing|suicid(e|al)|kill myself|end my life|hurt(ing)? myself|self.?harm|don'?t want to live|" +
-            "harass(ed|ment)?|following me|unsafe|in danger|tolong|kecemasan|kebakaran|kemalangan|cedera|pengsan|bunuh diri|bahaya)\\b",
+            "harass(ed|ment)?|following me|unsafe|in danger|kecemasan|kebakaran|kemalangan|cedera|pengsan|bunuh diri|bahaya|" +
+            "ular|darah|berdarah|ragut|(di)?rompak|pisau|cemas|lemas|terbakar|pecah masuk|dikejar)\\b",
         RegexOption.IGNORE_CASE)
+
+    // a bare cry for help ("tolong!", "tolong saya") is an emergency; "tolong" inside a request ("tolong ingatkan saya...") is not
+    private val CRY_HELP = Regex("^\\W*tolong(lah)?(\\s+(saya|aku|kami|cepat|cepatlah))?\\W*$", RegexOption.IGNORE_CASE)
 
     /** [previous] = the question before this one in the open chat, for short follow-ups like "from kk10" (ticket SN-4U7JL). */
     fun answer(ctx: Context, question: String, previous: String? = null): Reply {
@@ -143,25 +151,48 @@ object Assistant {
             return Reply("That looks like a password, token or key. I don't need it and haven't kept it. " +
                 "Never share it in a chat, not even with this app.", maskQuestion = true)
         }
-        if (DANGER.containsMatchIn(q)) return emergency(ctx)
+        if (DANGER.containsMatchIn(q) || CRY_HELP.containsMatchIn(q)) return emergency(ctx)
         // small talk the model was trained to call "outside my job": recognised by its words instead
         if (CARE.containsMatchIn(q)) return care(ctx)
         if (WEATHER.containsMatchIn(q)) return weather(ctx, q)
         if (JOKE.containsMatchIn(q)) return joke()
         if (isGreeting(q)) return greet(ctx)
         if (THANKS.matches(q.trim().trimEnd('!', '.', ' '))) return Reply(listOf("Anytime!", "You're welcome. Good luck today!", "Happy to help.").random())
-        val p = try { classify(ctx, q) } catch (e: Exception) {
+        val p0 = try { classify(ctx, q) } catch (e: Exception) {
             Log.e("Assistant", "model failed", e)
             return Reply("Sorry, I can't answer questions on this phone right now.", feedback = q)
         }
+        // "where is the location held for tutorial CSO": the model tagged "location held for tutorial" as the course;
+        // a course named in the question (code, your short name or its initials) wins over the model's guess
+        val named = if (p0.intent == "add_reminder") null else Checker.overview(ctx).classes.map { it.code.ifEmpty { it.course } }.distinct()
+            .firstOrNull { it.length >= 3 && it != "Class" && (Regex("""\b""" + Regex.escape(it) + """\b""", RegexOption.IGNORE_CASE).containsMatchIn(q) || namesShort(ctx, it, q)) }
+        // the model sometimes swaps course and kind ("lecture FOP") or tags a date from a plain word ("physical"): a kind is a kind word, a date a date word
+        var sl = p0.slots
+        val kindWord = q.lowercase(Locale.ROOT).split(Regex("""[^a-z0-9]+""")).firstNotNullOfOrNull { KIND_WORDS[it] }?.label?.lowercase(Locale.ROOT)
+        // the model's KIND stays when it is a kind word; otherwise the question's own kind word (or none)
+        if (sl["KIND"]?.let { KIND_WORDS[it.lowercase(Locale.ROOT)] } == null) sl = if (kindWord != null) sl + ("KIND" to kindWord) else sl - "KIND"
+        if (sl["COURSE"]?.lowercase(Locale.ROOT) in KIND_WORDS) sl = sl - "COURSE"
+        if (sl["DATE"]?.let { DATE_OK.containsMatchIn(it) } == false) sl = sl - "DATE"
+        val p = Parsed(p0.intent, p0.confidence, if (named != null) sl + ("COURSE" to named) else sl)
         // asking for a reminder never gets the model's emergency guess ("remind me 2days before" got the danger card);
         // real danger words were already caught by DANGER above
         // "help me to login" got the reminder question: the model was never trained on signing in
         if (LOGIN.containsMatchIn(q)) return login(ctx)
         // "send previous question to developer" got the reminder question: the model never saw feedback requests
         if (TO_DEV.containsMatchIn(q)) return toDeveloper(previous)
+        // "where is the setting for dark mode": a button that opens that Settings section
+        if (SETTING_Q.containsMatchIn(q) && !REMIND.containsMatchIn(q)) return settingFor(q)
         // "attendance link for monday classes" was refused as coursework
         if (ATTEND.containsMatchIn(q)) return attendance(ctx, p, q)
+        // "give me maya link": a button to that link from your UM links list
+        if (LINK_WORD.containsMatchIn(q) && !REMIND.containsMatchIn(q) && !COURSE_PAGE.containsMatchIn(q) && !MATERIAL.containsMatchIn(q)) umLink(ctx, q)?.let { return it }
+        // "link for cso": the next CSO class with its Join class / Attendance / Course page buttons
+        if (named != null && Regex("""\blinks?\b""", RegexOption.IGNORE_CASE).containsMatchIn(q) && !REMIND.containsMatchIn(q) &&
+            !MATERIAL.containsMatchIn(q) && !COURSE_PAGE.containsMatchIn(q) && !DUE.containsMatchIn(q) && p.slots["DATE"] == null) return nextClass(ctx, p)
+        // "set next week fop to online": needs a Yes before anything changes
+        if (SET_MODE.containsMatchIn(q) && !REMIND.containsMatchIn(q)) return setMode(ctx, q)
+        // "mark quiz 2 as done" / "hide quiz 2": buttons, so nothing changes until you tap
+        if ((TASK_DONE.containsMatchIn(q) || TASK_HIDE.containsMatchIn(q)) && !REMIND.containsMatchIn(q)) return taskChange(ctx, q)
         // "where are fsktm" looked for a class called FSKTM: a place named exactly gets the place
         WHERE_IS.find(q)?.let { m -> exactPlace(ctx, m.groupValues[1])?.let { return placeReply(ctx, it) } }
         if (REMIND.containsMatchIn(q)) {
@@ -169,11 +200,20 @@ object Assistant {
             if (previous != null && OFFSET.containsMatchIn(q) && absDate(q) == null && REMIND.containsMatchIn(previous)) return answer(ctx, "$previous $q")
             if (p.intent != "reminders_list") return addReminder(ctx, p, q)
         }
-        if (p.intent == "emergency" && p.confidence >= SURE) return emergency(ctx)
+        if (COURSE_PAGE.containsMatchIn(q)) return coursePage(ctx, q)
+        if (p.intent != "deadlines" && HOLIDAY.containsMatchIn(q)) return holidays(ctx)
+        // "i want to see material for cso" got "not sure" (and emergency 0.97 from the Malay-trained model):
+        // the model was never trained on course files; real danger words were already caught by DANGER above
+        if (MATERIAL.containsMatchIn(q) && p.intent != "schoolwork" && !DUE.containsMatchIn(q) && !HANTAR.containsMatchIn(q) && !SCHOOLWORK.containsMatchIn(q)) return materials(ctx, q)
+        if (p.intent == "emergency" && p.confidence >= EMERGENCY_SURE) return emergency(ctx)
+        // between SURE and EMERGENCY_SURE: ask, with a one-tap way to the numbers (ASK_FOR_HELP contains "emergency", so DANGER catches it)
+        if (p.intent == "emergency" && p.confidence >= SURE) return unsure(q, listOf(ASK_FOR_HELP) + EXAMPLES.take(2))
         if (SCHOOLWORK.containsMatchIn(q)) return schoolwork(ctx, p)
         if (NEAREST.containsMatchIn(q)) return nearestStop(ctx)
         // ticket SN-GDDNL: "what are my next event" was not in the training sentences
         if (NEXT_UP.containsMatchIn(q)) return nextClass(ctx, p)
+        // "my next class for cso" went to the model's "classes on a date" and answered "no class today": the next one, any day
+        if (NEXT_CLASS.containsMatchIn(q) && !DATE_WORDS.containsMatchIn(q) && p.intent != "add_reminder") return nextClass(ctx, p)
         // "remind me to rest until 5" is a reminder, not a free-time question
         if (REST.containsMatchIn(q) && !q.contains("remind", true)) return restTime(ctx)
         // deadline words always list deadlines ("deadline for nextweek?" got the "ask your lecturer" reply); asking to
@@ -181,6 +221,8 @@ object Assistant {
         if (DUE.containsMatchIn(q) && !q.contains("extend", true) && p.intent != "add_reminder") return deadlines(ctx, p, q)
         // ticket SN-Q7D6X: "who are my professor for cso" had no answer; the UM timetable lists each class's lecturer
         if (LECTURER.containsMatchIn(q)) return lecturers(ctx, q)
+        // "class for cso": the model calls a bare course + class "other"; the next class of that course
+        if (named != null && p.intent == "other" && CLASS_WORD.containsMatchIn(q) && !DUE.containsMatchIn(q) && p.slots["DATE"] == null && !DATE_WORDS.containsMatchIn(q)) return nextClass(ctx, p)
         // ticket SN-WY76Y: "my friday class?" was too short for the model; a day and the word class lists that day
         if (DATE_WORDS.containsMatchIn(q) && CLASS_WORD.containsMatchIn(q) && !q.contains("where", true)) return classesOn(ctx, p, q)
         if (p.confidence < SURE) {
@@ -196,7 +238,7 @@ object Assistant {
             "deadlines" -> deadlines(ctx, p, q)
             "reminders_list" -> reminders(ctx, p)
             "add_reminder" -> addReminder(ctx, p, q)
-            "help" -> Reply("I'm Oli. I can tell you about your classes, deadlines, reminders and the UM shuttle, and set a reminder for you. " +
+            "help" -> Reply("I'm Oli. I can tell you about your classes, deadlines, reminders, semester breaks and the UM shuttle, and set a reminder for you. " +
                 "Everything I say comes from what this app has synced from Spectrum. Try one of these:", suggestions = EXAMPLES.take(4))
             "schoolwork" -> schoolwork(ctx, p)
             else -> other(q)
@@ -262,7 +304,8 @@ object Assistant {
     private fun joke() = Reply(JOKES.random(), suggestions = listOf("Another joke", "When is my next class?"))
 
     // ticket SN-VNH33: "hi hows the day" got "I couldn't answer"
-    private val GREET = Regex("""\b(hi+|hello|hey|hai|helo|yo|morning|good (morning|afternoon|evening)|selamat (pagi|petang|malam)|""" +
+    // "hey there" first: the 2026-11 model read it as an emergency (0.99)
+    private val GREET = Regex("""\b((hi+|hello|hey|hai|helo) there|hi+|hello|hey|hai|helo|yo|morning|good (morning|afternoon|evening)|selamat (pagi|petang|malam)|""" +
         """how'?s? (is |was )?(the |your |my )?day( going)?|how are (you|u)|how'?s it going|what'?s up|sup|oli)\b""", RegexOption.IGNORE_CASE)
 
     /** Only greeting words: "hi what's my next class" is a question, not a greeting. */
@@ -308,6 +351,9 @@ object Assistant {
     // not a question kind the model knows yet (tools/assistant has templates for the next training)
     private val DUE = Regex("""\b(deadlines?|due|assignments?|submissions?|submit)\b""", RegexOption.IGNORE_CASE)
     private val DATE_WORDS = Regex("""\b(next week|this week|today|tomorrow|(next |this )?(mon|tue|wed|thu|fri|sat|sun)[a-z]*day)\b""", RegexOption.IGNORE_CASE)
+    private val DATE_OK = Regex("""\d|today|tonight|tomorrow|week|morning|afternoon|evening|esok|lusa|hari|minggu|(mon|tue|wed|thu|fri|sat|sun|isnin|selasa|rabu|khamis|jumaat|sabtu|ahad)|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec""", RegexOption.IGNORE_CASE)
+    private val HANTAR = Regex("""\b(hantar|serah(kan)?)\b""", RegexOption.IGNORE_CASE)
+    private val NEXT_CLASS = Regex("""\bnext\s+(class(es)?|lectures?|tutorials?|labs?|kuliah|subject|session)\b|\b(kelas|kuliah|class)\s+(seterusnya|lepas ni|after this)\b""", RegexOption.IGNORE_CASE)
     private val NEXT_UP = Regex("""\bnext\s+(event|thing|activity|session)s?\b|\bwhat'?s\s+next\b|\bwhat\s+(is|are|do i have)\s+next\b|\bupcoming\s+(event|class)""", RegexOption.IGNORE_CASE)
     private val REST = Regex("""\b(rest|break|free|gap)\s*(time|period)?\b.*\b(how long|until|till|left|have|is|much)\b|\bhow\s+(long|much)\b.*\b(rest|break|free|gap)\b|\bwhen\s+(am i|i'?m)\s+free\b""", RegexOption.IGNORE_CASE)
     private val NEAREST = Regex("""\b(nearest|closest|nearby|near me)\b.*\b(stop|bus|shuttle|station)|\b(stop|bus|shuttle)\b.*\b(near me|nearby|nearest|closest)\b""", RegexOption.IGNORE_CASE)
@@ -320,9 +366,10 @@ object Assistant {
                 a.startActivity(Intent(a, ShuttleActivity::class.java).putExtra(ShuttleActivity.EXTRA_NEAREST, true))
             }))
 
-    private fun unsure(q: String) = Reply(
-        "I'm not sure what you mean. Did you mean one of these?",
-        suggestions = EXAMPLES.take(3),
+    private fun unsure(q: String, suggestions: List<String> = EXAMPLES.take(3)) = Reply(
+        "I'm not sure what you mean. Can you explain it in more detail? For example, say which class, day or place you mean. " +
+            "Or tap one of these:",
+        suggestions = suggestions,
         feedback = q,
     )
 
@@ -370,11 +417,40 @@ object Assistant {
     private fun hm(ts: Long) = localDt(ts).format(DateTimeFormatter.ofPattern("HH:mm"))
     private fun whenText(c: Checker.ClassItem) = "${localDt(c.start).format(DAY_FMT)}, ${hm(c.start)}–${hm(c.end)}"
 
-    private fun matchesCourse(c: Checker.ClassItem, course: String?): Boolean {
+    // the model's COURSE span often takes words around the name ("next fop", "of next hci")
+    private val COURSE_FILLER = setOf("next", "the", "my", "of", "for", "venue", "class", "this", "a")
+
+    private fun matchesCourse(ctx: Context, c: Checker.ClassItem, course: String?): Boolean {
         if (course.isNullOrBlank()) return true
-        val k = course.replace(" ", "").lowercase(Locale.ROOT)
+        val words = course.lowercase(Locale.ROOT).split(Regex("""\s+""")).filter { it.isNotEmpty() && it !in COURSE_FILLER }
+        if (words.isEmpty()) return true
+        val k = words.joinToString("")
+        val code = c.code.ifEmpty { c.course }
         return c.code.lowercase(Locale.ROOT).contains(k) || c.course.replace(" ", "").lowercase(Locale.ROOT).contains(k) ||
-            c.full.lowercase(Locale.ROOT).contains(course.lowercase(Locale.ROOT))
+            c.full.lowercase(Locale.ROOT).contains(words.joinToString(" ")) || isShortFor(ctx, code, k)
+    }
+
+    /** "fop", "cm", "cso", "hci": your own short name for the course, or the initials of its UM title. */
+    // everyday words that are also some course's initials ("Introduction To Statistics" → its, is)
+    private val NOT_SHORT = setOf("is", "it", "its", "at", "to", "in", "my", "me", "do", "on", "of", "an", "as", "be", "by", "go",
+        "if", "no", "or", "so", "up", "we", "ok", "ni", "tu", "ke", "je", "la", "the", "and", "for", "can", "how", "bus", "due",
+        "now", "you", "are", "any", "got", "who", "why", "set", "add", "ada", "apa", "nak", "tak", "kat", "lab", "tut", "lec", "sem", "app", "bas")
+
+    private fun isShortFor(ctx: Context, code: String, k: String): Boolean =
+        k.length >= 2 && k !in NOT_SHORT && (Shorts.get(ctx, code).replace(" ", "").equals(k, true) ||
+            // shortcut: 2-letter initials (am, pm, um...) are everyday words, so only your own short name makes them count
+            k.length >= 3 && k in initials(Catalog.find(ctx, code)?.name.orEmpty()))
+
+    /** Some word of the question is the course's short name or initials ("material for cso"). */
+    private fun namesShort(ctx: Context, code: String, q: String) =
+        Shorts.get(ctx, code).takeIf { it.length >= 2 }?.let { Regex("""\b""" + Regex.escape(it) + """\b""", RegexOption.IGNORE_CASE).containsMatchIn(q) } == true ||
+            q.lowercase(Locale.ROOT).split(Regex("""[^a-z0-9]+""")).any { isShortFor(ctx, code, it) }
+
+    /** "Fundamentals Of Programming" → fop, fp; "Computer Systems And Organization" → csao, cso; "Computing Mathematics I" → cm. */
+    private fun initials(name: String): Set<String> {
+        val w = name.lowercase(Locale.ROOT).split(Regex("""[^a-z0-9]+""")).filter { it.isNotEmpty() && !Regex("""^(i{1,3}|iv|\d)$""").matches(it) }
+        if (w.size < 2) return emptySet()
+        return setOf(w.joinToString("") { it.take(1) }, w.filter { it !in setOf("and", "of", "in", "for", "to", "the", "dan") }.joinToString("") { it.take(1) })
     }
 
     private fun kindOf(c: Checker.ClassItem) = when (Checker.attKind(c.name)) { "lec" -> "lecture"; "tut" -> "tutorial"; else -> "class" }
@@ -396,7 +472,7 @@ object Assistant {
     private val openTimetable = Action("Open Timetable") { it.startActivity(Intent(it, TimetableActivity::class.java)) }
 
     private fun nextClass(ctx: Context, p: Parsed): Reply {
-        val classes = Checker.overview(ctx).classes.filter { matchesCourse(it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"]) }
+        val classes = Checker.overview(ctx).classes.filter { matchesCourse(ctx, it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"]) }
         val c = classes.firstOrNull() ?: return Reply(
             if (p.slots["COURSE"] != null) "I don't see a ${p.slots["COURSE"]} class in the next two weeks. Check the course page on Spectrum or ask your lecturer if it has moved."
             else "I don't see any classes in the next two weeks.",
@@ -500,7 +576,7 @@ object Assistant {
         if (r.first.isAfter(today.plusDays(13))) return Reply("I only have your classes for the next two weeks.", source = synced(ctx), actions = listOf(openTimetable))
         val list = Checker.overview(ctx).classes.filter {
             val d = localDt(it.start).toLocalDate()
-            !d.isBefore(r.first) && !d.isAfter(r.second) && matchesCourse(it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"])
+            !d.isBefore(r.first) && !d.isAfter(r.second) && matchesCourse(ctx, it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"])
         }
         if (list.isEmpty()) return Reply("No classes ${rangeText(r)} in what the app has synced. If you heard a class was added or moved, " +
             "confirm with your lecturer: I only know what Spectrum shows.", source = synced(ctx), actions = listOf(openTimetable))
@@ -515,8 +591,12 @@ object Assistant {
     }
 
     private fun classWhere(ctx: Context, p: Parsed): Reply {
-        val c = Checker.overview(ctx).classes.firstOrNull { matchesCourse(it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"]) }
-            ?: return Reply("I don't see that class in the next two weeks.", source = synced(ctx), actions = listOf(openTimetable))
+        val c = Checker.overview(ctx).classes.firstOrNull { matchesCourse(ctx, it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"]) }
+            ?: return Reply(when {
+                Checker.overview(ctx).classes.isEmpty() -> "I don't see any classes in the next two weeks."
+                p.slots["COURSE"] != null -> "I don't see a ${p.slots["COURSE"]}${p.slots["KIND"]?.let { " $it" }.orEmpty()} class in the next two weeks."
+                else -> "I don't see that class in the next two weeks."
+            }, source = synced(ctx), actions = listOf(openTimetable))
         val r = room(ctx, c)
         val page = courseAction(ctx, c, "Course page")
         if (r == "Online") return Reply("${label(ctx, c)} (${whenText(c)}) is online.", source = synced(ctx), actions = classActions(ctx, c, r))
@@ -572,7 +652,7 @@ object Assistant {
         // the class meant: by course code, else by its name or short name ("um leader class" = GUL1001 UMLEADER),
         // else "my class" = the next one
         val classes = Checker.overview(ctx).classes
-        val cls = if (!viaClass) null else p.slots["COURSE"]?.let { k -> classes.firstOrNull { matchesCourse(it, k) } }
+        val cls = if (!viaClass) null else p.slots["COURSE"]?.let { k -> classes.firstOrNull { matchesCourse(ctx, it, k) } }
             ?: classByWords(ctx, classes, toText ?: q) ?: classes.firstOrNull()
         val to = if (viaClass) cls?.let { classPlace(ctx, it) } else place(ctx, toText)
         if (viaClass && cls != null && to == null) return Reply(
@@ -670,8 +750,8 @@ object Assistant {
             day = r.toLocalDate(); mins = r.hour * 60 + r.minute
         } }
         // "before WIX1001": half an hour before that class
-        if (mins == null && p.slots["COURSE"] != null) {
-            Checker.overview(ctx).classes.firstOrNull { matchesCourse(it, p.slots["COURSE"]) }?.let { c ->
+        if (mins == null && day == null && p.slots["COURSE"] != null) {
+            Checker.overview(ctx).classes.firstOrNull { matchesCourse(ctx, it, p.slots["COURSE"]) }?.let { c ->
                 val t = localDt(c.start - 30 * 60)
                 day = t.toLocalDate(); mins = t.hour * 60 + t.minute
             }
@@ -684,6 +764,28 @@ object Assistant {
         return Reply("Add this reminder?\n${task}\n${d.format(DAY_FMT)} at ${"%02d:%02d".format(mins!! / 60, mins!! % 60)}", confirm = e)
     }
 
+    private val MATERIAL = Regex("""\b(materials?|notes|slides?|lecture\s+files?|course\s+files?|bahan)\b""", RegexOption.IGNORE_CASE)
+
+    /** A button to each named course's Materials page (code or short name); none named: asks which, with a button per course. */
+    private fun materials(ctx: Context, q: String): Reply {
+        val courses = Courses.all(ctx).filter { it.id > 0L }
+        val named = courses.filter { c ->
+            q.contains(c.code, true) || namesShort(ctx, c.code, q)
+        }
+        val open = named.ifEmpty { courses }.take(4).map { c ->
+            Action("${Shorts.display(ctx, c.code)} materials") { a ->
+                a.startActivity(Intent(a, MaterialsActivity::class.java)
+                    .putExtra(MaterialsActivity.EXTRA_ID, c.id).putExtra(MaterialsActivity.EXTRA_CODE, Shorts.display(ctx, c.code)))
+            }
+        }
+        return when {
+            courses.isEmpty() -> Reply("I don't have your courses yet. They appear after the app's first check of Spectrum.")
+            named.isNotEmpty() -> Reply("Here are the files, folders and links from Spectrum for " +
+                named.joinToString { Shorts.display(ctx, it.code) } + ".", source = "Spectrum", actions = open)
+            else -> Reply("Which course? Tap one, or ask again with its name, like \"materials for ${Shorts.get(ctx, courses[0].code).ifEmpty { courses[0].code }}\".", actions = open)
+        }
+    }
+
     private val CLASS_WORD = Regex("""\b(class|classes|lectures?|tutorials?|labs?|schedule)\b""", RegexOption.IGNORE_CASE)
     private val LECTURER = Regex("""\b(lecturers?|professors?|profs?|tutors?|teachers?|teach(es|ing)?|who\s+(is|are)\s+(my|the)\s+(lecturer|prof|tutor))\b""", RegexOption.IGNORE_CASE)
 
@@ -692,8 +794,7 @@ object Assistant {
         val slots = Timetable.all(ctx)
         val codes = slots.map { it.course.uppercase(Locale.ROOT) }.distinct()
         val named = codes.filter { c ->
-            q.contains(c, true) || Shorts.get(ctx, c).takeIf { it.length >= 2 }
-                ?.let { Regex("""\b""" + Regex.escape(it) + """\b""", RegexOption.IGNORE_CASE).containsMatchIn(q) } == true
+            q.contains(c, true) || namesShort(ctx, c, q)
         }
         val pick = named.ifEmpty { codes }
         val lines = pick.flatMap { code ->
@@ -712,6 +813,28 @@ object Assistant {
         return Reply((if (named.isEmpty()) "Your lecturers:\n" else "") + lines.joinToString("\n"), source = "UM timetable, for your Occ", actions = open)
     }
 
+    // "break" alone stays with free time (REST); only the semester kinds of break come here
+    private val HOLIDAY = Regex("""\b(holidays?|cuti|(mid.?)?sem(ester)?\s+break)\b""", RegexOption.IGNORE_CASE)
+
+    /** The next no-class periods from the UM academic calendar. Public holidays are not in the app's data, and the reply says so. */
+    private fun holidays(ctx: Context): Reply {
+        if (!Prefs.isUm(ctx)) return Reply("I only know UM's academic calendar, so I can't tell you your university's holidays.")
+        val today = LocalDate.now(zone())
+        val spans = AcademicCalendar.semesters(ctx).flatMap { s ->
+            listOfNotNull(
+                if (s.breakStart != null && s.breakEnd != null) Triple("Mid-semester break", s.breakStart, s.breakEnd) else null,
+                s.examEnd?.let { Triple("Semester break", it.plusDays(1), s.semEnd) },
+            ) + s.extraBreaks.map { Triple("No classes (university event)", it.first, it.second) }
+        }.filter { !it.third.isBefore(today) }.sortedBy { it.second }.take(3)
+        if (spans.isEmpty()) return Reply("I don't have any later breaks in the academic calendar yet. Public holidays are not in my data either.",
+            source = "UM academic calendar")
+        val lines = spans.joinToString("\n") { (name, a, b) ->
+            "• $name: ${a.format(DAY_FMT)} – ${b.format(DAY_FMT)}" + if (!a.isAfter(today)) " (on now)" else ""
+        }
+        return Reply("Coming no-class periods:\n$lines\nPublic holidays are not in my data: check UM's calendar for those.",
+            source = "UM academic calendar, as set in the app")
+    }
+
     private val TO_DEV = Regex("""\b(send|report|forward|tell|pass)\b.*\b(developers?|devs?|feedback)\b""", RegexOption.IGNORE_CASE)
 
     /** Rule 11: you see the ticket and send it yourself; the question before this one is filled in. */
@@ -727,10 +850,10 @@ object Assistant {
         val r = dates(p.slots["DATE"] ?: DATE_WORDS.find(q)?.value)
         val all = Checker.overview(ctx).classes
         // the model can take a word like "link" for a course: a course name none of your classes has is ignored
-        val course = p.slots["COURSE"]?.takeIf { cs -> all.any { matchesCourse(it, cs) } }
+        val course = p.slots["COURSE"]?.takeIf { cs -> all.any { matchesCourse(ctx, it, cs) } }
         val list = all.filter {
             val d = localDt(it.start).toLocalDate()
-            !d.isBefore(r.first) && !d.isAfter(r.second) && matchesCourse(it, course) && matchesKind(it, p.slots["KIND"])
+            !d.isBefore(r.first) && !d.isAfter(r.second) && matchesCourse(ctx, it, course) && matchesKind(it, p.slots["KIND"])
         }
         if (list.isEmpty()) return Reply("No classes ${rangeText(r)} in what the app has synced, so no attendance pages.",
             source = synced(ctx), actions = listOf(openTimetable))
@@ -783,6 +906,167 @@ object Assistant {
             ". To log out or switch accounts, open Settings → Account.", actions = listOf(account))
     }
 
+    private val LINK_WORD = Regex("""\b(links?|url|website|site|portal|laman|open|buka|go to|take me|pergi)\b""", RegexOption.IGNORE_CASE)
+
+    /** The link of your UM links list (Settings → Links) named in the question, longest name first; null when none is named. */
+    private fun umLink(ctx: Context, q: String): Reply? {
+        val l = Shortcuts.all(ctx).filter { it.name.length >= 3 }.sortedByDescending { it.name.length }
+            .firstOrNull { Regex("""\b""" + Regex.escape(it.name) + """\b""", RegexOption.IGNORE_CASE).containsMatchIn(q) } ?: return null
+        return Reply("Here is ${l.name}.", source = "Your links in Settings → Links", actions = listOf(openUrl("Open ${l.name}", l.url)))
+    }
+
+    /** A button that asks "Yes / Cancel" first: nothing the assistant does to your data runs on one tap (rule 3). */
+    private fun confirmed(label: String, message: String, run: (Activity) -> Unit) = Action(label) { a ->
+        android.app.AlertDialog.Builder(a, Ui.dialogTheme).setMessage(message)
+            .setPositiveButton("Yes") { _, _ -> run(a) }.setNegativeButton("Cancel", null).show()
+    }
+
+    private val SET_MODE = Regex("""\b(set|make|change|switch|tukar|tetapkan)\b.*\b(online|offline|in.?person|physical)\b""", RegexOption.IGNORE_CASE)
+
+    private val WHEN_WORDS = Regex("""\b(next week|this week|today|tomorrow|(next |this )?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu(rs?)?|fri|sat|sun))\b""", RegexOption.IGNORE_CASE)
+
+    private val MODE_WORD = Regex("""\b(online|offline|in[ -]?person|physical)\b""", RegexOption.IGNORE_CASE)
+    private val KIND_WORDS = mapOf("tutorial" to SlotKind.TUTORIAL, "tutorials" to SlotKind.TUTORIAL, "tut" to SlotKind.TUTORIAL,
+        "lecture" to SlotKind.LECTURE, "lectures" to SlotKind.LECTURE, "lec" to SlotKind.LECTURE,
+        "lab" to SlotKind.LAB, "labs" to SlotKind.LAB, "practical" to SlotKind.LAB)
+
+    /** One course, optionally one kind of its classes, and the mode asked for it. */
+    private class ModeJob(val code: String, val mode: String, val kinds: Set<SlotKind>)
+
+    /**
+     * "set fop tutorial and cso to online" / "fop to online and cso to offline": each course gets the first mode word after it
+     * (else the last one before it); a kind word (tutorial, lecture, lab) belongs to the nearest course before it, else after it.
+     */
+    private fun modeJobs(ctx: Context, q: String, codes: List<String>): List<ModeJob> {
+        val toks = q.lowercase(Locale.ROOT).replace(MODE_WORD) { if (it.value == "online") "online" else "inperson" }
+            .split(Regex("""[^a-z0-9]+""")).filter { it.isNotEmpty() }
+        val modes = setOf("online", "inperson")
+        val course = toks.map { t -> if (t in modes || t in KIND_WORDS) null else codes.firstOrNull { c -> t.equals(c, true) || isShortFor(ctx, c, t) } }
+        val at = course.indices.filter { course[it] != null }
+        // "change fop from online to in person" / "in person, not online": the word after from / not is what it is now, not what is asked
+        val modeAt = toks.indices.filter { toks[it] in modes && toks.getOrNull(it - 1) !in setOf("from", "not", "bukan") }
+        val kindAt = toks.indices.mapNotNull { i -> KIND_WORDS[toks[i]]?.let { i to it } }
+        return at.mapNotNull { i ->
+            val m = toks[modeAt.firstOrNull { it > i } ?: modeAt.lastOrNull { it < i } ?: return@mapNotNull null]
+            val kinds = kindAt.filter { (k, _) -> (at.lastOrNull { it < k } ?: at.firstOrNull { it > k }) == i }.map { it.second }.toSet()
+            ModeJob(course[i]!!, m, kinds)
+        }.distinctBy { Triple(it.code, it.mode, it.kinds) }
+    }
+
+    /**
+     * "set fop and cso to online on monday and friday": the named classes on those days, after a Yes; no day: asks how long.
+     * shortcut: one set of days for the whole sentence, not per course; the Yes dialog lists every date, so check it. Per-course days when asked for.
+     */
+    private fun setMode(ctx: Context, q: String): Reply {
+        val slots = Timetable.all(ctx)
+        val jobs = modeJobs(ctx, q, slots.map { it.course.uppercase(Locale.ROOT) }.distinct())
+        if (jobs.isEmpty()) return Reply("Which course? For example: \"set next week ${slots.firstOrNull()?.course?.let { Shorts.get(ctx, it).ifEmpty { it } } ?: "fop"} to online\".")
+        fun word(j: ModeJob) = if (j.mode == "online") "online" else "in person"
+        fun name(j: ModeJob) = Shorts.display(ctx, j.code) + (if (j.kinds.isEmpty()) "" else " " + j.kinds.joinToString(" and ") { it.label.lowercase(Locale.ROOT) })
+        fun mine(j: ModeJob) = slots.filter { it.course.equals(j.code, true) && (j.kinds.isEmpty() || it.kind in j.kinds) }
+        fun now(s: Slot, d: LocalDate, j: ModeJob) = Timetable.venueOf(ctx, s, d).let { if (j.mode == "online") it == "Online" else it.isNotEmpty() && it != "Online" }
+        jobs.firstOrNull { mine(it).isEmpty() }?.let { return Reply("${name(it)} is not on your timetable.") }
+        val said = WHEN_WORDS.findAll(q).map { it.value }.toList()
+        if (said.isEmpty()) {
+            // no day said: one week is the careful default, every week needs its own tap ("every week" said: only that tap)
+            val everyWeek = Regex("""\bevery week\b|\bpermanent(ly)?\b|\bsetiap minggu\b""", RegexOption.IGNORE_CASE).containsMatchIn(q)
+            // judged by where each class is, so an older per-class choice counts
+            val todo = jobs.filter { j -> mine(j).any { !now(it, Timetable.thisWeek(it.day), j) } }
+            if (todo.isEmpty()) return Reply(if (jobs.size == 1) "${name(jobs[0])} is already ${word(jobs[0])} every week." else "Those are already set every week.")
+            return Reply((if (everyWeek) "Change these every week until you undo it:" else "For how long? One week is safest; or change them every week until you undo it:") +
+                "\n" + todo.joinToString("\n") { "\u2022 ${name(it)} \u2192 ${word(it)}" },
+                suggestions = if (everyWeek) emptyList() else listOf("$q this week", "$q next week"), actions = listOf(
+                    confirmed("Every week", "Change these every week until you undo it in Settings \u2192 Online or in person or the Timetable?") { a ->
+                        // a whole course also clears the per-class choices, which would otherwise still win
+                        todo.forEach { j ->
+                            if (j.kinds.isEmpty()) { Timetable.setCourseMode(a, j.code, j.mode); mine(j).forEach { Timetable.setClassMode(a, it.key, null, "") } }
+                            else mine(j).forEach { Timetable.setClassMode(a, it.key, null, j.mode) }
+                        }
+                        Scheduler.scheduleAll(a)
+                        android.widget.Toast.makeText(a, "Done", android.widget.Toast.LENGTH_SHORT).show()
+                    }))
+        }
+        val days = said.flatMap { w -> dates(w).let { r -> generateSequence(r.first) { it.plusDays(1) }.takeWhile { !it.isAfter(r.second) }.toList() } }.toSet()
+        val all = jobs.map { j -> j to mine(j).flatMap { s -> days.filter { s.occursOn(it) }.map { s to it } }.sortedBy { it.second } }
+        if (all.all { it.second.isEmpty() }) return Reply("${all.joinToString { name(it.first) }} ${if (all.size == 1) "has" else "have"} no classes ${said.joinToString(" and ")}.")
+        val picks = all.map { (j, l) -> j to l.filter { (s, d) -> !now(s, d, j) } }.filter { it.second.isNotEmpty() }
+        if (picks.isEmpty()) return Reply("Those classes are already set that way.")
+        val n = picks.sumOf { it.second.size }
+        return Reply("$n class${if (n == 1) "" else "es"} would change:\n" + picks.joinToString("\n") { (j, l) ->
+            "\u2022 ${name(j)} \u2192 ${word(j)}: " + l.joinToString(", ") { (s, d) -> d.format(DAY_FMT) + (if (j.kinds.isEmpty()) " " + s.kind.label.lowercase(Locale.ROOT) else "") }
+        } + all.filter { it.second.isEmpty() }.joinToString("") { "\n\u2022 ${name(it.first)} has no class then" },
+            actions = listOf(confirmed("Set $n class${if (n == 1) "" else "es"}", "Change these $n class${if (n == 1) "" else "es"}?") { a ->
+                picks.forEach { (j, l) -> l.forEach { (s, d) -> Timetable.setClassMode(a, s.key, d, j.mode) } }
+                Scheduler.scheduleAll(a)
+                android.widget.Toast.makeText(a, "Done", android.widget.Toast.LENGTH_SHORT).show()
+            }))
+    }
+
+    private val TASK_DONE = Regex("""\b(mark|tick|tandakan)\b.*\b(done|complete[d]?|finished|siap)\b""", RegexOption.IGNORE_CASE)
+    private val TASK_HIDE = Regex("""\b(hide|sembunyi(kan)?)\b""", RegexOption.IGNORE_CASE)
+    private val TASK_FILLER = setOf("mark", "tick", "tandakan", "set", "done", "complete", "completed", "finished", "siap", "hide", "sembunyi", "sembunyikan",
+        "the", "my", "as", "task", "deadline", "assignment", "this", "that", "for", "please", "tolong", "saya", "aku", "can", "you", "and", "is", "it", "to")
+
+    /** Buttons to mark a deadline done or hide it: the ones whose name or course holds a word of the question, else the next few. */
+    private fun taskChange(ctx: Context, q: String): Reply {
+        val due = Checker.overview(ctx).due
+        if (due.isEmpty()) return Reply("There are no tasks in what the app has synced.", source = synced(ctx))
+        val words = q.lowercase(Locale.ROOT).split(Regex("""[^a-z0-9]+""")).filter { it.length >= 3 && it !in TASK_FILLER }
+        val named = due.filter { d -> words.any { w -> "${d.name} ${d.course}".lowercase(Locale.ROOT).contains(w) } }
+        val hide = TASK_HIDE.containsMatchIn(q) && !TASK_DONE.containsMatchIn(q)
+        val pick = named.ifEmpty { due }.take(3)
+        val acts = pick.map { d ->
+            if (hide) confirmed("Hide ${d.name}", "Hide \"${d.name}\"? It leaves Home, Notifications and reminders.") { a ->
+                if (d.eventId != 0L) NotifyLog.hideEvent(a, "dl:" + d.eventId, d.name, d.course, d.ts)
+                NotifyLog.hideEvent(a, Checker.hiddenNameKey(d.name), d.name, d.course, d.ts)
+                android.widget.Toast.makeText(a, "Hidden. Restore it in Settings → Deadlines.", android.widget.Toast.LENGTH_LONG).show()
+            } else confirmed("Done: ${d.name}", "Mark \"${d.name}\" as done? Its reminders stop.") { a ->
+                Checker.setTaskDone(a, d.name, true, d.eventId, d.ts)
+                android.widget.Toast.makeText(a, "Marked as done", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+        val what = if (hide) "hide" else "mark as done"
+        return Reply(if (named.isEmpty()) "Which task should I $what? Tap one." else "Tap to $what:", source = synced(ctx), actions = acts)
+    }
+
+    private val SETTING_Q = Regex("""\b(settings?|tetapan)\b""", RegexOption.IGNORE_CASE)
+
+    /** Settings sections by what people call them: (words, section key in SettingsActivity, name shown). */
+    private val SETTING_TOPICS = listOf(
+        Triple("quiet|silent|dnd|disturb|senyap", "quiet hours", "Quiet hours"),
+        Triple("morning|afternoon|summary|daily|umbrella|rain", "daily messages", "Daily messages"),
+        Triple("deadline|hidden", "deadlines", "Deadlines"),
+        Triple("attendance|occ|class", "yourclasses", "Your classes"),
+        Triple("online|in.?person|physical", "inperson", "Online or in person"),
+        Triple("shuttle|bus|home stop|leave.?by", "shuttle", "UM shuttle"),
+        Triple("link", "umlinks", "Links"),
+        Triple("dark|light|theme|colou?r|text size|font|contrast|appearance|accessib", "appearance", "Appearance & accessibility"),
+        Triple("check every|interval|poll|background|refresh|how often", "background checks", "Background checks"),
+        Triple("account|profile|site url|log ?in|log ?out", "profile", "Profile"),
+        Triple("update|version|battery|alarm|test notif|diagnostic|export|import|backup|permission", "app & maintenance", "App & maintenance"),
+        Triple("feedback|guide|tour|help", "help & feedback", "Help & feedback"),
+    ).map { Triple(Regex("""\b(""" + it.first + """)""", RegexOption.IGNORE_CASE), it.second, it.third) }
+
+    private fun settingFor(q: String): Reply {
+        val hit = SETTING_TOPICS.firstOrNull { it.first.containsMatchIn(q) }
+        val open = Action(if (hit != null) "Open ${hit.third}" else "Open Settings") { a ->
+            a.startActivity(Intent(a, SettingsActivity::class.java).apply { hit?.let { putExtra(SettingsActivity.EXTRA_OPEN, it.second) } })
+        }
+        return Reply(if (hit != null) "That is in Settings → ${hit.third}. Tap to open it." else "Tap to open Settings. Each part is a section you can open; tell me what it is for and I will point to it.",
+            actions = listOf(open))
+    }
+
+    private val COURSE_PAGE = Regex("""\b(course\s*page|page\s+(for|of)|halaman\s+(kursus|subjek))\b""", RegexOption.IGNORE_CASE)
+
+    /** The course page (classes, links, deadlines, materials) of each course named; none named: a button per course. */
+    private fun coursePage(ctx: Context, q: String): Reply {
+        val all = Checker.overview(ctx).classes.distinctBy { it.code.ifEmpty { it.course } }
+        if (all.isEmpty()) return Reply("I don't have your courses yet. They appear after the app's first check of Spectrum.")
+        val named = all.filter { c -> val k = c.code.ifEmpty { c.course }; k.length >= 3 && (q.contains(k, true) || namesShort(ctx, k, q)) }
+        return Reply(if (named.isEmpty()) "Which course? Tap one." else "Each course page has its classes, links, deadlines and materials.",
+            actions = named.ifEmpty { all }.take(4).map { courseAction(ctx, it) })
+    }
+
     private val REMIND = Regex("""\b(remind me|set (a |an )?reminder|add (a )?reminder|reminder (on|for))\b""", RegexOption.IGNORE_CASE)
     private val OFFSET = Regex("""\b(a|an|one|\d+)\s*(days?|hours?|hrs?)\s+(before|earlier)\b""", RegexOption.IGNORE_CASE)
     private val CLOCK = Regex("""\b\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)\b""", RegexOption.IGNORE_CASE)
@@ -805,12 +1089,13 @@ object Assistant {
         """(?:next\s+|this\s+)?(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*))$""", RegexOption.IGNORE_CASE)
 
     private fun coursePageAction(ctx: Context, p: Parsed): List<Action> {
-        val c = Checker.overview(ctx).classes.firstOrNull { matchesCourse(it, p.slots["COURSE"]) && p.slots["COURSE"] != null } ?: return emptyList()
+        val c = Checker.overview(ctx).classes.firstOrNull { matchesCourse(ctx, it, p.slots["COURSE"]) && p.slots["COURSE"] != null } ?: return emptyList()
         return listOf(courseAction(ctx, c, "Course page"))
     }
 
     init {
-        // the pure parts, checked once when the assistant first loads
+        // the pure parts, checked once when the assistant first loads. A failed check only logs: thrown here it would break Oli for every user
+        try {
         val mon = LocalDate.of(2026, 11, 2)
         check(dates("tomorrow", mon) == mon.plusDays(1) to mon.plusDays(1))
         check(dates("friday", mon).first == LocalDate.of(2026, 11, 6))
@@ -829,6 +1114,7 @@ object Assistant {
             !REST.containsMatchIn("when is my next class") && !REST.containsMatchIn("bus to FSKTM"))
         check(isGreeting("hi hows the day") && isGreeting("Good morning Oli!") && isGreeting("hello, how are you?") &&
             !isGreeting("hi what's my next class") && !isGreeting("history class"))
+        check(isGreeting("hey there") && isGreeting("Hello there!") && !isGreeting("is there class today"))
         check(dates(DATE_WORDS.find("list my class in monday")?.value, mon) == mon to mon)
         check(LOGIN.containsMatchIn("help me to login") && LOGIN.containsMatchIn("how to sign in") && !LOGIN.containsMatchIn("remind me to submit the logbook"))
         val devfest ="help me to set reminder on 14 nov 2026, event: dev fest 2026, at sunway university, time: 9am - 5pm remind me 2days before"
@@ -845,9 +1131,26 @@ object Assistant {
             !LECTURER.containsMatchIn("my tutorial on friday") && !LECTURER.containsMatchIn("open my profile"))
         check(DATE_WORDS.containsMatchIn("my friday class?") && CLASS_WORD.containsMatchIn("my friday class?"))
         check(TO_DEV.containsMatchIn("send previous question to developer") && !TO_DEV.containsMatchIn("remind me to send the report"))
+        check(HOLIDAY.containsMatchIn("when is my holiday?") && HOLIDAY.containsMatchIn("cuti bila") && HOLIDAY.containsMatchIn("when is sem break") &&
+            !HOLIDAY.containsMatchIn("how long is my break") && !HOLIDAY.containsMatchIn("when is my next class"))
         check(ATTEND.containsMatchIn("give me the attendance link for monday classes") && !ATTEND.containsMatchIn("my assignment"))
+        check("fop" in initials("Fundamentals Of Programming") && "cso" in initials("Computer Systems And Organization") &&
+            "cm" in initials("Computing Mathematics I") && "hci" in initials("Human Computer Interaction") && initials("Programming").isEmpty())
+        check(MATERIAL.containsMatchIn("i want to see material for cso?") && MATERIAL.containsMatchIn("lecture slides for fop") &&
+            MATERIAL.containsMatchIn("cso notes") && !MATERIAL.containsMatchIn("show my notifications") && !MATERIAL.containsMatchIn("when is my next class"))
         check(WHERE_IS.find("where are fsktm")?.groupValues?.get(1) == "fsktm" && WHERE_IS.find("where is the KK12?")?.groupValues?.get(1) == "KK12")
+        check(SETTING_Q.containsMatchIn("where is the setting for dark mode") && !SETTING_Q.containsMatchIn("when is my next class") &&
+            SETTING_TOPICS.first { it.first.containsMatchIn("setting for quiet hours") }.second == "quiet hours" &&
+            COURSE_PAGE.containsMatchIn("course page for wix1001") && !COURSE_PAGE.containsMatchIn("materials for cso"))
+        check(TASK_DONE.containsMatchIn("mark quiz 2 as done") && TASK_HIDE.containsMatchIn("hide my quiz") && !TASK_DONE.containsMatchIn("when is my quiz due") &&
+            LINK_WORD.containsMatchIn("give me maya link") && !LINK_WORD.containsMatchIn("when is my next class"))
+        check(CRY_HELP.containsMatchIn("tolong!") && CRY_HELP.containsMatchIn("tolong saya") && !CRY_HELP.containsMatchIn("tolong ingatkan saya hantar report") &&
+            DANGER.containsMatchIn("ada ular dalam bilik") && !DANGER.containsMatchIn("tolong ingatkan saya hantar report esok"))
+        check(SET_MODE.containsMatchIn("set fop to online and cso to offline") && MODE_WORD.replace("a offline b in person c", "x") == "a x b x c")
+        check(NEXT_CLASS.containsMatchIn("my next class for cso") && !NEXT_CLASS.containsMatchIn("classes on friday"))
+        check(DATE_OK.containsMatchIn("next week") && !DATE_OK.containsMatchIn("physical") && HOLIDAY.containsMatchIn("when is mid semester break?") && HANTAR.containsMatchIn("slides perlu hantar"))
         check(SCHOOLWORK.containsMatchIn("do my essay") && SCHOOLWORK.containsMatchIn("write the lab report for me") && !SCHOOLWORK.containsMatchIn("when is my essay due"))
         check(tokens("Bus from KK12 to FSKTM by 10 am, WIX1001!").map { it.second } == listOf("bus", "from", "kk12", "to", "fsktm", "by", "<time>", "<code>"))
+        } catch (e: Exception) { Log.e("Assistant", "self-check failed", e) }
     }
 }

@@ -4,7 +4,7 @@ const fs = require("fs"), path = require("path"), vm = require("vm");
 const src = fs.readFileSync(path.join(__dirname, "Code.gs"), "utf8");
 const m = { exports: {} };
 vm.runInNewContext(src, { module: m, console });
-const { validate, redact } = m.exports;
+const { validate, redact, dayCount } = m.exports;
 const statusOf = (i, c) => JSON.parse(JSON.stringify(m.exports.statusOf(i, c)));  // plain objects: the vm context has its own Object
 
 const ok = { ticket: "SN-7F3K", kind: "bug", message: "Join class opens attendance", install: "a1b2c3d4e5f60718" };
@@ -39,3 +39,6 @@ assert.ok(validate({ ...ok, images: ["a", "b", "c", "d"] }));
 assert.ok(validate({ ...ok, images: ["<script>"] }));
 assert.ok(validate({ ...ok, images: "notalist" }));
 console.log("screenshot checks pass");
+assert.strictEqual(dayCount("20261108:7", "20261108"), 7);
+assert.strictEqual(dayCount("20261107:99", "20261108"), 0);
+assert.strictEqual(dayCount(null, "20261108"), 0);

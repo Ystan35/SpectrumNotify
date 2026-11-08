@@ -4,6 +4,7 @@ import json, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 gen = open(os.path.join(HERE, "gen_data.py"), encoding="utf-8").read()
 tests = open(os.path.join(HERE, "test_sentences.txt"), encoding="utf-8").read()
+extra = open(os.path.join(HERE, "train_extra.txt"), encoding="utf-8").read()
 
 cells = [
     ("md", """# Spectrum Notify assistant: train the on-device model
@@ -15,8 +16,10 @@ The app answers with its own data (classes, shuttle planner, deadlines), so the 
 
 **Run:** Runtime → Change runtime type → GPU (a CPU also works, in a few minutes), then Runtime → Run all.
 At the end `assistant.tflite` and `assistant_meta.json` download: put both in `app/src/main/assets/`."""),
+    ("code", "%%writefile extra_templates.json\n" + open(os.path.join(HERE, "extra_templates.json"), encoding="utf-8").read()),
     ("code", "%%writefile gen_data.py\n" + gen),
     ("code", "%%writefile test_sentences.txt\n" + tests),
+    ("code", "%%writefile train_extra.txt\n" + extra),
     ("code", """import json, numpy as np, tensorflow as tf, random
 from gen_data import generate, tokens, INTENTS, TAGS
 print("TensorFlow", tf.__version__, "| GPU:", tf.config.list_physical_devices("GPU"))
@@ -39,6 +42,8 @@ def word_dropout(toks, p=0.05):  # teaches the model to cope with words it never
 X = np.array([enc(word_dropout(x["tokens"])) for x in data], dtype=np.int32)
 YI = np.array([INTENTS.index(x["intent"]) for x in data], dtype=np.int32)
 YS = np.array([[TAGS.index(t) for t in x["tags"]][:MAXLEN] + [0] * (MAXLEN - min(MAXLEN, len(x["tags"]))) for x in data], dtype=np.int32)
+# hand-written extras have no slot labels: -1 keeps them out of the slot loss (slot_loss below skips it)
+YS[[not x.get("slots", True) for x in data]] = -1
 print(len(data), "sentences,", len(VOCAB), "words")"""),
     ("code", """L = tf.keras.layers
 inp = L.Input((MAXLEN,), dtype="int32", name="ids")
@@ -50,7 +55,11 @@ for d in (1, 2, 4, 1):
 slots = L.Dense(len(TAGS), activation="softmax", name="slots")(x)
 intent = L.Dense(len(INTENTS), activation="softmax", name="intent")(L.Dropout(0.3)(L.GlobalMaxPooling1D()(x)))
 model = tf.keras.Model(inp, [intent, slots])
-model.compile("adam", loss={"intent": "sparse_categorical_crossentropy", "slots": "sparse_categorical_crossentropy"},
+def slot_loss(y, p):  # per-word cross-entropy, ignoring words labelled -1
+    y = tf.cast(y, tf.int32); m = tf.cast(y >= 0, tf.float32)
+    l = tf.keras.losses.sparse_categorical_crossentropy(tf.maximum(y, 0), p)
+    return tf.reduce_sum(l * m, -1) / tf.maximum(tf.reduce_sum(m, -1), 1.0)
+model.compile("adam", loss={"intent": "sparse_categorical_crossentropy", "slots": slot_loss},
               metrics={"intent": "accuracy", "slots": "accuracy"})
 model.summary()
 model.fit(X, {"intent": YI, "slots": YS}, validation_split=0.1, epochs=12, batch_size=64,
@@ -67,6 +76,11 @@ for want, s in rows:
     ok += got == want
     if got != want: print("MISS", want, "->", got, f"{conf:.2f}", "|", s.strip())
 print(f"hand-written test: {ok}/{len(rows)} intents right")
+# synthetic test: fresh seed, no extras (same templates, new fillers and typos); tflite is checked on it further down
+syn = generate(per_intent=300, seed=99, with_extras=False)
+SX = np.array([enc(x["tokens"]) for x in syn], dtype=np.int32)
+syn_ok = (model.predict(SX, verbose=0)[0].argmax(-1) == np.array([INTENTS.index(x["intent"]) for x in syn])).mean()
+print(f"synthetic test: {syn_ok:.1%} intents right")
 for s in ["how do i get from KK12 to FSKTM by 10am", "remind me to submit lab report tomorrow at 9pm", "where is WIX1001"]:
     print(predict(s))"""),
     ("code", """# TFLite export (float16 weights: about half the size, same answers), then check the .tflite gives the same intents
@@ -79,12 +93,14 @@ open("assistant.tflite", "wb").write(tfl)
 
 it = tf.lite.Interpreter(model_content=tfl); it.allocate_tensors()
 inp_d = it.get_input_details()[0]; outs = it.get_output_details()
-def tfl_intent(s):
-    it.set_tensor(inp_d["index"], np.array([enc(tokens(s))], dtype=np.int32)); it.invoke()
+def tfl_intent(s, toks=None):
+    it.set_tensor(inp_d["index"], np.array([enc(toks or tokens(s))], dtype=np.int32)); it.invoke()
     o = next(o for o in outs if len(o["shape"]) == 2)  # [1, intents]; slots are [1, MAXLEN, tags]
     return INTENTS[it.get_tensor(o["index"])[0].argmax()]
 same = sum(tfl_intent(s.strip()) == predict(s.strip())[0] for _, s in rows)
 print(f"tflite agrees with keras on {same}/{len(rows)}; size {len(tfl)//1024} KB")
+tfl_ok = np.mean([tfl_intent("", x["tokens"]) == x["intent"] for x in syn])
+print(f"tflite on synthetic test: {tfl_ok:.1%} intents right")
 
 # everything the app needs to read the model; "checks" lets the app test its tokeniser against Python's
 checks = [{"text": s.strip(), "ids": enc(tokens(s.strip())), "intent": tfl_intent(s.strip())} for _, s in rows[:12]]

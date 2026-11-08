@@ -100,7 +100,7 @@ class AssistantActivity : BaseActivity() {
                 lastQ = if (r.maskQuestion) null else asked
                 askFromTo = r.askFromTo
                 if (r.maskQuestion) mine.text = "•••••• (hidden: it looked like a password)"
-                show(r)
+                show(r, if (r.maskQuestion) null else asked)
             }
         }.start()
     }
@@ -120,7 +120,8 @@ class AssistantActivity : BaseActivity() {
         return t
     }
 
-    private fun show(r: Assistant.Reply) {
+    /** [asked] = the question this answers, for the small "wrong answer?" link; null for Oli's own follow-ups and hidden questions. */
+    private fun show(r: Assistant.Reply, asked: String? = null) {
         // red only for an emergency; a caring reply's counselling number stays calm
         val alarm = r.numbers.any { it.second == "999" }
         val box = LinearLayout(this).apply {
@@ -164,6 +165,17 @@ class AssistantActivity : BaseActivity() {
                 FeedbackActivity.open(this, "question", "The assistant couldn't answer: \"$q\"")
             })
         }
+        // every answer: a small way to say it was wrong (r.feedback already has the bigger button)
+        if (asked != null && r.feedback == null && !alarm) box.addView(tv("Wrong answer? Tell the developer", Type.CAPTION, Ui.DIM).apply {
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            minHeight = dp(Ui.touch(40))
+            background = rippleBg(0, 0, this@AssistantActivity, Radius.SM)
+            contentDescription = "Report a wrong answer to the developer"
+            setOnClickListener {
+                FeedbackActivity.open(this@AssistantActivity, "question",
+                    "The assistant answered wrongly.\nI asked: \"$asked\"\nIt said: \"${r.text.take(300)}\"")
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         // Oli's avatar beside each reply
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(avatar(), LinearLayout.LayoutParams(dp(36), dp(36)).apply { rightMargin = dp(8); topMargin = dp(2) })

@@ -594,7 +594,7 @@ class SettingsActivity : BaseActivity() {
             })
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(arrow, LinearLayout.LayoutParams(dp(24), dp(24)))
-        val s = Section(body, arrow, title, icon, contents, key)
+        val s = Section(body, arrow, title, icon, contents, key.ifEmpty { title.lowercase() })
         head.setOnClickListener {
             if (body.visibility == View.VISIBLE) {
                 // tapping the open section closes it again

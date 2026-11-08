@@ -36,21 +36,18 @@ jobs:
           echo "$FIREBASE_CONFIG" > app/google-services.json
       - name: Build debug + release APKs
         run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
-      - name: Stage release APK into repo (apk/SpectrumNotify.apk)
-        run: |
-          mkdir -p apk
-          cp app/build/outputs/apk/release/app-release.apk apk/SpectrumNotify.apk
-          git add apk/SpectrumNotify.apk
+      - name: Name the release APK (it goes to the GitHub Release only, not into the repo)
+        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/SpectrumNotify.apk"
       - name: Sync latest.json with version in build.gradle.kts
         run: |
           CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
           NAME=$(grep -oP 'versionName = "[^"]+"' app/build.gradle.kts | cut -d'"' -f2)
           node -e 'const fs=require("fs");const c=process.argv[1],n=process.argv[2];fs.writeFileSync("latest.json",JSON.stringify({versionCode:Number(c),versionName:n,notes:""}))' "$CODE" "$NAME"
-          if ! git diff --cached --quiet latest.json apk/SpectrumNotify.apk; then
+          git add latest.json
+          if ! git diff --cached --quiet latest.json; then
             git config user.name "github-actions"
             git config user.email "actions@github.com"
-            git add latest.json apk/SpectrumNotify.apk
-            git commit -m "Publish $NAME ($CODE): latest.json + APK [skip ci]"
+            git commit -m "Publish $NAME ($CODE): latest.json [skip ci]"
           fi
       - name: GitHub Release with the APK (before latest.json goes out, so the update link already works)
         env:
@@ -61,8 +58,8 @@ jobs:
           if [ "$DRAFT" = false ]; then echo "v$NAME already released"; exit 0; fi
           # a draft left by a failed run (GitHub API error mid-create) may lack the APK: start it over
           if [ "$DRAFT" = true ]; then gh release delete "v$NAME" --yes; fi
-          gh release create "v$NAME" apk/SpectrumNotify.apk --target "${{ github.sha }}" --title "Spectrum Notify $NAME" --generate-notes --latest
-      - name: Push latest.json + APK (token auth)
+          gh release create "v$NAME" "$RUNNER_TEMP/SpectrumNotify.apk" --target "${{ github.sha }}" --title "Spectrum Notify $NAME" --generate-notes --latest
+      - name: Push latest.json (token auth)
         if: env.HAS_TOKEN == 'true'
         run: |
           if [ -z "${{ secrets.GH_PAT }}" ]; then echo "GH_PAT secret is NOT set"; exit 1; fi

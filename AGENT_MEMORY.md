@@ -17,6 +17,6 @@
 - Real device: RRCW600L8VN (USB adb). Emulator AVD: SpectrumTest (emulator-5554).
 - Local build: `JAVA_HOME="C:/Program Files/Java/jdk-25.0.4.1"` + gradle at `%USERPROFILE%/.gradle/wrapper/dists/gradle-9.2.1-bin/.../bin/gradle.bat`.
 - APK to user's phone: `cmd //c "C:\Users\user\Desktop\send.bat" <apk>` (Telegram bot).
-- Repo is PUBLIC — raw.githubusercontent links work for catalog + latest.json + apk/ updates.
+- Repo is PUBLIC — raw.githubusercontent links work for catalog + latest.json. The APK is only a GitHub Release asset (no longer committed to apk/ since 0.36.0).
 - CI: GH_PAT secret (classic, repo scope) + `git config --unset-all http.https://github.com/.extraheader` before PAT push (checkout injects read-only creds).
 - Real project repo: `C:\Users\user\Downloads\SpectrumNotify` (NOT SpectrumNotify-0_8_3 — that's a zip extract inside a stray home-dir repo).

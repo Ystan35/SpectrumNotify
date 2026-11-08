@@ -14,6 +14,7 @@
 
 var KINDS = ["bug", "idea", "question", "assistant"];
 var PER_DAY = 10;           // tickets per phone per day
+var ALL_PER_DAY = 100;      // tickets from every phone together per day: a script can send a fresh "install" id each time
 var MAX_LEN = 2000;
 var MAX_IMAGES = 3;
 var MAX_IMAGE = 2 * 1024 * 1024;  // bytes, after decoding
@@ -40,10 +41,15 @@ function doPost(e) {
 }
 
 function createTicket(b, props) {
-    if (props.getProperty("t:" + b.ticket) || findIssue(b.ticket)) return json({ ok: true, ticket: b.ticket });  // a retry from the offline queue
-    // shortcut: the daily count lives in the cache (kept up to 6 h), so a phone could send 10 more after that; use properties if abused
+    if (props.getProperty("t:" + b.ticket)) return json({ ok: true, ticket: b.ticket });  // a retry from the offline queue
     var cache = CacheService.getScriptCache();
-    var key = "n:" + b.install + ":" + Utilities.formatDate(new Date(), "Asia/Kuala_Lumpur", "yyyyMMdd");
+    // the all-phones cap is kept in the properties (not the cache), so it holds all day
+    var today = Utilities.formatDate(new Date(), "Asia/Kuala_Lumpur", "yyyyMMdd");
+    var all = dayCount(props.getProperty("all"), today);
+    if (all >= ALL_PER_DAY) return json({ ok: false, error: "Too many tickets today. Try again tomorrow." });
+    if (lookup(props, cache, b.ticket)) return json({ ok: true, ticket: b.ticket });
+    // shortcut: the daily count lives in the cache (kept up to 6 h), so a phone could send 10 more after that; use properties if abused
+    var key = "n:" + b.install + ":" + today;
     var n = Number(cache.get(key) || 0);
     if (n >= PER_DAY) return json({ ok: false, error: "Too many tickets today. Try again tomorrow." });
 
@@ -62,6 +68,7 @@ function createTicket(b, props) {
     });
     var issue = gh("post", "/issues", { title: title, body: body, labels: [b.kind] });
     props.setProperty("t:" + b.ticket, String(issue.number));
+    props.setProperty("all", today + ":" + (all + 1));
     cache.put(key, String(n + 1), 21600);
 
     var to = props.getProperty("NOTIFY_EMAIL") || Session.getEffectiveUser().getEmail();
@@ -78,8 +85,8 @@ function doGet(e) {
   ids.forEach(function (t) {
     var hit = cache.get("s:" + t);
     if (hit) { out[t] = JSON.parse(hit); return; }
-    var num = props.getProperty("t:" + t) || findIssue(t);
-    if (!num) { out[t] = { status: "unknown" }; return; }
+    var num = lookup(props, cache, t);
+    if (!num) { out[t] = { status: "unknown" }; cache.put("s:" + t, JSON.stringify(out[t]), 300); return; }
     props.setProperty("t:" + t, String(num));
     var issue = gh("get", "/issues/" + num);
     var comments = issue.comments > 0 ? gh("get", "/issues/" + num + "/comments?per_page=100") : [];
@@ -91,6 +98,12 @@ function doGet(e) {
 }
 
 // ---------------------------------------------------------------- pure parts (tested in test_code.js)
+
+/** Tickets counted so far today, from the stored "yyyyMMdd:n"; 0 when it is from another day or empty. */
+function dayCount(stored, today) {
+  var m = /^(\d{8}):(\d+)$/.exec(stored || "");
+  return m && m[1] === today ? Number(m[2]) : 0;
+}
 
 function validate(b) {
   if (!/^SN-[A-Z0-9]{4,8}$/.test(b.ticket || "")) return "bad ticket";
@@ -140,6 +153,16 @@ function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
  * (saving the Script properties page replaces the whole list). Reads the repo's issues, newest first, and
  * records every ticket it passes, so one lookup restores them all. Null when there is none.
  */
+function lookup(props, cache, ticket) {
+  var n = props.getProperty("t:" + ticket);
+  if (n) return n;
+  // shortcut: at most one scan of the repo's issues per 10 minutes for all tickets together (made-up ids used to cost up to 10 GitHub calls each);
+  // a ticket whose record was lost can wait up to 10 minutes to be found again, and a retry in that time may make a duplicate
+  if (cache.get("scan")) return null;
+  cache.put("scan", "1", 600);
+  return findIssue(ticket);
+}
+
 function findIssue(ticket) {
   var props = PropertiesService.getScriptProperties();
   for (var page = 1; page <= 10; page++) {
@@ -182,4 +205,4 @@ function saveImage(name, base64) {
 
 function json(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
-if (typeof module !== "undefined") module.exports = { validate: validate, redact: redact, statusOf: statusOf, imageType: imageType };
+if (typeof module !== "undefined") module.exports = { dayCount: dayCount, validate: validate, redact: redact, statusOf: statusOf, imageType: imageType };
