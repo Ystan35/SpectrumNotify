@@ -322,16 +322,23 @@ fun Activity.themeToggle(): ImageButton = ImageButton(this).apply {
         android.content.res.ColorStateList.valueOf(Ui.tint(Ui.CYAN, 60)), null,
         roundBg(0xFFFFFFFF.toInt(), 0, this@themeToggle, Radius.PILL),
     )
-    contentDescription = if (Ui.dark) "Switch to light mode" else "Switch to dark mode"
+    val stopsFollowing = try { Prefs(this@themeToggle).themeMode == 0 } catch (_: Exception) { false }
+    contentDescription = (if (Ui.dark) "Switch to light mode" else "Switch to dark mode") +
+        (if (stopsFollowing) " (stops following the phone)" else "")
     setOnClickListener {
-        val pr = try { Prefs(this@themeToggle) } catch (_: Exception) { null }
-        if (pr != null) {
-            pr.themeMode = nextThemeMode(Ui.dark)
+        // a running refresh would be lost by the recreate: wait for it
+        if ((this@themeToggle as? MainActivity)?.isRefreshing() == true) {
+            android.widget.Toast.makeText(this@themeToggle, "Wait for the refresh to finish", android.widget.Toast.LENGTH_SHORT).show()
+            return@setOnClickListener
+        }
+        try {
+            Prefs(this@themeToggle).themeMode = nextThemeMode(Ui.dark)
             recreate()
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(this@themeToggle, "Could not change the colour mode", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 }
-
 /** The Colour mode a day/night tap stores: light (1) while dark is showing, dark (2) while light is showing. */
 fun nextThemeMode(showingDark: Boolean): Int = if (showingDark) 1 else 2
 

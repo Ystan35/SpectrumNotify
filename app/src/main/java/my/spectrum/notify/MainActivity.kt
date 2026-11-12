@@ -49,6 +49,8 @@ class MainActivity : BaseActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+        private const val KEY_HERO_POS = "heroPos"
+        private const val KEY_SCROLL_Y = "scrollY"
     }
 
     internal lateinit var p: Prefs
@@ -67,7 +69,6 @@ class MainActivity : BaseActivity() {
     private lateinit var eventsList: LinearLayout
     private lateinit var navBar: LinearLayout
     private lateinit var bellDot: View
-    private var themeBtn: ImageButton? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var heroSig = ""
@@ -110,13 +111,24 @@ class MainActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         p = Prefs(this)
+        heroPos = savedInstanceState?.getInt(KEY_HERO_POS, 0) ?: 0   // kept across the theme-toggle recreate
         applyBars()
         // the notification permission is asked from the "Get set up" card, with the reason shown first
         buildUi()
         handleIntent(intent)
         Scheduler.startupCheck(this)   // auto-detect courses + Occ on open when data is stale
         Scheduler.ensurePolling(this)
+        savedInstanceState?.getInt(KEY_SCROLL_Y, 0)?.takeIf { it > 0 }?.let { y -> scroll.post { scroll.scrollTo(0, y) } }
     }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_HERO_POS, heroPos)
+        if (::scroll.isInitialized) outState.putInt(KEY_SCROLL_Y, scroll.scrollY)
+    }
+
+    /** The theme toggle recreates the page; a running refresh would be lost, so the toggle waits for it. */
+    fun isRefreshing() = refreshing
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -184,7 +196,7 @@ class MainActivity : BaseActivity() {
         page.addView(scroll, lp(MATCH, 0, 1f))
 
         // app title row: THE shared header (same implementation as every page)
-        // the greeting is the page title, in the same header as every tab (toolbox + theme switch at its end)
+        // the greeting is the page title, in the same header as every tab (toolbox, and the theme switch next to the refresh button)
         val topRow = headerRow("", toolbox = true)
         greetTitle = topRow.findViewWithTag<TextView>("headerTitle").apply { textSize = Type.DISPLAY * Ui.fontScale }
         // pinned above the scrolling page, like every other tab's header (it used to scroll away)
@@ -210,7 +222,7 @@ class MainActivity : BaseActivity() {
             contentDescription = "Check Spectrum now"
             setOnClickListener { startRefresh() }
         }
-        header.addView(themeToggle().also { themeBtn = it }, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))   // quick day/night, no trip to Settings
+        header.addView(themeToggle(), lp(dp(Ui.touch(48)), dp(Ui.touch(48))))   // quick day/night, no trip to Settings
         header.addView(refreshBtn, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
         content.addView(header, lp(MATCH, WRAP).apply { bottomMargin = dp(8) })
         // shows a check is running, so you are not left counting (ticket SN-N3UAY)
@@ -338,11 +350,6 @@ class MainActivity : BaseActivity() {
     private fun renderBell() {
         val unread = entries.any { it.kind == "notif" && NotifyLog.atOf(it) > p.lastSeen }
         bellDot.visibility = if (unread) View.VISIBLE else View.GONE
-    }
-
-    /** Sun/moon next to refresh: shows the current mode. */
-    private fun updateThemeBtn() {
-        themeBtn?.setImageResource(if (Ui.dark) R.drawable.ic_moon else R.drawable.ic_sun)
     }
 
     // ------------------------------------------------------------ rendering
