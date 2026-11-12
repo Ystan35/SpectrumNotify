@@ -586,7 +586,8 @@ class SettingsActivity : BaseActivity() {
                 text = summary.ifEmpty { contents.joinToString("  ·  ") }
                 textSize = Type.CAPTION * Ui.fontScale
                 setTextColor(Ui.DIM)
-                maxLines = 1
+                // wraps (up to 4 lines) so the times are not cut off at large text sizes
+                maxLines = 4
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
