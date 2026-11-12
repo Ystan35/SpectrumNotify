@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spectrum Notify</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<!-- iPhone and iPad ignore the manifest icons: they use this one for "Add to Home Screen" -->
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SN Timetable">
+<!-- "black": the status bar keeps its own dark bar above the page in light and dark mode ("black-translucent" made white clock text on a light page) -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#e9e8e3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10231c" media="(prefers-color-scheme: dark)">
+<style>
+  :root { --bg:#e9e8e3; --card:#f5f4f0; --line:#d9d7d0; --text:#1e2b25; --dim:#56625b; --accent:#1f7a55; --accent-ink:#fff; --now:#c0392b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#10231c; --card:#17332a; --line:#24493b; --text:#eaf4ec; --dim:#a3c2af; --accent:#b7e5ba; --accent-ink:#10231c; --now:#ff8a7a; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display:none !important; } /* a class that sets display must not un-hide it */
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, -apple-system, sans-serif;
+    /* the notch, the home bar and a landscape phone's rounded sides */
+    padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) calc(48px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1 { font-size:1.5rem; margin:24px 0 4px; }
+  h2 { font-size:1rem; margin:0 0 8px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+  .dim { color:var(--dim); font-size:.9rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin:8px 0; border-left:5px solid var(--line); }
+  .card.c { border-left-color:hsl(var(--hue) 60% 50%); }
+  .next { background:var(--accent); color:var(--accent-ink); border:0; }
+  .next .dim { color:inherit; opacity:.8; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > * { min-width:0; }
+  /* 16px+ inputs: iPhone zooms the page into any smaller field */
+  input, select, button { font:inherit; font-size:16px; min-height:48px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); padding:0 12px; }
+  input { flex:1; width:100%; }
+  button { background:var(--accent); color:var(--accent-ink); border:0; font-weight:600; cursor:pointer; touch-action:manipulation; }
+  button.quiet { background:transparent; color:var(--dim); border:1px solid var(--line); font-weight:400; }
+  .day { margin-top:14px; font-weight:700; }
+  .day.today { color:var(--accent); }
+  .time { font-weight:700; }
+  :focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+  #status { min-height:1.4em; }
+  .hint { border-left:5px solid var(--accent); }
+  .hint p { margin:0 0 8px; }
+
+  /* ---- page areas: one column on a phone, week grid + side column on a laptop ---- */
+  .app { max-width:1320px; margin:0 auto; display:grid; gap:0 32px; grid-template-columns:minmax(0,1fr);
+         grid-template-areas: "head" "hint" "next" "main" "remind" "add" "mine"; }
+  .head { grid-area:head; } #hint { grid-area:hint; } #next { grid-area:next; } .main { grid-area:main; }
+  .remind { grid-area:remind; margin-top:28px; } .add { grid-area:add; margin-top:28px; } .mine { grid-area:mine; margin-top:28px; }
+  .opts { display:grid; gap:10px; margin:10px 0; } .opts label { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .opts select { min-height:44px; }
+  #grid { display:none; }
+
+  @media (min-width: 900px) {
+    body { padding-left:max(32px, env(safe-area-inset-left)); padding-right:max(32px, env(safe-area-inset-right)); }
+    .app { grid-template-columns:minmax(0,1fr) 360px; grid-template-rows:auto auto auto auto auto auto 1fr;
+           grid-template-areas: "head head" "main hint" "main next" "main remind" "main add" "main mine" "main ."; }
+    #week { display:none; }
+    #grid { display:block; }
+    .remind, .add, .mine { margin-top:20px; }
+  }
+
+  /* ---- the week grid (laptop) ---- */
+  .wg { display:grid; grid-template-columns:48px repeat(var(--n), minmax(0,1fr)); background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  .wg .hd { padding:10px 6px; text-align:center; font-weight:700; border-bottom:1px solid var(--line); background:var(--card); }
+  .wg .hd.today { color:var(--accent); }
+  .wg .gut { position:relative; height:var(--h); }
+  .wg .gut span { position:absolute; right:6px; transform:translateY(-50%); font-size:.75rem; color:var(--dim); }
+  .wg .col { position:relative; height:var(--h); border-left:1px solid var(--line);
+             background-image:linear-gradient(var(--line) 1px, transparent 1px); background-size:100% var(--hh); }
+  .wg .col.today { background-color:color-mix(in srgb, var(--accent) 7%, transparent); }
+  .wg .blk { position:absolute; padding:4px 6px; border-radius:8px; overflow:hidden; font-size:.82rem; line-height:1.25;
+             background:hsl(var(--hue) 55% 50% / .2); border:2px solid hsl(var(--hue) 60% 50%); }
+  .wg .blk b { display:block; }
+  .wg .nowline { position:absolute; left:0; right:0; height:2px; background:var(--now); z-index:2; }
+  .wg .nowline::before { content:""; position:absolute; left:-4px; top:-3px; width:8px; height:8px; border-radius:50%; background:var(--now); }
+  .legend { display:flex; flex-wrap:wrap; gap:8px 16px; margin:10px 2px 0; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; background:hsl(var(--hue) 60% 50%); }
+  .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="head">
+    <h1>My timetable</h1>
+    <p class="dim" id="status" role="status">Loading the UM timetable…</p>
+  </header>
+
+  <div id="hint" class="card hint" hidden></div>
+  <div id="next" class="card next" hidden></div>
+
+  <section class="main">
+    <div id="week"></div>
+    <div id="grid"></div>
+  </section>
+
+  <section class="remind">
+    <h2>Reminders</h2>
+    <div class="card" id="remind">
+      <p id="remindState" class="dim" role="status"></p>
+      <div class="opts" id="remindOpts" hidden>
+        <label>Class reminder
+          <select id="lead" aria-label="Minutes before class">
+            <option value="5">5 min before</option><option value="10" selected>10 min before</option><option value="15">15 min before</option>
+            <option value="20">20 min before</option><option value="30">30 min before</option>
+          </select></label>
+        <label>Morning summary
+          <select id="morning" aria-label="Morning summary time">
+            <option value="off">Off</option><option value="06:30">06:30</option><option value="07:00">07:00</option>
+            <option value="07:05" selected>07:05</option><option value="07:30">07:30</option><option value="08:00">08:00</option>
+          </select></label>
+      </div>
+      <div class="row"><button id="remindBtn" hidden>Turn on reminders</button><button id="testBtn" class="quiet" hidden>Send me a test notice</button></div>
+    </div>
+  </section>
+
+  <section class="add">
+    <h2>Add a course</h2>
+    <div class="row">
+      <input id="q" type="search" placeholder="Course code or name, e.g. WIX1003" aria-label="Search courses" autocomplete="off" autocapitalize="off" enterkeyhint="search">
+    </div>
+    <div id="results"></div>
+  </section>
+
+  <section class="mine">
+    <h2>My courses</h2>
+    <div id="mine"></div>
+    <p class="dim">Times come from the UM timetable list and can change once classes start: Spectrum is the truth then. This page has no login. Your courses stay on this device, unless you turn on reminders: then the reminder server also keeps your course codes, your Occs and your device's push address, only to send them, and nothing else.</p>
+  </section>
+</div>
+
+<script src="config.js"></script>
+<script src="core.js"></script>
+<script>
+const CATALOG_URL ="https://raw.githubusercontent.com/Ystan35/SpectrumNotify/main/app/src/main/assets/catalog.json";
+const $ = (id) => document.getElementById(id);
+let catalog = null;
+let picks = {};
+try { picks = JSON.parse(localStorage.getItem("picks") || "{}"); } catch (_) { picks = {}; }
+const save = () => { try { localStorage.setItem("picks", JSON.stringify(picks)); } catch (_) {} syncSoon(); };
+
+// textContent only: course names come from a remote file
+function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+let hues = {};
+const hueStyle = (e, code) => { e.style.setProperty("--hue", hues[code] != null ? hues[code] : 150); e.classList.add("c"); return e; };
+
+const HOUR_PX = 56;
+
+/** The laptop week grid: hours down the side, one column per day, classes placed by time. */
+function drawGrid(classes, today, nowMin) {
+  const box = $("grid");
+  box.replaceChildren();
+  if (!classes.length) return;
+  const days = visibleDays(classes);
+  const { from, to } = hourRange(classes);
+  const height = (to - from) * HOUR_PX + 12; // a little room under the last hour line, so its label is not cut
+  const wg = el("div", null, "wg");
+  wg.style.setProperty("--n", days.length);
+  wg.style.setProperty("--h", height + "px");
+  wg.style.setProperty("--hh", HOUR_PX + "px");
+
+  wg.append(el("div", null, "hd"));
+  for (const d of days) wg.append(el("div", DAYS[d - 1], "hd" + (d === today ? " today" : "")));
+
+  const gut = el("div", null, "gut");
+  for (let h = from; h <= to; h++) {
+    const s = el("span", String(h).padStart(2, "0") + ":00");
+    s.style.top = (h - from) * HOUR_PX + "px";
+    gut.append(s);
+  }
+  wg.append(gut);
+
+  for (const d of days) {
+    const col = el("div", null, "col" + (d === today ? " today" : ""));
+    const list = classes.filter((c) => c.day === d);
+    for (const { cls: c, lane, lanes: n } of lanes(list)) {
+      const b = hueStyle(el("div", null, "blk"), c.code);
+      b.style.top = (c.start - from * 60) * HOUR_PX / 60 + "px";
+      b.style.height = Math.max(28, (c.end - c.start) * HOUR_PX / 60 - 2) + "px";
+      b.style.left = "calc(" + lane * 100 / n + "% + 2px)";
+      b.style.width = "calc(" + 100 / n + "% - 4px)";
+      b.append(el("b", c.code + " " + c.kind));
+      if (c.room) b.append(el("span", c.room));
+      b.setAttribute("role", "group");
+      b.setAttribute("aria-label", c.code + " " + c.name + ", " + c.kind + ", " + DAYS[c.day - 1] + " " + hm(c.start) + " to " + hm(c.end) + (c.room ? ", " + c.room : ""));
+      b.title = c.name + (c.lecturer ? " · " + c.lecturer : "");
+      col.append(b);
+    }
+    if (d === today && nowMin >= from * 60 && nowMin <= to * 60) {
+      const line = el("div", null, "nowline");
+      line.style.top = (nowMin - from * 60) * HOUR_PX / 60 + "px";
+      col.append(line);
+    }
+    wg.append(col);
+  }
+  box.append(wg);
+
+  // which colour is which course
+  const legend = el("div", null, "legend dim");
+  for (const code of [...new Set(classes.map((c) => c.code))]) {
+    const item = hueStyle(el("span", null), code);
+    item.append(el("i"), document.createTextNode(code));
+    legend.append(item);
+  }
+  box.append(legend);
+}
+
+function render() {
+  hues = hueMap(Object.keys(picks));
+  const classes = classesFor(catalog, picks);
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7 + 1; // Mon = 1
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nx = nextClass(classes, day, nowMin);
+
+  const next = $("next");
+  next.hidden = !nx;
+  if (nx) {
+    const c = nx.cls;
+    const when = nx.daysAhead === 0 ? "Today" : nx.daysAhead === 1 ? "Tomorrow" : DAYS[c.day - 1];
+    next.replaceChildren(el("div", "Next class", "dim"), el("div", c.code + " · " + c.kind, "time"),
+      el("div", when + " " + hm(c.start) + "–" + hm(c.end) + (c.room ? " · " + c.room : "")));
+  }
+
+  const week = $("week");
+  week.replaceChildren();
+  if (!classes.length) week.append(el("p", "No classes yet. Search a course and pick your Occ.", "dim"));
+  for (let d = 1; d <= 7; d++) {
+    const list = classes.filter((c) => c.day === d);
+    if (!list.length) continue;
+    week.append(el("div", DAYS[d - 1], "day" + (d === day ? " today" : "")));
+    for (const c of list) {
+      const card = hueStyle(el("div", null, "card"), c.code);
+      card.append(el("div", hm(c.start) + "–" + hm(c.end), "time"), el("div", c.code + " · " + c.name + " · " + c.kind));
+      const where = [c.room, c.lecturer].filter(Boolean).join(" · ");
+      if (where) card.append(el("div", where, "dim"));
+      week.append(card);
+    }
+  }
+  drawGrid(classes, day, nowMin);
+
+  const mine = $("mine");
+  mine.replaceChildren();
+  if (!Object.keys(picks).length) mine.append(el("p", "None yet.", "dim"));
+  for (const [code, occ] of Object.entries(picks)) {
+    const c = catalog.courses[code];
+    const row = hueStyle(el("div", null, "card row"), code);
+    const label = el("div", null);
+    label.style.flex = "1";
+    label.append(el("div", code + " · Occ " + occ, "time"), el("div", c ? c.n : "No longer in the list", "dim"));
+    const del = el("button", "Remove", "quiet");
+    del.setAttribute("aria-label", "Remove " + code);
+    del.onclick = () => { delete picks[code]; save(); render(); };
+    row.append(label, del);
+    mine.append(row);
+  }
+}
+
+function showResults() {
+  const box = $("results");
+  box.replaceChildren();
+  for (const code of search(catalog, $("q").value)) {
+    const c = catalog.courses[code];
+    const row = el("div", null, "card row");
+    const label = el("div", code + " · " + c.n);
+    label.style.flex = "1";
+    const sel = document.createElement("select");
+    sel.setAttribute("aria-label", "Occ for " + code);
+    for (const o of occsOf(c)) sel.append(new Option("Occ " + o, o));
+    const add = el("button", "Add");
+    add.setAttribute("aria-label", "Add " + code);
+    add.onclick = () => { picks[code] = sel.value; save(); $("q").value = ""; box.replaceChildren(); render(); };
+    row.append(label, sel, add);
+    box.append(row);
+  }
+}
+
+// ---- installing: iPhone has no install button (Share, then Add to Home Screen); Chrome and Edge give a prompt we can offer
+const standalone = () => window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const hintGone = () => { try { return localStorage.getItem("hintGone") === "1"; } catch (_) { return false; } };
+
+function showHint(kind, deferred) {
+  const box = $("hint");
+  if (standalone() || hintGone()) return;
+  const text = kind === "ios"
+    ? "Install it on your iPhone: tap the Share button in Safari, then “Add to Home Screen”. It then opens like an app and keeps your courses."
+    : "Install it like an app on this computer.";
+  const p = el("p", text);
+  const row = el("div", null, "row");
+  if (kind === "prompt") {
+    const go = el("button", "Install");
+    go.onclick = () => { deferred.prompt(); box.hidden = true; };
+    row.append(go);
+  }
+  const close = el("button", "Not now", "quiet");
+  close.onclick = () => { box.hidden = true; try { localStorage.setItem("hintGone", "1"); } catch (_) {} };
+  row.append(close);
+  box.replaceChildren(p, row);
+  box.hidden = false;
+}
+if (isIos()) showHint("ios");
+// (iPhone never sends this event; the guard keeps the Share-button steps showing there)
+window.addEventListener("beforeinstallprompt", (e) => { if (isIos()) return; e.preventDefault(); showHint("prompt", e); });
+// ask the browser to keep the saved courses (iOS may clear a website's storage after a week unused; an installed app is exempt)
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+// ---- reminders (web push): this page asks permission and subscribes; the server (api/subscribe, api/tick) sends the notices
+const PUSH = window.PUSH_CONFIG || {};
+const pushCapable = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const b64ToBytes = (s) => { const raw = atob((s + "=".repeat((4 - s.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, (c) => c.charCodeAt(0)); };
+const pushSub = async () => (await navigator.serviceWorker.ready).pushManager.getSubscription();
+
+// the two choices survive a reload: without this, the next sync would put the defaults back on the server
+try { const r = JSON.parse(localStorage.getItem("remind") || "{}"); if (r.lead) $("lead").value = r.lead; if (r.morning) $("morning").value = r.morning; } catch (_) {}
+const wanted = () => ({ picks, classes: true, lead: +$("lead").value, morning: $("morning").value });
+
+async function toServer(path, body) {
+  const r = await fetch((PUSH.api || "") + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(path + " " + r.status);
+}
+
+let syncTimer = null;
+function syncSoon() { // courses or choices changed: tell the server (after a short pause, so typing does not send ten requests)
+  if (!pushCapable) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    try { const sub = await pushSub(); if (sub) await toServer("api/subscribe", { subscription: sub.toJSON(), ...wanted() }); } catch (_) {}
+  }, 800);
+}
+$("lead").onchange = $("morning").onchange = () => {
+  try { localStorage.setItem("remind", JSON.stringify({ lead: $("lead").value, morning: $("morning").value })); } catch (_) {}
+  syncSoon();
+};
+
+async function showReminders() {
+  const state = $("remindState"), btn = $("remindBtn"), opts = $("remindOpts");
+  btn.hidden = true; opts.hidden = true; $("testBtn").hidden = true;
+  if (isIos() && !standalone()) { state.textContent = "On iPhone, reminders work once this page is on your Home Screen: tap Share, then “Add to Home Screen”, and open it from the icon."; return; }
+  if (!pushCapable) { state.textContent = "This browser cannot show reminders. Try Chrome, Edge or Firefox on a laptop or Android, or Safari on iPhone with the page on your Home Screen."; return; }
+  if (!PUSH.publicKey) { state.textContent = "Reminders are not switched on for this site yet."; return; }
+  if (Notification.permission === "denied") { state.textContent = "Notifications are blocked for this site. Allow them in your browser or phone settings, then reload."; return; }
+  const on = await pushSub();
+  if (on) {
+    state.textContent = "Reminders are on. You get a notice before each class, even when this page is closed.";
+    opts.hidden = false; btn.textContent = "Turn off reminders"; btn.className = "quiet"; btn.onclick = turnOff;
+    $("testBtn").hidden = false; $("testBtn").onclick = sendTest;
+  } else {
+    state.textContent = "Get a notice before each class, even when this page is closed.";
+    opts.hidden = false; // pick the times first: they are used when you turn on
+    btn.textContent = "Turn on reminders"; btn.className = ""; btn.onclick = turnOn;
+  }
+  btn.hidden = false;
+}
+
+async function turnOn() {
+  const state = $("remindState");
+  if (!Object.keys(picks).length) { state.textContent = "Add your courses first, then turn reminders on."; return; }
+  try {
+    if ((await Notification.requestPermission()) !== "granted") { state.textContent = "Reminders need permission to show notifications."; return; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(PUSH.publicKey) });
+    try { await toServer("api/subscribe", { subscription: sub.toJSON(), ...wanted() }); }
+    catch (e) { await sub.unsubscribe(); throw e; } // never say "on" when the server does not know us
+    await reg.showNotification("Reminders are on", { body: "You will get a notice before each class.", icon: "icon-192.png" });
+  } catch (_) { $("remindState").textContent = "Could not turn reminders on. Check your connection and try again."; return; }
+  showReminders();
+}
+
+async function sendTest() {
+  const state = $("remindState");
+  try {
+    const sub = await pushSub();
+    const r = await fetch((PUSH.api || "") + "api/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) });
+    state.textContent = r.ok ? "Sent. A test notice should appear in a few seconds." : r.status === 429 ? "Wait a minute before sending another test." : r.status === 404 || r.status === 410 ? "The server does not know this device. Turn reminders off and on again." : "The reminder server could not send it. Try again.";
+  } catch (_) { state.textContent = "Could not reach the reminder server."; }
+}
+
+async function turnOff() {
+  try { const sub = await pushSub(); if (sub) { await toServer("api/unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); } } catch (_) {}
+  showReminders();
+}
+
+// "/" jumps to the search box on a laptop
+addEventListener("keydown", (e) => { if (e.key === "/" && document.activeElement !== $("q") && !/input|select|textarea/i.test(document.activeElement.tagName)) { e.preventDefault(); $("q").focus(); } });
+
+fetch(CATALOG_URL).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((data) => {
+  catalog = data;
+  $("status").textContent = "UM timetable " + (data.semester || "") + ", as of " + (data.generatedAt || "?") + ".";
+  $("q").addEventListener("input", showResults);
+  render();
+  setInterval(render, 60000); // keep "next class" and the time line current
+}).catch(() => {
+  $("status").textContent = "Could not load the UM timetable. Check your connection and reload; once loaded it works offline.";
+});
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(showReminders).catch(() => showReminders());
+else showReminders();
+</script>
+</body>
+</html>

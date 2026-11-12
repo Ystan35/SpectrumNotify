@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "Spectrum Notify",
+  "short_name": "SN Timetable",
+  "description": "Your UM timetable by course and Occ. Works offline.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#10231c",
+  "theme_color": "#10231c",
+  "categories": ["education", "productivity"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

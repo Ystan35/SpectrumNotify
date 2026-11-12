@@ -1,0 +1,6 @@
+{
+  "name": "spectrum-notify-web",
+  "private": true,
+  "description": "Web version of Spectrum Notify: static page plus class-reminder push functions.",
+  "dependencies": { "web-push": "^3.6.7" }
+}
