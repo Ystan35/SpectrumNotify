@@ -130,7 +130,7 @@ class TimetableActivity : BaseActivity() {
     // ------------------------------------------------------------ day view
     private fun renderDay() {
         val today = LocalDate.now(zone()).dayOfWeek.value
-        box.chips(Timetable.DAYS, setOf(day - 1), false) { day = it.first() + 1; render() }
+        box.chips(Timetable.DAYS, setOf(day - 1), false, names = Timetable.DAY_FULL) { day = it.first() + 1; render() }
 
         val list = Timetable.on(slots, Timetable.dateThisWeek(day))
         val heading = (if (day == today) "Today" else Timetable.DAY_FULL[day - 1]) +
@@ -452,10 +452,12 @@ class TimetableActivity : BaseActivity() {
             background = rippleBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, Radius.PILL)
         }
         val minus = btn("−")
+        minus.contentDescription = "Zoom out"
         minus.setOnClickListener { zoom = (zoom - 0.15f).coerceAtLeast(0.7f); render() }
         val label = tv("${(zoom * 100).toInt()}%", Type.CAPTION, Ui.DIM, true)
         label.gravity = Gravity.CENTER; label.minWidth = dp(48)
         val plus = btn("+")
+        plus.contentDescription = "Zoom in"
         plus.setOnClickListener { zoom = (zoom + 0.15f).coerceAtMost(2f); render() }
         row.addView(minus); row.addView(label); row.addView(plus)
         return row

@@ -596,7 +596,12 @@ fun LinearLayout.segmented(labels: List<String>, selected: Int, onPick: (Int) ->
  * A row of equal-width chips. multi = any number can be on (days); otherwise exactly one (type, view).
  * onChange gets the selected positions. Returns the row.
  */
-fun LinearLayout.chips(labels: List<String>, initial: Set<Int>, multi: Boolean, onChange: (Set<Int>) -> Unit): LinearLayout {
+fun LinearLayout.chips(
+    labels: List<String>, initial: Set<Int>, multi: Boolean,
+    /** Spoken names when they should be longer than the visible label ("Monday" for "Mon"); each must start with or contain its label. */
+    names: List<String>? = null,
+    onChange: (Set<Int>) -> Unit,
+): LinearLayout {
     val ctx = context
     val sel = initial.toMutableSet()
     val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
@@ -612,6 +617,9 @@ fun LinearLayout.chips(labels: List<String>, initial: Set<Int>, multi: Boolean, 
                 // cut off at the chip's bottom ("As the course", "Manual by lecturer")
                 maxLines = 1
                 setAutoSizeTextTypeUniformWithConfiguration(10, (Type.LABEL * Ui.fontScale).toInt().coerceAtLeast(11), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+                // the chosen state is spoken, not only shown by colour and bold
+                isSelected = i in sel
+                contentDescription = (names?.getOrNull(i) ?: l) + if (i in sel) ", selected" else ""
             }
             row.addView(c, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 if (i > 0) leftMargin = ctx.dp(6)
