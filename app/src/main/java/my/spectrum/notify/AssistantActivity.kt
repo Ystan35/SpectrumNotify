@@ -26,7 +26,11 @@ class AssistantActivity : BaseActivity() {
      * The last few messages, in process memory only (rule 8: never written to disk). A mistaken back-press,
      * rotation or a switch away and back within KEEP_MS shows them again; when the process dies, so do they.
      */
-    private class Msg(val mine: Boolean, val text: String, val source: String = "")
+    private class Msg(
+        val mine: Boolean, val text: String, val source: String = "",
+        /** Oli's whole reply and the question it answered, so a re-shown answer keeps its buttons (Open Timetable, Wrong answer?). */
+        val reply: Assistant.Reply? = null, val asked: String? = null,
+    )
     private companion object {
         val history = ArrayList<Msg>()
         var lastQ: String? = null          // the last question, for follow-ups
@@ -51,16 +55,20 @@ class AssistantActivity : BaseActivity() {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(8), dp(8), dp(4))
+            // room below the field so its bottom border is never cut off by the disclaimer under the bar
+            setPadding(dp(12), dp(8), dp(8), dp(8))
             setBackgroundColor(Ui.BG)
+            clipChildren = false
+            clipToPadding = false
         }
         input = bar.field("", "Ask Oli about classes, deadlines, the bus…").apply {
             imeOptions = EditorInfo.IME_ACTION_SEND
+            ellipsize = android.text.TextUtils.TruncateAt.END   // a long placeholder ends in "…" instead of being cut mid-letter at large text
             setOnEditorActionListener { _, id, ev ->
                 if (id == EditorInfo.IME_ACTION_SEND || ev?.keyCode == KeyEvent.KEYCODE_ENTER) { send(); true } else false
             }
         }
-        (input.layoutParams as? LinearLayout.LayoutParams)?.let { it.width = 0; it.weight = 1f } ?: run {
+        (input.layoutParams as? LinearLayout.LayoutParams)?.let { it.width = 0; it.weight = 1f; it.topMargin = 0 } ?: run {
             input.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         bar.addView(ImageButton(this).apply {
@@ -75,7 +83,7 @@ class AssistantActivity : BaseActivity() {
         // always in view under the box, not one message that scrolls away
         root.addView(tv("Oli is an AI assistant and can make mistakes. Check important details on Spectrum.", Type.CAPTION, Ui.DIM).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(16), 0, dp(16), dp(10))
+            setPadding(dp(16), dp(4), dp(16), dp(10))
             setBackgroundColor(Ui.BG)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -87,7 +95,7 @@ class AssistantActivity : BaseActivity() {
                 "and our chat stays on this phone.",
             suggestions = Assistant.EXAMPLES.take(4)))
         if (keep) for (m in history) if (m.mine) bubble(m.text, mine = true)
-        else show(Assistant.Reply(m.text, source = m.source))
+        else show(m.reply ?: Assistant.Reply(m.text, source = m.source), m.asked, restored = true)
         intent.getStringExtra("q")?.let { ask(it) }
     }
 
@@ -116,7 +124,7 @@ class AssistantActivity : BaseActivity() {
                 askFromTo = r.askFromTo
                 if (r.maskQuestion) mine.text = "•••••• (hidden: it looked like a password)"
                 add(Msg(true, if (r.maskQuestion) "••••••" else asked))
-                add(Msg(false, r.text, r.source))
+                add(Msg(false, r.text, r.source, r, if (r.maskQuestion) null else asked))
                 show(r, if (r.maskQuestion) null else asked)
             }
         }.start()
@@ -141,7 +149,7 @@ class AssistantActivity : BaseActivity() {
     fun say(r: Assistant.Reply) = show(r)
 
     /** [asked] = the question this answers, for the small "wrong answer?" link; null for Oli's own follow-ups and hidden questions. */
-    private fun show(r: Assistant.Reply, asked: String? = null) {
+    private fun show(r: Assistant.Reply, asked: String? = null, restored: Boolean = false) {
         // red only for an emergency; a caring reply's counselling number stays calm
         val alarm = r.numbers.any { it.second == "999" }
         val box = LinearLayout(this).apply {
@@ -162,7 +170,8 @@ class AssistantActivity : BaseActivity() {
             add(button("More numbers", Emphasis.TERTIARY) { more.visibility = View.VISIBLE }.also { b -> b.tag = more })
             box.addView(more)
         }
-        r.confirm?.let { e ->
+        // a re-shown answer (after a colour-mode switch or rotation) does not offer a reminder that may already be saved or cancelled
+        (if (restored) null else r.confirm)?.let { e ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             row.addView(button("Add reminder", Emphasis.PRIMARY, Ui.SIGNAL) {
                 Events.save(this, e)
@@ -173,7 +182,7 @@ class AssistantActivity : BaseActivity() {
             add(row)
         }
         for (a in r.actions) add(button(a.label, Emphasis.SECONDARY) { a.run(this) })
-        if (r.suggestions.isNotEmpty()) {
+        if (!restored && r.suggestions.isNotEmpty()) {
             val chips = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             for (s in r.suggestions) chips.addView(chip(s, false) { ask(s) },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
@@ -189,11 +198,11 @@ class AssistantActivity : BaseActivity() {
         val side = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         side.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         if (!alarm && asked != null) side.addView(tv("Wrong answer? Tell the developer", Type.CAPTION, Ui.DIM).apply {
-            gravity = Gravity.TOP or Gravity.START   // text hugs the reply; the 40dp tap area extends below it (SN-CYA4Y)
-            setPadding(dp(4), dp(2), dp(4), 0)
-            minHeight = dp(Ui.touch(40))
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START   // text hugs the reply; 48dp tap area
+            setPadding(dp(4), dp(2), dp(4), dp(2))
+            minHeight = dp(Ui.touch(48))
             background = rippleBg(0, 0, this@AssistantActivity, Radius.SM)
-            contentDescription = "Report this answer to the developer"
+            // no separate contentDescription: the spoken name is the visible text (WCAG 2.5.3 Label in Name)
             setOnClickListener {
                 FeedbackActivity.open(this@AssistantActivity, "question",
                     "The assistant answered wrongly.\nI asked: \"$asked\"\nIt said: \"${r.text.take(300)}\"")
@@ -207,7 +216,7 @@ class AssistantActivity : BaseActivity() {
             topMargin = dp(10); rightMargin = dp(8)
         })
         scrollDown()
-        box.announceForAccessibility(r.text)
+        if (!restored) box.announceForAccessibility(r.text)
     }
 
     private fun avatar() = android.widget.ImageView(this).apply {
