@@ -298,7 +298,7 @@ class TimetableActivity : BaseActivity() {
         // guess can be wrong); holding Attendance does the same
         if (link.isNotEmpty() && !Timetable.attByLecturer(this, s.course)) att.addView(android.widget.FrameLayout(this).apply {
             addView(openBtn("Attendance", link, true).apply {
-                setPadding(dp(6), dp(6), dp(54), dp(6)) // room for the icon so the label never sits under it
+                setPadding(dp(6), dp(6), dp(Ui.touch(48) + 8), dp(6)) // room for the icon so the label never sits under it
                 setOnLongClickListener { pick(); true }
                 contentDescription = "Attendance. Hold to choose the attendance page"
             }, android.widget.FrameLayout.LayoutParams(MATCH, WRAP))
@@ -310,7 +310,7 @@ class TimetableActivity : BaseActivity() {
                 background = rippleBg(Ui.BAR, 0, this@TimetableActivity, Radius.PILL)
                 contentDescription = "Choose the attendance page for ${s.course}"
                 setOnClickListener { pick() }
-            }, android.widget.FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END or Gravity.CENTER_VERTICAL))
+            }, android.widget.FrameLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48)), Gravity.END or Gravity.CENTER_VERTICAL).apply { marginEnd = dp(2) })   // clear of the pill edge
         }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
         if (meeting.isNotEmpty()) att.addView(openBtn("Join class", meeting, link.isEmpty()), LinearLayout.LayoutParams(0, WRAP, 1f).apply { rightMargin = dp(8) })
         // no attendance page found: the link button opens the same chooser (pick one, or paste)

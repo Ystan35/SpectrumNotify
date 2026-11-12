@@ -84,10 +84,15 @@ class CatalogActivity : BaseActivity() {
         holder.label("One Occ per course. It sets your lecture and tutorial together.", Type.CAPTION, Ui.DIM, 2)
         val detail = holder.label("", Type.CAPTION, Ui.TEXT, 8)
         var chosen = occs.indexOf(previousOcc(c.code))   // -1 = none
-        val sp = spinner(listOf("Choose your Occ") + occs.map { "Occ $it" }, chosen + 1) { pos ->
+        val spNames = listOf("Choose your Occ") + occs.map { "Occ $it" }
+        var spRef: android.widget.Spinner? = null
+        val sp = spinner(spNames, chosen + 1) { pos ->
+            spRef?.contentDescription = "Occ for ${c.code}, ${spNames[pos]}"
             chosen = pos - 1
             detail.text = if (pos > 0) describe(c, occs[pos - 1]) else ""
         }
+        spRef = sp
+        sp.contentDescription = "Occ for ${c.code}, ${spNames[chosen + 1]}"
         if (chosen >= 0) detail.text = describe(c, occs[chosen])   // the shared spinner does not report the starting item
         holder.addView(sp, holder.indexOfChild(detail), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         holder.btn("Add to my timetable") {

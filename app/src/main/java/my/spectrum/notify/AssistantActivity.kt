@@ -63,6 +63,7 @@ class AssistantActivity : BaseActivity() {
         }
         input = bar.field("", "Ask Oli about classes, deadlines, the bus…").apply {
             imeOptions = EditorInfo.IME_ACTION_SEND
+            maxLines = 1   // ellipsize on an EditText only applies to a single line
             ellipsize = android.text.TextUtils.TruncateAt.END   // a long placeholder ends in "…" instead of being cut mid-letter at large text
             setOnEditorActionListener { _, id, ev ->
                 if (id == EditorInfo.IME_ACTION_SEND || ev?.keyCode == KeyEvent.KEYCODE_ENTER) { send(); true } else false
@@ -181,6 +182,7 @@ class AssistantActivity : BaseActivity() {
             row.addView(button("Cancel", Emphasis.TERTIARY) { row.visibility = View.GONE; show(Assistant.Reply("Okay, nothing added.")) })
             add(row)
         }
+        // actions (and the confirmed/undo ones) stay on a re-shown answer: Oli's applied flag stops a second run
         for (a in r.actions) add(button(a.label, Emphasis.SECONDARY) { a.run(this) })
         if (!restored && r.suggestions.isNotEmpty()) {
             val chips = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

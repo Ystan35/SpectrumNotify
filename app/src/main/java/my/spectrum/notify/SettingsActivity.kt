@@ -200,12 +200,16 @@ class SettingsActivity : BaseActivity() {
             val catOccs = Catalog.find(this, code)?.occs() ?: emptyList()
             val occs = if (catOccs.isNotEmpty()) catOccs else (learned[code.uppercase()] ?: learned[code] ?: emptyList())
             val current = Regex(Regex.escape(code) + ":occ([0-9]+[a-z]?)", RegexOption.IGNORE_CASE).find(p.myGroups)?.groupValues?.get(1) ?: ""
+            var spinnerRef: android.widget.Spinner? = null
             val names = listOf("Not set") + occs.map { "Occ $it" }
             val sel = occs.indexOf(current) + 1
             val sp = spinner(names, if (sel >= 0) sel else 0) { pos ->
+                spinnerRef?.contentDescription = "Occ for $code, ${names[pos]}"
                 // the same save as the Courses page: group, confirmed mark, UM-list classes, alarms
                 Timetable.setOcc(this, code, if (pos <= 0) "" else occs[pos - 1])
             }
+            spinnerRef = sp
+            sp.contentDescription = "Occ for $code, ${names[if (sel >= 0) sel else 0]}"
             // one row per course: the short name ("WIX1001 · CM") on the left, a small Occ dropdown on the right (ticket SN-TG4DM)
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
             // the same name style as the Online or in person rows
