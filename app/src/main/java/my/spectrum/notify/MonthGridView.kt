@@ -140,7 +140,7 @@ object MonthGridView {
             grid.addView(wk, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
             var cell = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-            repeat(lead) { cell.addView(View(activity), LinearLayout.LayoutParams(0, dp(44), 1f)) }
+            repeat(lead) { cell.addView(View(activity), LinearLayout.LayoutParams(0, dp(Ui.touch(48)), 1f)) }
             var filled = lead
             for (dayNum in 1..days) {
                 if (filled == 7) {
@@ -190,10 +190,10 @@ object MonthGridView {
                 if (hasEvents) dots.addView(dot(activity, Ui.CYAN))
                 if (dots.childCount > 0) cellBox.addView(dots, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)))
                 else cellBox.addView(View(activity), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)))
-                cell.addView(cellBox, LinearLayout.LayoutParams(0, dp(44), 1f))
+                cell.addView(cellBox, LinearLayout.LayoutParams(0, dp(Ui.touch(48)), 1f))
                 filled++
             }
-            while (filled in 1..6) { cell.addView(View(activity), LinearLayout.LayoutParams(0, dp(44), 1f)); filled++ }
+            while (filled in 1..6) { cell.addView(View(activity), LinearLayout.LayoutParams(0, dp(Ui.touch(48)), 1f)); filled++ }
             grid.addView(cell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             gridHolder.addView(grid, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             holder.addView(gridHolder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

@@ -749,7 +749,7 @@ class MainActivity : BaseActivity() {
                 nav.addView(tv("Class ${heroPos + 1} of ${slides.size}", Type.LABEL, Ui.TEXT, true).apply { setPadding(dp(12), 0, dp(12), 0) }, lp(WRAP, WRAP))
                 nav.addView(arrowBtn(R.drawable.ic_chevron_right, "Next class", heroPos < slides.size - 1) { pager.slide(1) }, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
                 navHolder.addView(nav, lp(MATCH, WRAP))
-                val dots = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, dp(4)); clipChildren = false }
+                val dots = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, 0, 0, 0); clipChildren = false }
                 slides.forEachIndexed { i, sl ->
                     val wrap = FrameLayout(this).apply {
                         isClickable = true
@@ -759,7 +759,7 @@ class MainActivity : BaseActivity() {
                     val d = View(this)
                     d.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(if (i == heroPos) Ui.TEXT else Ui.tint(Ui.TEXT, 0x55)) }
                     wrap.addView(d, FrameLayout.LayoutParams(dp(if (i == heroPos) 22 else 10), dp(4), Gravity.CENTER))
-                    dots.addView(wrap, lp(dp(44), dp(28)))
+                    dots.addView(wrap, lp(dp(if (slides.size > 7) 40 else 48), dp(48)))   // 48dp touch target (was 44x28)
                 }
                 navHolder.addView(dots, lp(MATCH, WRAP))
             }
