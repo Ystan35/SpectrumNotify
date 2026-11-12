@@ -17,7 +17,7 @@ private fun preferLecOf(kind: String): Boolean? = when (kind) { "lec" -> true; "
 
 /** The link Join class opens for [kind]: yours, else the one found on Spectrum; "" = none. */
 fun Activity.meetingLinkFor(code: String, kind: String): String =
-    Checker.linksForCourse(this, code, 0L, preferLec = preferLecOf(kind), online = true).first
+    Links.linksForCourse(this, code, 0L, preferLec = preferLecOf(kind), online = true).first
 
 /**
  * Paste or change your meeting link for [code]'s [kind] ("lec", "tut" or "" = every class). [ask]: you just chose
@@ -50,7 +50,7 @@ fun Activity.editMeetingLink(code: String, kind: String, ask: Boolean = false, a
             return@setOnClickListener
         }
         Timetable.setMeetingLink(this, code, url, kind)
-        Scheduler.scheduleAll(this)
+        Timetable.changed(this)
         dlg.dismiss()
         after()
     }

@@ -56,7 +56,7 @@ class TimetableActivity : BaseActivity() {
         }
         Timetable.justHidden?.let { key ->
             Timetable.justHidden = null
-            undoBar("Class removed from your timetable") { Timetable.unhide(this, key); render() }
+            undoBar("Class removed from your timetable") { Timetable.unhide(this, key); Timetable.changed(this); render() }
         }
     }
 
@@ -137,8 +137,12 @@ class TimetableActivity : BaseActivity() {
             if (list.isEmpty()) "" else "  ·  ${list.size} class" + (if (list.size == 1) "" else "es")
         box.label(heading, Type.BODY_L, Ui.TEXT, 20).setTypeface(null, Typeface.BOLD)
 
+        // your own events and Oli's reminders for this date (the day view showed classes only)
+        val date = Timetable.dateThisWeek(day)
+        val events = Events.all(this).filter { it.occursOn(date) }.sortedWith(compareBy({ !it.allDay }, { it.startTime }))
         if (list.isEmpty()) {
-            box.label("Nothing scheduled on ${Timetable.DAY_FULL[day - 1]}.", Type.BODY, Ui.DIM, 8)
+            if (events.isEmpty()) box.label("Nothing scheduled on ${Timetable.DAY_FULL[day - 1]}.", Type.BODY, Ui.DIM, 8)
+            addEventCards(events)
             box.btn("Add a class on ${Timetable.DAYS[day - 1]}") { openEdit(null, day) }
             return
         }
@@ -153,6 +157,27 @@ class TimetableActivity : BaseActivity() {
             }
             // zoom is for the week grid only; scaling cards here made them overlap or leave gaps
             box.addView(slotCard(s, badge), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+        }
+        addEventCards(events)
+    }
+
+    /** "Your events" of the day: tap one to edit it. */
+    private fun addEventCards(events: List<Events.Event>) {
+        if (events.isEmpty()) return
+        box.label("Your events", Type.BODY_L, Ui.TEXT, 20).setTypeface(null, Typeface.BOLD)
+        for (e in events) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = roundBg(Ui.BAR, Ui.BORDER, this@TimetableActivity, Radius.MD)
+                isClickable = true
+                pressRipple()
+                setOnClickListener { EventsUi.editor(this@TimetableActivity, e, { render() }) }
+            }
+            val remind = e.reminders.firstOrNull { it > 0 }?.let { " · reminder ${Events.remindLabel(it)} before" } ?: ""
+            card.addView(tv((if (e.allDay) "All day" else EventsUi.fmtMin(e.startTime) + " – " + EventsUi.fmtMin(e.endTime)) + remind, Type.CAPTION, e.tint(), true))
+            card.addView(tv(e.title, Type.BODY_L, Ui.TEXT, true).apply { setPadding(0, dp(4), 0, 0) })
+            box.addView(card, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
         }
     }
 
@@ -246,7 +271,7 @@ class TimetableActivity : BaseActivity() {
         col.addView(loc)
         // attendance field: auto-filled from the course's Spectrum attendance page,
         // placeholder when nothing is known, tap to paste one or more links
-        val auto = Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s))
+        val auto = Links.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s))
         val user = Timetable.attFor(this, s.course, preferLecOf(s))
         val link = user.ifEmpty { auto }
         val att = LinearLayout(this).apply {
@@ -372,6 +397,7 @@ class TimetableActivity : BaseActivity() {
                     1 -> Timetable.setLocation(this, course, "room:" + roomField.text.toString().trim())
                     else -> Timetable.setLocation(this, course, "")
                 }
+                Timetable.changed(this)
                 render()
                 after()
             }
@@ -397,6 +423,7 @@ class TimetableActivity : BaseActivity() {
             .setView(field)
             .setPositiveButton("Save") { _, _ ->
                 Timetable.setAttendanceLink(this, course, field.text.toString())
+                Timetable.changed(this)
                 render()
             }
             .setNegativeButton("Cancel", null)
@@ -409,6 +436,9 @@ class TimetableActivity : BaseActivity() {
         val grid = weekGrid()
         attachPinch(grid)
         box.addView(grid, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14) })
+        // all-day events have no time to place in the grid: listed under it
+        val allDay = Events.all(this).filter { it.allDay && (1..7).any { d -> it.occursOn(Timetable.dateThisWeek(d)) } }
+        addEventCards(allDay.map { it })
     }
 
     /** +/- buttons next to a zoom % label; persisted for the session. */
@@ -447,13 +477,20 @@ class TimetableActivity : BaseActivity() {
         val colW = (dp(104) * zoom).toInt()
         val headH = dp(30)
         val gutterW = dp(44)
-        val minH = minOf(8, slots.minOf { it.start } / 60)
-        val maxH = maxOf(17, (slots.maxOf { it.end } + 59) / 60)
-        val totalH = headH + (maxH - minH) * hourH + dp(10)
         val today = LocalDate.now(zone()).dayOfWeek.value
-        // Mon–Fri always; Saturday and Sunday only when they have a class this week
-        val byDay = (1..7).associateWith { d -> Timetable.on(slots, Timetable.dateThisWeek(d)) }
-        val days = (1..7).filter { it <= 5 || byDay[it]!!.isNotEmpty() }
+        // your events and Oli's reminders sit in the grid beside the classes (timed ones); all-day ones are listed below it
+        val allEvents = Events.all(this)
+        val eventsOn = (1..7).associateWith { d -> allEvents.filter { it.occursOn(Timetable.dateThisWeek(d)) } }
+        val timedEvents = eventsOn.values.flatten().filter { !it.allDay }
+        val minH = minOf(8, listOf(slots.minOfOrNull { it.start }, timedEvents.minOfOrNull { it.startTime }).filterNotNull().minOrNull()?.div(60) ?: 8)
+        val maxH = maxOf(17, ((listOf(slots.maxOfOrNull { it.end }, timedEvents.maxOfOrNull { it.endTime }).filterNotNull().maxOrNull() ?: 0) + 59) / 60)
+        val totalH = headH + (maxH - minH) * hourH + dp(10)
+        // Mon–Fri always; Saturday and Sunday only when they have a class or an event this week
+        val byDay = (1..7).associateWith { d ->
+            (Timetable.on(slots, Timetable.dateThisWeek(d)).map { WeekItem(it.start, it.end, it, null) } +
+                eventsOn[d]!!.filter { !it.allDay }.map { WeekItem(it.startTime, it.endTime, null, it) }).sortedBy { it.start }
+        }
+        val days = (1..7).filter { it <= 5 || byDay[it]!!.isNotEmpty() || eventsOn[it]!!.isNotEmpty() }
         val gridW = days.size * colW
 
         val gutter = FrameLayout(this)
@@ -486,7 +523,7 @@ class TimetableActivity : BaseActivity() {
                 var j = i
                 var clusterEnd = list[i].end
                 val laneEnds = ArrayList<Int>()
-                val placed = ArrayList<Pair<Slot, Int>>()
+                val placed = ArrayList<Pair<WeekItem, Int>>()
                 while (j < list.size && list[j].start < clusterEnd) {
                     val s = list[j]
                     var lane = laneEnds.indexOfFirst { it <= s.start }
@@ -500,7 +537,7 @@ class TimetableActivity : BaseActivity() {
                     val w = colW / lanes
                     val top = headH + (s.start - minH * 60) * hourH / 60
                     val h = maxOf(dp(36), (s.end - s.start) * hourH / 60 - dp(2))
-                    grid.addView(weekBlock(s, h),
+                    grid.addView(s.slot?.let { weekBlock(it, h) } ?: eventBlock(s.event!!),
                         FrameLayout.LayoutParams(w - dp(4), h).apply { leftMargin = col * colW + lane * w + dp(2); topMargin = top })
                 }
                 i = j
@@ -516,6 +553,27 @@ class TimetableActivity : BaseActivity() {
         wrap.addView(hs, LinearLayout.LayoutParams(0, totalH, 1f))
         hs.post { hs.scrollTo(maxOf(0, days.indexOf(today).coerceAtLeast(0) - 1) * colW, 0) }
         return wrap
+    }
+
+    /** One block of the week grid: a class or an event of yours. */
+    private class WeekItem(val start: Int, val end: Int, val slot: Slot?, val event: Events.Event?)
+
+    private fun eventBlock(e: Events.Event): View {
+        val c = e.tint()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(7), dp(6), dp(6), dp(6))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(Radius.SM).toFloat()
+                setColor(Ui.tint(c, 0x40))
+                setStroke(outline(), c)
+            }
+            isClickable = true
+            pressRipple(Radius.SM, c)
+            setOnClickListener { EventsUi.editor(this@TimetableActivity, e, { render() }) }
+            // one line with the time first: a 30-minute event is a short block, a wrapped title was cut off
+            addView(tv(EventsUi.fmtMin(e.startTime) + " " + e.title, Type.LABEL, Ui.TEXT, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        }
     }
 
     private fun weekBlock(s: Slot, height: Int): View {
@@ -566,8 +624,8 @@ class TimetableActivity : BaseActivity() {
     }
 
     /** The meeting link for this exact class, resolved the same way as on the Home screen. */
-    private fun meetingOf(s: Slot): String = Checker.linksForCourse(
-        this, s.course, courseIdOf(s.course), Checker.groupTokens(s.title + " " + s.note),
+    private fun meetingOf(s: Slot): String = Links.linksForCourse(
+        this, s.course, courseIdOf(s.course), Links.groupTokens(s.title + " " + s.note),
         preferLecOf(s), s.day, s.start, s.end, online = modeOf(s) == "online",
     ).first
 
@@ -585,7 +643,7 @@ class TimetableActivity : BaseActivity() {
         box.addView(tv(whenLine, Type.BODY, Ui.TEXT, true).apply { setPadding(0, dp(6), 0, 0) })
         val loc = Timetable.locationOf(this, s.course)
         val autoMeeting = meetingOf(s)
-        val attUrl = Timetable.attFor(this, s.course, preferLecOf(s)).ifEmpty { Checker.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
+        val attUrl = Timetable.attFor(this, s.course, preferLecOf(s)).ifEmpty { Links.attendanceUrl(this, courseIdOf(s.course), preferLecOf(s)) }
         val room = roomOf(s)
         val mode = modeOf(s)
         // the one trusted rule, the same as the week view, Home and the course page
@@ -628,6 +686,7 @@ class TimetableActivity : BaseActivity() {
             box.chips(names, setOf(modes.indexOf(now).coerceAtLeast(0)), false) { sel ->
                 val m = modes[sel.firstOrNull() ?: 0]
                 if (d == null) usualKeys.forEach { Timetable.setClassMode(this, it, null, m) } else Timetable.setClassMode(this, s.key, d, m)
+                Timetable.changed(this)
                 render()
                 dlg.dismiss()
                 // chose Online and Join class would have nothing to open: ask for the link now
@@ -705,6 +764,7 @@ class TimetableActivity : BaseActivity() {
         if (hidden > 0) {
             box.btn("Show $hidden hidden Spectrum class" + (if (hidden == 1) "" else "es")) {
                 Timetable.restoreHidden(this)
+                Timetable.changed(this)
                 render()
             }
         }

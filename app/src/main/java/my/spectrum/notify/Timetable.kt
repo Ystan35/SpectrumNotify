@@ -71,13 +71,16 @@ object Timetable {
     val PALETTE_SIZE: Int get() = PALETTE_DARK.size
 
     /**
-     * The line under a course code: the course's title ("BASIC ENTREPRENEURSHIP ENCULTURATION"), else the event name
-     * without Spectrum's clutter ("Attendance OCC29 - Audi FSSS (10 - 12pm) (Group GROUP 29 2026/2027_1)" → "OCC29 - Audi FSSS").
+     * The line under a course code: the course's title ("BASIC ENTREPRENEURSHIP ENCULTURATION"), else the UM catalog's
+     * name for it, else the event name without Spectrum's clutter ("Attendance OCC29 - Audi FSSS (10 - 12pm) (Group
+     * GROUP 29 2026/2027_1)" → "OCC29 - Audi FSSS"). Ticket SN-CKHNR: a missing fullname showed the raw event name
+     * ("Lecture Occ 2 (DR NAZEAN)") where other cards showed a title.
      */
-    fun classTitle(code: String, full: String, eventName: String): String {
-        val title = full.trim().removePrefix(code).trim(' ', '-', '–', ':').takeIf { !it.equals(code, true) }.orEmpty()
+    fun classTitle(code: String, full: String, eventName: String, catalogName: String = ""): String {
+        val title = full.trim().removePrefix(code).trim(' ', '-', '–', ':').takeIf { it.isNotEmpty() && !it.equals(code, true) }
+            ?: catalogName.trim().takeIf { it.isNotEmpty() }
         // course titles are shown in capitals, as UM writes them ("BASIC ENTREPRENEURSHIP ENCULTURATION")
-        if (title.isNotEmpty()) return title.uppercase()
+        if (title?.isNotEmpty() == true) return title.uppercase()
         if (eventName.equals(code, true)) return ""
         return eventName
             .replace(Regex("""^\s*attendance\b\s*[-:]?\s*""", RegexOption.IGNORE_CASE), "")
@@ -292,10 +295,6 @@ object Timetable {
     fun userAttLinkRaw(ctx: Context, course: String): String =
         sp(ctx).getString("att:$course", "") ?: ""
 
-    /** The attendance link shown for a course: user-pasted one first, else the auto one. */
-    fun attendanceLink(ctx: Context, course: String, autoUrl: String): String =
-        userAttLinkRaw(ctx, course).ifEmpty { autoUrl }
-
     /**
      * Auto-setup: write the LEC/TUT/LAB slots of one catalog Occ into the timetable.
      * Slots use grp "cat-CODE-kind-occ-i" so they are editable/deletable like any manual entry.
@@ -318,6 +317,24 @@ object Timetable {
         val have = manual(ctx).filter { it.grp.startsWith("cat-") }
             .associate { it.course.uppercase(Locale.ROOT) to (it.grp.split('-').getOrNull(3) ?: "") }
         return want.filter { (code, occ) -> have[code] != null && have[code] != occ && autoSetup(ctx, code, occ) }.keys.toList()
+    }
+
+    /**
+     * The ONE way to save a course's Occ ("" = not set): the group, "check the class times", "confirmed", the UM-list
+     * classes, alarms and widget. Settings, Courses, the UM list and the Home dialog used to each set a different mix,
+     * so an Occ picked in Settings stayed "unconfirmed" and was asked about again. False = the course is not in the UM list. [notify] false: the caller saves several and calls [changed] once.
+     */
+    fun setOcc(ctx: Context, code: String, occ: String, notify: Boolean = true): Boolean {
+        val pp = Prefs(ctx)
+        // picking an Occ is an explicit choice: it also takes the "off" switch off, as it always did in effect
+        val keep = pp.myGroups.split(",").map { it.trim() }
+            .filter { it.isNotEmpty() && !it.equals("off", true) && !it.startsWith("$code:", true) }
+        pp.myGroups = (if (occ.isEmpty()) keep else keep + "$code:occ$occ").joinToString(", ")
+        pp.setOccNeedsCheck(code, occ.isNotEmpty())
+        pp.setOccConfirmed(code.uppercase(), occ.isNotEmpty())
+        val inList = if (occ.isEmpty()) { clearCatalog(ctx, code); true } else autoSetup(ctx, code, occ)
+        if (notify) changed(ctx)
+        return inList
     }
 
     fun autoSetup(ctx: Context, code: String, occ: String): Boolean {
@@ -395,6 +412,18 @@ object Timetable {
     fun classMode(ctx: Context, key: String, date: LocalDate): String =
         sp(ctx).getString("cmode:$key:$date", null) ?: sp(ctx).getString("cmode:$key", "") ?: ""
 
+    /**
+     * The key every screen uses for "this class at [ts]": its timetable slot when it matches one, else the course and the
+     * class's own start. The hero card switch WRITES it and venueAt / onlineAt READ it, so they can never disagree (ticket
+     * SN-JEATK: the switch wrote the UM slot at 12:00 while the card, a 10:00-14:00 Spectrum class, read nothing).
+     */
+    fun modeKeyAt(ctx: Context, code: String, ts: Long): String =
+        slotAt(ctx, code, ts)?.key ?: localDt(ts).let { "ev:" + code.uppercase(Locale.ROOT) + "|" + (it.hour * 60 + it.minute) }
+
+    /** This class is set Online for its own day (the Home "Mark online" switch is per week), whatever the course is set to. */
+    fun onlineAt(ctx: Context, code: String, ts: Long): Boolean =
+        classMode(ctx, modeKeyAt(ctx, code, ts), localDt(ts).toLocalDate()) == "online"
+
     /** Saves [mode] for [date] only, or for every week when [date] is null; "" clears that choice. */
     fun setClassMode(ctx: Context, key: String, date: LocalDate?, mode: String) {
         val k = if (date == null) "cmode:$key" else "cmode:$key:$date"
@@ -459,10 +488,42 @@ object Timetable {
 
     /** User-pasted attendance link(s) for a course (one per line allowed); empty string clears it. */
     fun setAttendanceLink(ctx: Context, course: String, links: String) {
-        sp(ctx).edit().putString("att:$course", links.trim()).apply()
+        if (links.trim() == userAttLinkRaw(ctx, course)) return   // unchanged: keep a pin made in the picker
+        // a typed/pasted link is only a fallback; the picker (setAttFor) is what pins one (ticket SN-UDTQV)
+        sp(ctx).edit().putString("att:$course", links.trim()).remove("attpin:$course").apply()
     }
 
-    fun attendanceKey(course: String) = "att:$course"
+    /** Call after ANY save of a class or course setting: moves the alarms and redraws the widget, so no screen is left stale. */
+    fun changed(ctx: Context) {
+        Scheduler.scheduleAll(ctx)
+        try { NextClassWidget.updateAll(ctx) } catch (_: Exception) { }
+    }
+
+    /**
+     * Once, after the update that introduced pins: a whole-course link that is one of the attendance pages Spectrum lists
+     * for the course was picked in the picker, so it stays a pin. Anything else (a pasted address) stays a fallback.
+     * Waits for the first sync when no page is known yet.
+     */
+    fun migrateAttPins(ctx: Context) {
+        val s = sp(ctx)
+        if (s.getBoolean("attPinMigrated", false)) return
+        val wide = s.all.filter { (k, v) -> k.startsWith("att:") && k.count { it == ':' } == 1 && v is String && v.isNotBlank() }
+        if (wide.isNotEmpty()) {
+            val known = HashSet<Long>()
+            val labels = State.readOnly(ctx).j.optJSONObject("attlabels")
+            labels?.keys()?.forEach { k -> k.substringAfter(':').toLongOrNull()?.let { known.add(it) } }
+            if (known.isEmpty()) return
+            val e = s.edit()
+            for ((k, v) in wide) {
+                val id = Links.attendanceCmid((v as String).lineSequence().firstOrNull { it.isNotBlank() } ?: "")
+                if (id != null && id in known) e.putBoolean("attpin:" + k.removePrefix("att:"), true)
+            }
+            e.apply()
+        }
+        s.edit().putBoolean("attPinMigrated", true).apply()
+    }
+
+    internal fun attPinned(ctx: Context, course: String) = sp(ctx).getBoolean("attpin:$course", false)
 
     /**
      * The attendance link you chose for a course's lectures ([preferLec] true) or tutorials (false), else the one for
@@ -471,7 +532,9 @@ object Timetable {
     fun attFor(ctx: Context, course: String, preferLec: Boolean?): String {
         val k = when (preferLec) { true -> "lec"; false -> "tut"; null -> "" }
         val own = if (k.isEmpty()) "" else sp(ctx).getString("att:$course:$k", "") ?: ""
-        return own.ifEmpty { userAttLinkRaw(ctx, course) }
+        return Links.pickAttendance(own, userAttLinkRaw(ctx, course), attPinned(ctx, course)) {
+            Links.attendanceUrl(ctx, Links.courseIdForCode(ctx, course), preferLec)
+        }
     }
 
     /**
@@ -481,15 +544,15 @@ object Timetable {
     fun setAttFor(ctx: Context, course: String, kind: String, url: String) {
         val e = sp(ctx).edit()
         val key = if (kind.isEmpty()) "att:$course" else "att:$course:$kind"
-        if (url.isNotEmpty()) e.putString(key, url.trim())
-        else if (kind.isEmpty()) { e.remove(key); e.remove("att:$course:lec"); e.remove("att:$course:tut") }
+        if (url.isNotEmpty()) { e.putString(key, url.trim()); if (kind.isEmpty()) e.putBoolean("attpin:$course", true) }
+        else if (kind.isEmpty()) { e.remove(key); e.remove("attpin:$course"); e.remove("att:$course:lec"); e.remove("att:$course:tut") }
         else {
             e.remove(key)
-            val wide = userAttLinkRaw(ctx, course)
+            val wide = if (attPinned(ctx, course)) userAttLinkRaw(ctx, course) else ""
             if (wide.isNotEmpty()) {
                 val other = if (kind == "lec") "tut" else "lec"
                 if ((sp(ctx).getString("att:$course:$other", "") ?: "").isEmpty()) e.putString("att:$course:$other", wide)
-                e.remove("att:$course")
+                e.remove("att:$course"); e.remove("attpin:$course")
             }
         }
         e.apply()
@@ -547,7 +610,8 @@ object Timetable {
     }
 
     /** The UM catalog choice this slot matches (room, lecturer), or null. */
-    fun choiceOf(ctx: Context, s: Slot): Catalog.Choice? {
+    fun choiceOf(ctx: Context, s: Slot?): Catalog.Choice? {
+        if (s == null) return null
         val choices = Catalog.find(ctx, s.course)?.choices(s.kind) ?: return null
         // your own Occ (the picked class's, else Settings' "CODE:occN"); matching by time alone found another Occ
         // meeting at the same hour, with its room and lecturer (WIX1002's tutorial showed MM3 and the wrong lecturer)
@@ -596,7 +660,12 @@ object Timetable {
         val t = localDt(ts)
         val s = slotAt(ctx, course, ts)
         if (s != null) return venueOf(ctx, s, t.toLocalDate())
-        // not on your timetable: the course setting and your location only
+        // not on your timetable: your choice for this class on this date first
+        when (classMode(ctx, modeKeyAt(ctx, course, ts), t.toLocalDate())) {
+            "online" -> return "Online"
+            "inperson" -> return roomAt(ctx, course, ts).ifEmpty { "In person" }
+        }
+        // then the course setting and your location
         val loc = locationOf(ctx, course)
         return when {
             inPerson(ctx, course) -> roomAt(ctx, course, ts).ifEmpty { "In person" }

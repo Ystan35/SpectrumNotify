@@ -207,6 +207,7 @@ class TimetableEditActivity : BaseActivity() {
                     if (colourTouched || Timetable.colourIndexOrNull(this, code) == null) {
                         Timetable.setColourIndex(this, code, colourIdx)
                     }
+                    Timetable.changed(this)
                     finish()
                 }
             }
@@ -218,6 +219,7 @@ class TimetableEditActivity : BaseActivity() {
                     .setMessage("It will be removed from your timetable. You can add it again, but you will have to re-enter the times.")
                     .setPositiveButton("Delete") { _, _ ->
                         Timetable.deleteManual(this, grp)
+                        Timetable.changed(this)
                         finish()
                     }
                     .setNegativeButton("Keep", null)
@@ -272,8 +274,8 @@ class TimetableEditActivity : BaseActivity() {
         val preferLec = when (s.kind) { SlotKind.LECTURE -> true; SlotKind.TUTORIAL -> false; else -> Checker.preferLecOf(s.title) }
         val attKind = if (!AttendancePicker.hasBothKinds(this, s.course)) "" else when (preferLec) { true -> "lec"; false -> "tut"; null -> "" }
         val cid = Courses.all(this).firstOrNull { it.code.equals(s.course, true) }?.id ?: 0L
-        val links = Checker.linksForCourse(
-            this, s.course, cid, Checker.groupTokens(s.title + " " + s.note), preferLec, s.day, s.start, s.end,
+        val links = Links.linksForCourse(
+            this, s.course, cid, Links.groupTokens(s.title + " " + s.note), preferLec, s.day, s.start, s.end,
         )
         val shownMeeting = links.first
         var shownAtt = links.second
@@ -284,7 +286,7 @@ class TimetableEditActivity : BaseActivity() {
         // the same chooser as the pencil on the Timetable card; it saves at once, so the field just shows the result
         if (cid > 0L) col.btn("Choose from the course's pages", Emphasis.SECONDARY) {
             AttendancePicker.open(this, s.course, cid, attKind) {
-                shownAtt = Timetable.attFor(this, s.course, preferLec).ifEmpty { Checker.attendanceUrl(this, cid, preferLec) }
+                shownAtt = Timetable.attFor(this, s.course, preferLec).ifEmpty { Links.attendanceUrl(this, cid, preferLec) }
                 attLinkField.setText(shownAtt)
             }
         }
@@ -326,7 +328,7 @@ class TimetableEditActivity : BaseActivity() {
             if (m != shownMeeting) Timetable.setMeetingLink(this, s.course, m, attKind)
             val a = attLinkField.text.toString().trim()
             if (a != shownAtt) Timetable.setAttFor(this, s.course, attKind, a)
-            Scheduler.scheduleAll(this)   // the class alarm moves with the new time right away
+            Timetable.changed(this)   // the class alarm moves with the new time right away
             finish()
         }
         if (Timetable.timeOverride(this, s.key) != null || Timetable.meetingLinkOf(this, s.course, preferLec).isNotEmpty() ||
@@ -338,13 +340,14 @@ class TimetableEditActivity : BaseActivity() {
                 Timetable.setAttFor(this, s.course, "", "")   // also clears the lecture / tutorial choices
                 // a link pasted in the Location dialog (pre-0.25.1) would otherwise come back as the override
                 if (Timetable.locationOf(this, s.course).startsWith("online:")) Timetable.setLocation(this, s.course, "online:")
-                Scheduler.scheduleAll(this)
+                Timetable.changed(this)
                 finish()
             }
         }
         dangerBtn(col, "Remove from my timetable") {
             Timetable.hide(this, s.key)
             Timetable.justHidden = s.key   // the Timetable screen offers Undo when it comes back
+            Timetable.changed(this)
             finish()
         }
         col.label("You can undo this right after, or bring removed classes back from the Timetable screen.", Type.CAPTION, Ui.DIM, 6)

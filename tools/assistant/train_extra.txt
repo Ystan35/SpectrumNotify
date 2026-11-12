@@ -10,6 +10,10 @@ next_class	whats my next lec
 next_class	is my WIA2001 tutorial next
 next_class	when is the next lab
 next_class	got class after this?
+next_class	after the lecture, what is the class
+next_class	after the lecture what do i have
+next_class	what is my class after this tutorial
+next_class	after this class where do i go next
 next_class	what time does my next lecture start
 next_class	when do i have WIX1003 again this week
 next_class	upcoming class pls

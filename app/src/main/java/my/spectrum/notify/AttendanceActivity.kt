@@ -35,8 +35,6 @@ class AttendanceActivity : BaseActivity() {
 
     private lateinit var list: LinearLayout
 
-    private fun dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
-    private fun lp(w: Int, h: Int) = LinearLayout.LayoutParams(w, h)
     private val ticker = object : Runnable {
         override fun run() { render(); handler.postDelayed(this, 30000) }
     }
@@ -159,7 +157,7 @@ class AttendanceActivity : BaseActivity() {
                     card.addView(tv(text, Type.CAPTION, col, true).apply { setPadding(0, dp(6), 0, 0) })
                 }
             }
-            val attUrl = Checker.attendanceUrl(this, c.courseId)
+            val attUrl = Links.attendanceFor(this, c)
             if (attUrl.isNotEmpty()) {
                 val b = TextView(this).apply {
                     text = "Open attendance page"

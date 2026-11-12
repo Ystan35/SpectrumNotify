@@ -156,6 +156,7 @@ object Assistant {
         if (CARE.containsMatchIn(q)) return care(ctx)
         if (WEATHER.containsMatchIn(q)) return weather(ctx, q)
         if (JOKE.containsMatchIn(q)) return joke()
+        if (SONG.containsMatchIn(q) && !REMIND.containsMatchIn(q)) return song()
         if (isGreeting(q)) return greet(ctx)
         if (THANKS.matches(q.trim().trimEnd('!', '.', ' '))) return Reply(listOf("Anytime!", "You're welcome. Good luck today!", "Happy to help.").random())
         val p0 = try { classify(ctx, q) } catch (e: Exception) {
@@ -182,6 +183,8 @@ object Assistant {
         if (TO_DEV.containsMatchIn(q)) return toDeveloper(previous)
         // "where is the setting for dark mode": a button that opens that Settings section
         if (SETTING_Q.containsMatchIn(q) && !REMIND.containsMatchIn(q)) return settingFor(q)
+        // "use this teams link for cso" / "set my occ for gig1017 to 2": a Yes first, then Done with an Undo
+        if (!REMIND.containsMatchIn(q)) doThing(ctx, q)?.let { return it }
         // "attendance link for monday classes" was refused as coursework
         if (ATTEND.containsMatchIn(q)) return attendance(ctx, p, q)
         // "give me maya link": a button to that link from your UM links list
@@ -197,7 +200,7 @@ object Assistant {
         WHERE_IS.find(q)?.let { m -> exactPlace(ctx, m.groupValues[1])?.let { return placeReply(ctx, it) } }
         if (REMIND.containsMatchIn(q)) {
             // "remind me 2 days before" answers the reminder question just asked
-            if (previous != null && OFFSET.containsMatchIn(q) && absDate(q) == null && REMIND.containsMatchIn(previous)) return answer(ctx, "$previous $q")
+            if (previous != null && ReminderRules.OFFSET.containsMatchIn(q) && absDate(q) == null && REMIND.containsMatchIn(previous)) return answer(ctx, "$previous $q")
             if (p.intent != "reminders_list") return addReminder(ctx, p, q)
         }
         if (COURSE_PAGE.containsMatchIn(q)) return coursePage(ctx, q)
@@ -212,6 +215,8 @@ object Assistant {
         if (NEAREST.containsMatchIn(q)) return nearestStop(ctx)
         // ticket SN-GDDNL: "what are my next event" was not in the training sentences
         if (NEXT_UP.containsMatchIn(q)) return nextClass(ctx, p)
+        // ticket SN-G3MT4: "after the lecture, what is the class" was refused as coursework
+        if (AFTER_CLASS.containsMatchIn(q) && !DUE.containsMatchIn(q) && p.intent != "add_reminder") return nextClass(ctx, p, after = true)
         // "my next class for cso" went to the model's "classes on a date" and answered "no class today": the next one, any day
         if (NEXT_CLASS.containsMatchIn(q) && !DATE_WORDS.containsMatchIn(q) && p.intent != "add_reminder") return nextClass(ctx, p)
         // "remind me to rest until 5" is a reminder, not a free-time question
@@ -299,9 +304,52 @@ object Assistant {
         "Why don't lecturers trust stairs? They're always up to something on slide 47.",
         "Coffee: because adulting at 8 am lectures is hard.",
         "I asked the Wi-Fi for a stronger connection. It said we should see other networks.",
+        "Why did the student eat their homework? The lecturer said it was a piece of cake.",
+        "My attendance is perfect: I sign in on time and my brain arrives around the second slide.",
+        "Why was the laptop cold in the exam hall? It left its Windows open.",
+        "I love group chats before a deadline: 47 messages, 0 files.",
+        "The shuttle and my motivation have one thing in common: both are 'arriving soon'.",
+        "Why do programmers prefer dark mode? Because light attracts bugs.",
+        "I told my notes I'd read them before the exam. We both knew I was lying.",
+        "Why did the lecturer wear sunglasses? Because the class was so bright.",
+        "My laptop battery and my motivation: both drop to 1% right when the lecture starts.",
+        "Why did the math student look so tired? Too many unsolved problems and no sleep to carry the one.",
+        "An 8 am class is just a nap with extra steps.",
+        "I'm not procrastinating. I'm giving the deadline time to think about what it has done.",
+        "Why was the computer late to class? It had a hard drive.",
+        "Tutorial rule: the one question you did not prepare is the one the tutor picks.",
+        "Cafeteria queue maths: five minutes of waiting equals ten minutes of regret equals one very good nasi lemak.",
     )
 
     private fun joke() = Reply(JOKES.random(), suggestions = listOf("Another joke", "When is my next class?"))
+
+    // "play/suggest/recommend (me) a song/some music"; lagu = song in Malay
+    // "another/different" so the "Another kind of song" chip Oli offers is understood; a question about a music CLASS is not a song request
+    private val SONG = Regex("""^(?!.*\b(?:class(?:es)?|lectures?|tutorials?|labs?|exams?|quiz(?:zes)?|tests?|due|courses?|kelas|kuliah)\b)(?:.*\b(?:play|suggest|recommend|put on|got|any|another|different)\b.*\b(?:song|songs|music|track|playlist|lagu)\b|.*\b(?:song|music|lagu)\b.*\?\s*$)""", RegexOption.IGNORE_CASE)
+
+    /**
+     * A song suggestion, like the jokes: a fixed list in the app, nothing generated, nothing sent anywhere (rule 1).
+     * The button opens Spotify's own search for the mood word (its app if installed, else its site), so the app
+     * itself never talks to any music service.
+     */
+    private fun song(): Reply {
+        val (mood, search) = listOf(
+            "study" to "focus study playlist",
+            "calm" to "calm acoustic playlist",
+            "hype" to "feel good hits playlist",
+            "late night" to "late night lofi playlist",
+        ).random()
+        return Reply("How about something $mood? I can't play music myself, but this opens Spotify's search for it — " +
+            "the app never sends anything to Spotify; it's just a link.",
+            actions = listOf(Action("Open Spotify search") { a -> openOrWeb(a, "spotify:search:$search", "https://open.spotify.com/search/${java.net.URLEncoder.encode(search, "UTF-8")}") }),
+            suggestions = listOf("Another kind of song", "Tell me a joke"))
+    }
+
+    /** A deep link with a web fallback: the app if installed, else the site. */
+    private fun openOrWeb(a: Activity, appUri: String, webUrl: String) {
+        try { a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(appUri))) }
+        catch (_: Exception) { try { a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webUrl))) } catch (_: Exception) { } }
+    }
 
     // ticket SN-VNH33: "hi hows the day" got "I couldn't answer"
     // "hey there" first: the 2026-11 model read it as an emergency (0.99)
@@ -355,6 +403,8 @@ object Assistant {
     private val HANTAR = Regex("""\b(hantar|serah(kan)?)\b""", RegexOption.IGNORE_CASE)
     private val NEXT_CLASS = Regex("""\bnext\s+(class(es)?|lectures?|tutorials?|labs?|kuliah|subject|session)\b|\b(kelas|kuliah|class)\s+(seterusnya|lepas ni|after this)\b""", RegexOption.IGNORE_CASE)
     private val NEXT_UP = Regex("""\bnext\s+(event|thing|activity|session)s?\b|\bwhat'?s\s+next\b|\bwhat\s+(is|are|do i have)\s+next\b|\bupcoming\s+(event|class)""", RegexOption.IGNORE_CASE)
+    // ticket SN-G3MT4: "after the lecture, what is the class" scored schoolwork 0.80; deadline words stay with DUE below
+    private val AFTER_CLASS = Regex("""\bafter\s+(the\s+|this\s+|my\s+)?(class(es)?|lecture|tutorial|lab|kuliah)\b""", RegexOption.IGNORE_CASE)
     private val REST = Regex("""\b(rest|break|free|gap)\s*(time|period)?\b.*\b(how long|until|till|left|have|is|much)\b|\bhow\s+(long|much)\b.*\b(rest|break|free|gap)\b|\bwhen\s+(am i|i'?m)\s+free\b""", RegexOption.IGNORE_CASE)
     private val NEAREST = Regex("""\b(nearest|closest|nearby|near me)\b.*\b(stop|bus|shuttle|station)|\b(stop|bus|shuttle)\b.*\b(near me|nearby|nearest|closest)\b""", RegexOption.IGNORE_CASE)
 
@@ -471,14 +521,16 @@ object Assistant {
 
     private val openTimetable = Action("Open Timetable") { it.startActivity(Intent(it, TimetableActivity::class.java)) }
 
-    private fun nextClass(ctx: Context, p: Parsed): Reply {
-        val classes = Checker.overview(ctx).classes.filter { matchesCourse(ctx, it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"]) }
+    private fun nextClass(ctx: Context, p: Parsed, after: Boolean = false): Reply {
+        val now = System.currentTimeMillis() / 1000
+        // "after the lecture" means after the one on now: skip it, not the one on now again
+        val classes = Checker.overview(ctx).classes
+            .filter { (!after || it.start > now) && matchesCourse(ctx, it, p.slots["COURSE"]) && matchesKind(it, p.slots["KIND"]) }
         val c = classes.firstOrNull() ?: return Reply(
             if (p.slots["COURSE"] != null) "I don't see a ${p.slots["COURSE"]} class in the next two weeks. Check the course page on Spectrum or ask your lecturer if it has moved."
             else "I don't see any classes in the next two weeks.",
             source = synced(ctx), actions = listOf(openTimetable))
         val r = room(ctx, c)
-        val now = System.currentTimeMillis() / 1000
         val inText = if (c.start <= now) "on now" else "starts ${untilText(c.start - now)}"
         return Reply("Your next ${if (p.slots["COURSE"] != null) "" else "class "}${label(ctx, c)} ${kindOf(c)}: ${whenText(c)} ($inText)." +
             (when { r == "Online" -> " Online."; r.isNotEmpty() -> " Room: $r."; else -> "" }), source = synced(ctx),
@@ -488,11 +540,7 @@ object Assistant {
     // ------------------------------------------------------------ buttons that only open pages (Oli changes nothing)
 
     /** The class's attendance page: the one you chose, else the one found on Spectrum; "" = none. */
-    private fun attUrlOf(ctx: Context, c: Checker.ClassItem): String {
-        val code = c.code.ifEmpty { c.course }
-        val pref = Checker.preferLecOf(c.name)
-        return c.attUrl.ifEmpty { Timetable.attFor(ctx, code, pref) }.ifEmpty { Checker.attendanceUrl(ctx, c.courseId, pref) }
-    }
+    private fun attUrlOf(ctx: Context, c: Checker.ClassItem): String = Links.attendanceFor(ctx, c)
 
     private fun openUrl(label: String, url: String) = Action(label) { a ->
         try { a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) { }
@@ -737,18 +785,29 @@ object Assistant {
         if (dateText == null && taskText != null) TRAILING_DAY.find(taskText)?.let { m ->
             dateText = m.groupValues[1]; taskText = taskText!!.substring(0, m.range.first).trim().ifEmpty { null }
         }
+        // still no day: a day word anywhere in the sentence ("remind me tomorrow in 12") is the day
+        if (dateText == null && absDate(q) == null) ReminderRules.dayWord(q)?.let { w ->
+            dateText = w
+            taskText = taskText?.replace(Regex("""\b""" + Regex.escape(w) + """\b""", RegexOption.IGNORE_CASE), " ")?.replace(Regex("""\s+"""), " ")?.trim()?.ifEmpty { null }
+        }
+        // after midnight, "tomorrow" may mean the day you are about to wake into: ask, with both dates (never guess an alert)
+        if (dateText?.equals("tomorrow", true) == true && absDate(q) == null && ReminderRules.lateNight(now.hour)) {
+            val today = now.toLocalDate(); val next = today.plusDays(1)
+            fun asDate(d: LocalDate) = d.dayOfMonth.toString() + " " + d.month.getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH)
+            val tomorrowWord = Regex("""\btomorrow\b""", RegexOption.IGNORE_CASE)
+            return Reply("It is past midnight. Which day do you mean: today, ${today.format(DAY_FMT)}, or tomorrow, ${next.format(DAY_FMT)}?",
+                suggestions = listOf(asDate(today), asDate(next)).map { tomorrowWord.replaceFirst(q, it) })
+        }
+        // a bare "12": noon or midnight?
+        if (ReminderRules.bareTwelve(q, CLOCK.containsMatchIn(q)) && minutes(p.slots["TIME"])?.let { it == 12 * 60 } != false) {
+            return Reply("12 at noon or at midnight?", suggestions = listOf(ReminderRules.withTwelve(q, "12pm"), ReminderRules.withTwelve(q, "12am")))
+        }
         // "event: dev fest 2026, ..." names the task better than the model's TASK slot
         var task = (EVENT_NAME.find(q)?.groupValues?.get(1)?.trim() ?: taskText)?.replaceFirstChar { it.uppercase() } ?: "Reminder"
         var mins = minutes(p.slots["TIME"]) ?: CLOCK.find(q)?.value?.let { minutes(it) }
         var day: LocalDate? = absDate(q) ?: dateText?.let { dates(it).first }
-        // "2 days before": remind that long before the event, and keep the event's own time in the title
-        OFFSET.find(q)?.let { m -> if (mins != null && day != null) {
-            val at = day!!.atTime(mins!! / 60, mins!! % 60)
-            val n = m.groupValues[1].lowercase(Locale.ROOT).let { if (it in setOf("a", "an", "one")) 1L else it.toLong() }
-            val r = if (m.groupValues[2].startsWith("d", true)) at.minusDays(n) else at.minusHours(n)
-            task = "$task (${at.format(DAY_FMT)} ${"%02d:%02d".format(at.hour, at.minute)})"
-            day = r.toLocalDate(); mins = r.hour * 60 + r.minute
-        } }
+        // "2 days before": the EVENT stays on its own day (so the timetable shows it); the reminder fires that long before it
+        val timeFromText = mins != null   // not the 30-minutes-before-class default below
         // "before WIX1001": half an hour before that class
         if (mins == null && day == null && p.slots["COURSE"] != null) {
             Checker.overview(ctx).classes.firstOrNull { matchesCourse(ctx, it, p.slots["COURSE"]) }?.let { c ->
@@ -758,10 +817,18 @@ object Assistant {
         }
         if (mins == null) return Reply("When should I remind you? For example: \"remind me to $task tomorrow at 9am\".".replace("to Reminder ", ""))
         val d = day ?: if (mins!! > now.hour * 60 + now.minute) now.toLocalDate() else now.toLocalDate().plusDays(1)
-        if (d.atTime(mins!! / 60, mins!! % 60).atZone(zone()).isBefore(now)) return Reply("That time has already passed. When should I remind you instead?")
+        var remindMin = if (timeFromText) ReminderRules.offsetMinutes(q) ?: 0 else 0
+        val eventAt = d.atTime(mins!! / 60, mins!! % 60).atZone(zone())
+        if (eventAt.isBefore(now)) return Reply("That time has already passed. When should I remind you instead?")
+        // an alert time that has passed is never sent: say so now instead of promising it
+        val usable = ReminderRules.usableOffset(eventAt, remindMin, now)
+        val lostAlert = remindMin > 0 && usable == 0
+        remindMin = usable
         val e = Events.Event(Events.newId(), task, "Added by the assistant", d, mins!!, (mins!! + 30).coerceAtMost(24 * 60 - 1),
-            Events.REPEAT_NONE, listOf(0))
-        return Reply("Add this reminder?\n${task}\n${d.format(DAY_FMT)} at ${"%02d:%02d".format(mins!! / 60, mins!! % 60)}", confirm = e)
+            Events.REPEAT_NONE, listOf(remindMin))
+        val ahead = if (remindMin > 0) "\nReminder: ${Events.remindLabel(remindMin)} before"
+            else if (lostAlert) "\nThat alert time has already passed, so there is no alert before it." else ""
+        return Reply("Add this reminder?\n${task}\n${d.format(DAY_FMT)} at ${"%02d:%02d".format(mins!! / 60, mins!! % 60)}$ahead", confirm = e)
     }
 
     private val MATERIAL = Regex("""\b(materials?|notes|slides?|lecture\s+files?|course\s+files?|bahan)\b""", RegexOption.IGNORE_CASE)
@@ -921,6 +988,57 @@ object Assistant {
             .setPositiveButton("Yes") { _, _ -> run(a) }.setNegativeButton("Cancel", null).show()
     }
 
+    /**
+     * Remembers the raw saved values of [keys] in the SharedPreferences file [file] ("timetable" or "settings") and returns
+     * the function that writes them back exactly: a value that was absent is removed again. This is what makes Undo exact,
+     * whatever the save functions did on the way (moved a link to the other kind, cleared a pin, rebuilt UM-list slots).
+     */
+    private fun snapshot(ctx: Context, file: String, keys: Collection<String>): () -> Unit {
+        val sp = ctx.applicationContext.getSharedPreferences(file, Context.MODE_PRIVATE)
+        val before = keys.distinct().associateWith { sp.all[it] }
+        return {
+            val e = sp.edit()
+            for ((k, v) in before) when (v) {
+                null -> e.remove(k)
+                is Boolean -> e.putBoolean(k, v)
+                is Int -> e.putInt(k, v)
+                is Long -> e.putLong(k, v)
+                is Float -> e.putFloat(k, v)
+                is String -> e.putString(k, v)
+                is Set<*> -> e.putStringSet(k, v.filterIsInstance<String>().toSet())
+            }
+            e.commit()
+        }
+    }
+
+    /** One restore function for several (file, keys) groups. */
+    private fun snapshots(ctx: Context, vararg groups: Pair<String, Collection<String>>): () -> Unit {
+        val all = groups.map { (file, keys) -> snapshot(ctx, file, keys) }
+        return { all.forEach { it() } }
+    }
+
+    /**
+     * Like [confirmed], but [run] returns how to take it back: after the Yes, Oli says "Done." with an Undo button
+     * (a toast cannot hold a button, and a wrong "Yes" on a phone is easy). Each button works once: the Yes button
+     * cannot be applied twice, and an old Undo cannot overwrite what you changed since.
+     */
+    private fun confirmedUndo(label: String, message: String, run: (Activity) -> (() -> Unit)): Action {
+        var applied = false
+        return confirmed(label, message) { a ->
+            if (applied) { android.widget.Toast.makeText(a, "Already done", android.widget.Toast.LENGTH_SHORT).show(); return@confirmed }
+            applied = true
+            val undo = run(a)
+            var undone = false
+            val chat = a as? AssistantActivity
+            if (chat != null) chat.say(Reply("Done.", actions = listOf(Action("Undo") { b ->
+                if (undone) return@Action
+                undone = true
+                undo()
+                android.widget.Toast.makeText(b, "Undone", android.widget.Toast.LENGTH_SHORT).show()
+            }))) else android.widget.Toast.makeText(a, "Done", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private val SET_MODE = Regex("""\b(set|make|change|switch|tukar|tetapkan)\b.*\b(online|offline|in.?person|physical)\b""", RegexOption.IGNORE_CASE)
 
     private val WHEN_WORDS = Regex("""\b(next week|this week|today|tomorrow|(next |this )?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu(rs?)?|fri|sat|sun))\b""", RegexOption.IGNORE_CASE)
@@ -976,14 +1094,20 @@ object Assistant {
             return Reply((if (everyWeek) "Change these every week until you undo it:" else "For how long? One week is safest; or change them every week until you undo it:") +
                 "\n" + todo.joinToString("\n") { "\u2022 ${name(it)} \u2192 ${word(it)}" },
                 suggestions = if (everyWeek) emptyList() else listOf("$q this week", "$q next week"), actions = listOf(
-                    confirmed("Every week", "Change these every week until you undo it in Settings \u2192 Online or in person or the Timetable?") { a ->
+                    confirmedUndo("Every week", "Change these every week until you undo it in Settings \u2192 Online or in person or the Timetable?") { a ->
+                        // remember exactly what each course and class had (mode, typed location, meeting links), to put it back on Undo
+                        val restore = snapshots(a, "timetable" to todo.flatMap { j ->
+                            listOf(j.code, j.code.uppercase(Locale.ROOT)).flatMap { c -> listOf("loc:$c", "inperson:$c", "mlink:$c", "mlink:$c:lec", "mlink:$c:tut") } +
+                                mine(j).map { "cmode:" + it.key }
+                        })
                         // a whole course also clears the per-class choices, which would otherwise still win
                         todo.forEach { j ->
                             if (j.kinds.isEmpty()) { Timetable.setCourseMode(a, j.code, j.mode); mine(j).forEach { Timetable.setClassMode(a, it.key, null, "") } }
                             else mine(j).forEach { Timetable.setClassMode(a, it.key, null, j.mode) }
                         }
-                        Scheduler.scheduleAll(a)
-                        android.widget.Toast.makeText(a, "Done", android.widget.Toast.LENGTH_SHORT).show()
+                        Timetable.changed(a)
+                        val undo: () -> Unit = { restore(); Timetable.changed(a) }
+                        undo
                     }))
         }
         val days = said.flatMap { w -> dates(w).let { r -> generateSequence(r.first) { it.plusDays(1) }.takeWhile { !it.isAfter(r.second) }.toList() } }.toSet()
@@ -995,10 +1119,21 @@ object Assistant {
         return Reply("$n class${if (n == 1) "" else "es"} would change:\n" + picks.joinToString("\n") { (j, l) ->
             "\u2022 ${name(j)} \u2192 ${word(j)}: " + l.joinToString(", ") { (s, d) -> d.format(DAY_FMT) + (if (j.kinds.isEmpty()) " " + s.kind.label.lowercase(Locale.ROOT) else "") }
         } + all.filter { it.second.isEmpty() }.joinToString("") { "\n\u2022 ${name(it.first)} has no class then" },
-            actions = listOf(confirmed("Set $n class${if (n == 1) "" else "es"}", "Change these $n class${if (n == 1) "" else "es"}?") { a ->
+            actions = listOf(confirmedUndo("Set $n class${if (n == 1) "" else "es"}", "Change these $n class${if (n == 1) "" else "es"}?") { a ->
+                // the classes Home shows on those days get the same shared key the hero card reads (Timetable.modeKeyAt), so Oli,
+                // the Timetable and the card cannot disagree (ticket SN-JEATK)
+                val shown = Checker.overview(a).classes
+                val onCards = picks.flatMap { (j, l) ->
+                    shown.filter { c -> c.code.ifEmpty { c.course }.equals(j.code, true) && l.any { (_, d) -> d == localDt(c.start).toLocalDate() } }
+                        .map { c -> Triple(Timetable.modeKeyAt(a, j.code, c.start), localDt(c.start).toLocalDate(), j.mode) }
+                }
+                val restore = snapshot(a, "timetable", picks.flatMap { (_, l) -> l.map { (s, d) -> "cmode:" + s.key + ":" + d } } +
+                    onCards.map { (key, d, _) -> "cmode:$key:$d" })
                 picks.forEach { (j, l) -> l.forEach { (s, d) -> Timetable.setClassMode(a, s.key, d, j.mode) } }
-                Scheduler.scheduleAll(a)
-                android.widget.Toast.makeText(a, "Done", android.widget.Toast.LENGTH_SHORT).show()
+                onCards.forEach { (key, d, mode) -> Timetable.setClassMode(a, key, d, mode) }
+                Timetable.changed(a)
+                val undo: () -> Unit = { restore(); Timetable.changed(a) }
+                undo
             }))
     }
 
@@ -1008,6 +1143,75 @@ object Assistant {
         "the", "my", "as", "task", "deadline", "assignment", "this", "that", "for", "please", "tolong", "saya", "aku", "can", "you", "and", "is", "it", "to")
 
     /** Buttons to mark a deadline done or hide it: the ones whose name or course holds a word of the question, else the next few. */
+    /** The course a sentence names (its code, your short name or its initials), among every course you have; null if none. */
+    private fun courseIn(ctx: Context, q: String): String? {
+        val codes = Courses.all(ctx).map { it.code.uppercase(Locale.ROOT) }
+        return q.lowercase(Locale.ROOT).split(Regex("""[^a-z0-9]+""")).filter { it.isNotEmpty() }
+            .firstNotNullOfOrNull { t -> codes.firstOrNull { c -> t.equals(c, true) || isShortFor(ctx, c, t) } }
+    }
+
+    /** "use <link> for cso" or "set my occ for gig1017 to 2": what Oli can change for you. Null when the sentence is neither. */
+    private fun doThing(ctx: Context, q: String): Reply? {
+        val link = OliActions.linkAsk(q)
+        val occ = OliActions.occAsk(q)
+        if (link == null && occ == null) return null
+        // no course named: this was not a request for me (a question with a web address, "i'm in occ 3, where is my tutorial?")
+        val code = courseIn(ctx, OliActions.withoutUrls(q)) ?: return null
+        val name = Shorts.display(ctx, code)
+        if (link != null) {
+            // lectures and tutorials only differ when the course has both
+            val kinds = Timetable.all(ctx).filter { it.course.equals(code, true) }.map { it.kind }.toSet()
+            val bothKinds = SlotKind.LECTURE in kinds && SlotKind.TUTORIAL in kinds
+            val kind = if (!bothKinds) "" else
+                q.lowercase(Locale.ROOT).split(Regex("""[^a-z0-9]+""")).firstNotNullOfOrNull { KIND_WORDS[it] }
+                    ?.let { when (it) { SlotKind.LECTURE -> "lec"; SlotKind.TUTORIAL -> "tut"; else -> "" } } ?: ""
+            val forWhom = name + if (kind.isEmpty()) "" else " " + meetingKindName(kind).lowercase(Locale.ROOT)
+            // snapshot every key the save functions may touch: the whole-course link, both kinds and the pin
+            val mKeys = listOf("mlink:$code", "mlink:$code:lec", "mlink:$code:tut")
+            val aKeys = listOf("att:$code", "att:$code:lec", "att:$code:tut", "attpin:$code")
+            // a link for "every class" would be shadowed by a lecture or tutorial link already saved: ask which, rather than say Done and change nothing
+            val tt = ctx.getSharedPreferences("timetable", Context.MODE_PRIVATE)
+            if (bothKinds && kind.isEmpty() && (mKeys.drop(1) + aKeys.drop(1).take(2)).any { !(tt.getString(it, "") ?: "").isBlank() })
+                return Reply("$name has a lecture and a tutorial with their own links. Which one is this link for?",
+                    suggestions = listOf("$q lecture", "$q tutorial"))
+            val meeting = confirmedUndo("Use as Join class link", "Use this as the Join class link for $forWhom?\n${link.url}") { a ->
+                val restore = snapshot(a, "timetable", mKeys)
+                Timetable.setMeetingLink(a, code, link.url, kind)
+                Timetable.changed(a)
+                val undo: () -> Unit = { restore(); Timetable.changed(a) }
+                undo
+            }
+            val attendance = confirmedUndo("Use as attendance page", "Use this as the attendance page for $forWhom? It stays your choice over the app's own guess.\n${link.url}") { a ->
+                val restore = snapshot(a, "timetable", aKeys)
+                Timetable.setAttFor(a, code, kind, link.url)
+                Timetable.changed(a)
+                val undo: () -> Unit = { restore(); Timetable.changed(a) }
+                undo
+            }
+            // an attendance page must come from the Spectrum site: any other host is only offered as "what is this?"
+            val onSpectrum = try { android.net.Uri.parse(link.url).host.equals(android.net.Uri.parse(Prefs(ctx).site).host, true) } catch (_: Exception) { false }
+            val linkKind = if (link.kind == OliActions.LinkKind.ATTENDANCE && !onSpectrum) OliActions.LinkKind.UNKNOWN else link.kind
+            return when (linkKind) {
+                OliActions.LinkKind.MEETING -> Reply("A meeting link for $forWhom. Save it for Join class?\n${link.url}", actions = listOf(meeting))
+                OliActions.LinkKind.ATTENDANCE -> Reply("An attendance page for $forWhom. Save it?\n${link.url}", actions = listOf(attendance))
+                OliActions.LinkKind.UNKNOWN -> Reply("What is this link for $forWhom?\n${link.url}", actions = listOf(meeting, attendance))
+            }
+        }
+        val want = occ!!
+        val options = Catalog.find(ctx, code)?.occs().orEmpty()
+        if (options.isNotEmpty() && options.none { it.equals(want, true) })
+            return Reply("$name has no Occ $want in the UM list. Its Occs: ${options.joinToString(", ")}.")
+        return Reply("Set your Occ for $name to $want? Its UM classes for that Occ replace the old ones.", actions = listOf(
+            confirmedUndo("Set Occ $want", "Set your Occ for $name to $want?") { a ->
+                val up = code.uppercase(Locale.ROOT)
+                // the groups text (tutorial groups, "off"), the confirmed and check flags, and the UM-list classes (all in "manual")
+                val restore = snapshots(a, "settings" to listOf("myGroups", "occconf:$up", "occcheck:$up"), "timetable" to listOf("manual"))
+                Timetable.setOcc(a, code, want)
+                val undo: () -> Unit = { restore(); Timetable.changed(a) }
+                undo
+            }))
+    }
+
     private fun taskChange(ctx: Context, q: String): Reply {
         val due = Checker.overview(ctx).due
         if (due.isEmpty()) return Reply("There are no tasks in what the app has synced.", source = synced(ctx))
@@ -1016,13 +1220,18 @@ object Assistant {
         val hide = TASK_HIDE.containsMatchIn(q) && !TASK_DONE.containsMatchIn(q)
         val pick = named.ifEmpty { due }.take(3)
         val acts = pick.map { d ->
-            if (hide) confirmed("Hide ${d.name}", "Hide \"${d.name}\"? It leaves Home, Notifications and reminders.") { a ->
+            if (hide) confirmedUndo("Hide ${d.name}", "Hide \"${d.name}\"? It leaves Home, Notifications and reminders.") { a ->
                 if (d.eventId != 0L) NotifyLog.hideEvent(a, "dl:" + d.eventId, d.name, d.course, d.ts)
                 NotifyLog.hideEvent(a, Checker.hiddenNameKey(d.name), d.name, d.course, d.ts)
-                android.widget.Toast.makeText(a, "Hidden. Restore it in Settings → Deadlines.", android.widget.Toast.LENGTH_LONG).show()
-            } else confirmed("Done: ${d.name}", "Mark \"${d.name}\" as done? Its reminders stop.") { a ->
+                val undo: () -> Unit = {
+                    if (d.eventId != 0L) NotifyLog.unhideEvent(a, "dl:" + d.eventId)
+                    NotifyLog.unhideEvent(a, Checker.hiddenNameKey(d.name))
+                }
+                undo
+            } else confirmedUndo("Done: ${d.name}", "Mark \"${d.name}\" as done? Its reminders stop.") { a ->
                 Checker.setTaskDone(a, d.name, true, d.eventId, d.ts)
-                android.widget.Toast.makeText(a, "Marked as done", android.widget.Toast.LENGTH_SHORT).show()
+                val undo: () -> Unit = { Checker.setTaskDone(a, d.name, false, d.eventId, d.ts) }
+                undo
             }
         }
         val what = if (hide) "hide" else "mark as done"
@@ -1068,7 +1277,6 @@ object Assistant {
     }
 
     private val REMIND = Regex("""\b(remind me|set (a |an )?reminder|add (a )?reminder|reminder (on|for))\b""", RegexOption.IGNORE_CASE)
-    private val OFFSET = Regex("""\b(a|an|one|\d+)\s*(days?|hours?|hrs?)\s+(before|earlier)\b""", RegexOption.IGNORE_CASE)
     private val CLOCK = Regex("""\b\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)\b""", RegexOption.IGNORE_CASE)
     private val EVENT_NAME = Regex("""\bevent\s*:\s*([^,.\n]+)""", RegexOption.IGNORE_CASE)
     private val MONTHS = listOf("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
@@ -1110,6 +1318,10 @@ object Assistant {
         check(WEATHER.containsMatchIn("if i need to bring an umbrealla") && WEATHER.containsMatchIn("perlu bawa payung?") && !WEATHER.containsMatchIn("bus to KK12"))
         check(CARE.containsMatchIn("I'm so stressed about exams") && !CARE.containsMatchIn("what's due this week"))
         check(JOKE.containsMatchIn("tell me a joke") && THANKS.matches("thank you so much") && !THANKS.matches("thanks, when is my class"))
+        check(SONG.containsMatchIn("play me a song") && SONG.containsMatchIn("suggest some music") && SONG.containsMatchIn("got lagu?") &&
+            !SONG.containsMatchIn("remind me to play music at 8pm") && !SONG.containsMatchIn("when is my next class") &&
+            SONG.containsMatchIn("Another kind of song") && !SONG.containsMatchIn("when is my music class?") &&
+            !SONG.containsMatchIn("is my lecture about music?") && !SONG.containsMatchIn("any exams for music?"))
         check(REST.containsMatchIn("how long is my rest time") && REST.containsMatchIn("how much free time do i have") && REST.containsMatchIn("when am i free") &&
             !REST.containsMatchIn("when is my next class") && !REST.containsMatchIn("bus to FSKTM"))
         check(isGreeting("hi hows the day") && isGreeting("Good morning Oli!") && isGreeting("hello, how are you?") &&
@@ -1120,7 +1332,7 @@ object Assistant {
         val devfest ="help me to set reminder on 14 nov 2026, event: dev fest 2026, at sunway university, time: 9am - 5pm remind me 2days before"
         check(absDate(devfest, mon) == LocalDate.of(2026, 11, 14) && absDate("3rd jan", mon) == LocalDate.of(2027, 1, 3) && absDate("31 feb", mon) == null)
         check(minutes(CLOCK.find(devfest)?.value) == 9 * 60 && EVENT_NAME.find(devfest)?.groupValues?.get(1)?.trim() == "dev fest 2026")
-        check(OFFSET.find(devfest)?.groupValues?.get(1) == "2" && REMIND.containsMatchIn("remind me 2days before") && !REMIND.containsMatchIn("what are my reminders"))
+        check(ReminderRules.OFFSET.find(devfest)?.groupValues?.get(1) == "2" && REMIND.containsMatchIn("remind me 2days before") && !REMIND.containsMatchIn("what are my reminders"))
         check(DUE.containsMatchIn("deadline for next week?") && DUE.containsMatchIn("what's due tomorrow") && !DUE.containsMatchIn("when is my next class"))
         check(DATE_WORDS.find("deadline for next week?")?.value == "next week" && DATE_WORDS.find("anything due on wednesday")?.value == "wednesday")
         LocalDate.of(2026, 11, 7).let { sat -> check(dates("this week", sat) == (sat to sat.plusDays(6))) }
@@ -1148,6 +1360,8 @@ object Assistant {
             DANGER.containsMatchIn("ada ular dalam bilik") && !DANGER.containsMatchIn("tolong ingatkan saya hantar report esok"))
         check(SET_MODE.containsMatchIn("set fop to online and cso to offline") && MODE_WORD.replace("a offline b in person c", "x") == "a x b x c")
         check(NEXT_CLASS.containsMatchIn("my next class for cso") && !NEXT_CLASS.containsMatchIn("classes on friday"))
+        check(AFTER_CLASS.containsMatchIn("after the lecture, what is the class") && AFTER_CLASS.containsMatchIn("what do i have after this class") &&
+            !AFTER_CLASS.containsMatchIn("what is my next class") && !AFTER_CLASS.containsMatchIn("deadline after the lab"))
         check(DATE_OK.containsMatchIn("next week") && !DATE_OK.containsMatchIn("physical") && HOLIDAY.containsMatchIn("when is mid semester break?") && HANTAR.containsMatchIn("slides perlu hantar"))
         check(SCHOOLWORK.containsMatchIn("do my essay") && SCHOOLWORK.containsMatchIn("write the lab report for me") && !SCHOOLWORK.containsMatchIn("when is my essay due"))
         check(tokens("Bus from KK12 to FSKTM by 10 am, WIX1001!").map { it.second } == listOf("bus", "from", "kk12", "to", "fsktm", "by", "<time>", "<code>"))

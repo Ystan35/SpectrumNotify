@@ -58,7 +58,7 @@ class CoursesActivity : BaseActivity() {
         for (c in fresh) if (c.code !in order) order[c.code] = order.size
         val list = fresh.sortedBy { order[it.code] }
         // read once for the whole page: state.json is large, and every read parses all of it
-        val st = State(this)
+        val st = State.readOnly(this)   // never written here
         val learned = Groups.learnedPerCourse(this, st)
         box.removeAllViews()
         if (list.isEmpty()) {
@@ -347,7 +347,7 @@ class CoursesActivity : BaseActivity() {
             val m = modes[pos].first
             if (m != Timetable.courseMode(this, code)) {
                 Timetable.setCourseMode(this, code, m)
-                Scheduler.scheduleAll(this)
+                Timetable.changed(this)
                 render()
                 if (m == "online") askMissingMeetingLinks(code) { render() }
             }
@@ -389,14 +389,6 @@ class CoursesActivity : BaseActivity() {
             }
         }
         if (c.url.isNotEmpty()) navRow("Open on Spectrum", "The course's own page") { open(c.url) }
-
-        // the latest notifications that mention this course, newest first
-        val recent = NotifyLog.entries(this).filter { it.kind == "notif" && (it.title.contains(c.code, true) || it.body.contains(c.code, true)) }
-            .asReversed().take(5)
-        if (recent.isNotEmpty()) {
-            section("Recent notifications")
-            for (e in recent) navRow(e.title, ago(NotifyLog.atOf(e))) { startActivity(Intent(this, NotificationsActivity::class.java)) }
-        }
     }
 
     /** The Occ picker (from the pill or "Change Occ"): same saving and Undo as the old dropdown. */
@@ -425,16 +417,7 @@ class CoursesActivity : BaseActivity() {
     private fun occOkAdd(k: String) = getSharedPreferences("courses", MODE_PRIVATE).edit().putStringSet("occOk", occOk() + k).apply()
 
     /** Saves the Occ for [code] ("" = not set) and swaps its UM-list classes to that Occ's (none when not set). */
-    private fun setOcc(code: String, occ: String) {
-        val pp = Prefs(this)
-        val keep = pp.myGroups.split(",").map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
-        pp.myGroups = (if (occ.isEmpty()) keep else keep + "$code:occ$occ").joinToString(", ")
-        // a new Occ has new class times: ask for a look at them; none set, nothing to check
-        pp.setOccNeedsCheck(code, occ.isNotEmpty())
-        // the confirmed mark follows the Occ: cleared here, Confirm your Occ asks about this course again
-        pp.setOccConfirmed(code, occ.isNotEmpty())
-        if (occ.isEmpty()) Timetable.clearCatalog(this, code) else Timetable.autoSetup(this, code, occ)
-    }
+    private fun setOcc(code: String, occ: String) { Timetable.setOcc(this, code, occ) }
 
     /** Short name for one course, e.g. "ENT": shown with the code everywhere (Home, timetable, alerts). Empty = none. */
     private fun editShortName(code: String, current: String) {

@@ -111,28 +111,8 @@ class NotificationsActivity : BaseActivity() {
 
     // ------------------------------------------------------------ small helpers
 
-    private fun lp(w: Int, h: Int, weight: Float = 0f) = LinearLayout.LayoutParams(w, h, weight)
-
-    private fun openUrl(url: String) {
-        if (url.isEmpty()) return
-        AppLink.intent(this, url)?.let { startActivity(it); return }
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Cannot open link", Toast.LENGTH_SHORT).show()
-        }
-    }
 
 
-    private fun yIn(v: View, ancestor: View): Int {
-        var y = 0
-        var c: View? = v
-        while (c != null && c !== ancestor) {
-            y += c.top
-            c = c.parent as? View
-        }
-        return y
-    }
 
     private fun confirmClear() {
         if (entries.isEmpty()) return

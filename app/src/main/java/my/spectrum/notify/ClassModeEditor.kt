@@ -35,7 +35,7 @@ object ClassModeEditor {
             row.addView(activity.spinner(modes.map { it.second }, modes.indexOfFirst { it.first == Timetable.courseMode(activity, code) }.coerceAtLeast(0)) { pos ->
                 if (modes[pos].first != Timetable.courseMode(activity, code)) {
                     Timetable.setCourseMode(activity, code, modes[pos].first)
-                    Scheduler.scheduleAll(activity)
+                    Timetable.changed(activity)
                 }
             }.apply { contentDescription = "$code: as timetable, online or in person" }, LinearLayout.LayoutParams(activity.dp(176), ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = activity.dp(8) })
             box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dp(8) })
@@ -47,11 +47,11 @@ object ClassModeEditor {
             val all = courses.map { it.code.uppercase(Locale.ROOT) }
             val before = all.associateWith { Timetable.courseMode(activity, it) }
             all.forEach { Timetable.setCourseMode(activity, it, mode) }
-            Scheduler.scheduleAll(activity)
+            Timetable.changed(activity)
             draw(activity, box)
             activity.undoBar(if (mode == "online") "All courses online" else "All courses as the timetable says") {
                 before.forEach { (c, m) -> Timetable.setCourseMode(activity, c, m) }
-                Scheduler.scheduleAll(activity)
+                Timetable.changed(activity)
                 draw(activity, box)
             }
         }

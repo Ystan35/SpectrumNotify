@@ -31,7 +31,8 @@ object Guide {
 
     private val tour = listOf(
         Step(MainActivity::class.java, "guide:hero", "Your next class",
-            "Join the class, open its attendance page or its course page from here. Swipe the card to see the classes after it."),
+            "Join the class, open its attendance page or its course page from here. Swipe the card to see the classes after it. " +
+                "A pencil on Join class or Attendance means you can change that link: long-press the button, or tap \"no meeting link yet\"."),
         Step(MainActivity::class.java, "guide:due", "Due soon",
             "Your next deadlines. Tap one to mark it done or hide it. Hidden tasks are listed in Settings, where you can bring each one back."),
         Step(MainActivity::class.java, "guide:refresh", "Check now",
@@ -39,11 +40,12 @@ object Guide {
         Step(MainActivity::class.java, "toolboxBtn", "Text size and your links",
             "Make the text bigger or smaller, and open your shortcuts such as Spectrum and MySiswa."),
         Step(CoursesActivity::class.java, "guide:course", "Everything for one course",
-            "Tap a course for its classes and rooms, deadlines, materials and notifications, all on one page. Set your Occ (group) there: it decides which classes are yours."),
+            "Tap a course for its classes and rooms, deadlines, materials and notifications, all on one page. Set your Occ (group) there: it decides which classes, attendance pages and alerts are yours. " +
+                "The app asks again each time you open it until every course has one."),
         Step(TimetableActivity::class.java, "guide:ttViews", "Day, week or month",
             "See your classes by day, week or month. In Month, tap a day, then swipe its timeline or use ‹ › for the days around it."),
         Step(TimetableActivity::class.java, "guide:attPencil", "Wrong attendance page?",
-            "The pencil chooses the right attendance page for this class. Lectures and tutorials can each have their own."),
+            "The pencil chooses the right attendance page for this class. Lectures and tutorials can each have their own. A page you pick is kept over the app's own guess."),
         Step(NotificationsActivity::class.java, "guide:notifFilter", "Filter",
             "Show everything, or only classes, deadlines, materials or news."),
         Step(NotificationsActivity::class.java, "notifCard", "Clear a notice",

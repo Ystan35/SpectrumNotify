@@ -6,10 +6,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.LinearLayout
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import java.util.Locale
@@ -91,6 +88,7 @@ class CatalogActivity : BaseActivity() {
             chosen = pos - 1
             detail.text = if (pos > 0) describe(c, occs[pos - 1]) else ""
         }
+        if (chosen >= 0) detail.text = describe(c, occs[chosen])   // the shared spinner does not report the starting item
         holder.addView(sp, holder.indexOfChild(detail), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         holder.btn("Add to my timetable") {
             if (chosen < 0) {
@@ -122,52 +120,6 @@ class CatalogActivity : BaseActivity() {
 
     private fun prefix(code: String) = "cat-$code-"
 
-    private fun save(c: Catalog.Course, occ: String) {
-        Timetable.autoSetup(this, c.code, occ)
-        setMyGroup(c.code, occ)
-    }
+    private fun save(c: Catalog.Course, occ: String) { Timetable.setOcc(this, c.code, occ) }
 
-    /** "WIX1003:occ2, WIX1003:t3" in Settings > My group, so posts for other Occ / tutorial groups are not notified. */
-    private fun setMyGroup(code: String, occ: String) {
-        val p = Prefs(this)
-        if (p.groupsOff) return
-        val keep = p.myGroups.split(",").map { it.trim() }.filter { it.isNotEmpty() && !it.uppercase(Locale.ROOT).startsWith("$code:") }
-        p.myGroups = (keep + "$code:occ$occ").joinToString(", ")
-    }
-
-    private fun spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit): Spinner {
-        val sp = Spinner(this)
-        val ad = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
-            private fun style(v: View, bg: Int): View {
-                (v as TextView).apply {
-                    setTextColor(Ui.TEXT)
-                    textSize = Type.BODY * Ui.fontScale
-                    setPadding(dp(12), dp(12), dp(12), dp(12))
-                    setBackgroundColor(bg)
-                }
-                return v
-            }
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                val v = style(super.getView(position, convertView, parent), 0)
-                (v as TextView).apply {
-                    text = getItem(position) ?: ""
-                    setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_expand_more, 0)
-                    compoundDrawableTintList = android.content.res.ColorStateList.valueOf(Ui.DIM)
-                }
-                return v
-            }
-            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View = style(super.getDropDownView(position, convertView, parent), Ui.BAR)
-        }
-        ad.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        sp.adapter = ad
-        sp.background = roundBg(Ui.BAR, Ui.BORDER, this)
-        sp.setPopupBackgroundDrawable(roundBg(Ui.BAR, Ui.BORDER, this))
-        sp.setSelection(selected, false)
-        onSelect(selected)
-        sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = onSelect(position)
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-        return sp
-    }
 }

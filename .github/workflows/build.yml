@@ -22,9 +22,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      # the Gradle version comes from the wrapper (gradle/wrapper/gradle-wrapper.properties), the same one a local build uses
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.9
       - name: Write Firebase config
         env:
           FIREBASE_CONFIG: ${{ secrets.FIREBASE_CONFIG }}
@@ -34,8 +33,10 @@ jobs:
             exit 1
           fi
           echo "$FIREBASE_CONFIG" > app/google-services.json
-      - name: Build debug + release APKs
-        run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
+      - name: Unit tests + build debug and release APKs
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleDebug assembleRelease --no-daemon --stacktrace
       - name: Name the release APK (it goes to the GitHub Release only, not into the repo)
         run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/SpectrumNotify.apk"
       - name: Sync latest.json with version in build.gradle.kts

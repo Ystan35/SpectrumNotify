@@ -39,7 +39,7 @@ object SettingsBackup {
      */
     private val TYPES: Map<String, String> = buildMap {
         listOf("attStartAlert", "batteryAsked", "batteryConfirmed", "bigTouch", "calLink", "cloudPush", "debugLog", "highContrast",
-            "on", "setupNamed", "umbrellaAlert", "userEdited", "dueDone", "occcheck", "occconf", "linkOrder2", "v031", "v2")
+            "on", "setupNamed", "umbrellaAlert", "userEdited", "dueDone", "occcheck", "occconf", "attpin", "attPinMigrated", "linkOrder2", "v031", "v2")
             .forEach { put(it, "b") }
         listOf("pollMin", "quietStart", "quietEnd", "themeMode", "textScale", "lead").forEach { put(it, "i") }
         listOf("inperson", "at").forEach { put(it, "l") }

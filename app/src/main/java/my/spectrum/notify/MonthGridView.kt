@@ -261,6 +261,4 @@ object MonthGridView {
             EventsUi.editor(activity, null, onChanged, prefillDate = date)
         }
     }
-
-    private fun fmtMin(min: Int): String = String.format("%02d:%02d", min / 60, min % 60)
 }

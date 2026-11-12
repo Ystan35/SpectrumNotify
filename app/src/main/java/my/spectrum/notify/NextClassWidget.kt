@@ -69,7 +69,7 @@ class NextClassWidget : AppWidgetProvider() {
                             if (live) "Ends ${relIn(next.end - now)}" else "Starts ${relIn(next.start - now)}",
                         )
                         // location: user override -> online auto -> catalog room
-                        val locLine = Timetable.venueAt(ctx, next.course, next.start).let {
+                        val locLine = Timetable.venueAt(ctx, next.code.ifEmpty { next.course }, next.start).let {
                             when { it.isEmpty() -> ""; it == "Online" -> "💻 Online"; else -> "📍 $it" }
                         }
                         v.setTextViewText(R.id.widget_location, locLine)
@@ -80,7 +80,7 @@ class NextClassWidget : AppWidgetProvider() {
                             v.setViewVisibility(R.id.widget_actions, android.view.View.GONE)
                         } else {
                             v.setViewVisibility(R.id.widget_actions, android.view.View.VISIBLE)
-                            val (meeting, att, coursePage) = Checker.linksForCourse(ctx, next.course, next.courseId, Checker.groupTokens(next.name), preferLec = Checker.preferLecOf(next.name), day = localDt(next.start).dayOfWeek.value, startMin = localDt(next.start).let { it.hour * 60 + it.minute }, endMin = localDt(next.end).let { it.hour * 60 + it.minute })
+                            val (meeting, att, coursePage) = Links.linksForCourse(ctx, next.code.ifEmpty { next.course }, next.courseId, Links.groupTokens(next.name), preferLec = Links.prefOf(ctx, next), day = localDt(next.start).dayOfWeek.value, startMin = localDt(next.start).let { it.hour * 60 + it.minute }, endMin = localDt(next.end).let { it.hour * 60 + it.minute }, online = Timetable.onlineAt(ctx, next.code.ifEmpty { next.course }, next.start))
                             // a class known to be in a room gets no Join, as on Home
                             if (meeting.isNotEmpty() && !locLine.startsWith("📍")) {
                                 v.setTextViewText(R.id.widget_meeting, "Join")
@@ -97,7 +97,7 @@ class NextClassWidget : AppWidgetProvider() {
                             } else {
                                 v.setViewVisibility(R.id.widget_meeting, android.view.View.GONE)
                             }
-                            val attUrl = att.ifEmpty { next.courseUrl }
+                            val attUrl = Links.attendanceFor(ctx, next).ifEmpty { next.courseUrl }
                             if (attUrl.isNotEmpty()) {
                                 v.setTextViewText(R.id.widget_attendance, "Attend ↗")
                                 v.setOnClickPendingIntent(

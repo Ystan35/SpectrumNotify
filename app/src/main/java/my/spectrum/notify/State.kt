@@ -6,7 +6,7 @@ import java.io.File
 import java.util.concurrent.locks.ReentrantLock
 
 /** Same idea as state.json in the Python bot: what was already seen/sent, plus cached calendar data. */
-class State(ctx: Context) {
+class State(ctx: Context, private val shared: Boolean = false) {
     private val f = File(ctx.applicationContext.filesDir, "state.json")
     val j: JSONObject = try { JSONObject(f.readText()) } catch (e: Exception) { JSONObject() }
 
@@ -16,10 +16,12 @@ class State(ctx: Context) {
     }
 
     fun putStrings(k: String, v: Collection<String>) {
+        check(!shared) { "State.readOnly() is shared: read a State(ctx) of your own to change it" }
         j.put(k, jarr(v))
     }
 
     fun save() {
+        check(!shared) { "State.readOnly() is shared: read a State(ctx) of your own to save it" }
         val tmp = File(f.path + ".tmp")
         tmp.writeText(j.toString())
         tmp.renameTo(f)
@@ -37,7 +39,7 @@ class State(ctx: Context) {
         fun readOnly(ctx: Context): State = synchronized(this) {
             val f = File(ctx.applicationContext.filesDir, "state.json")
             val stamp = f.lastModified() * 31 + f.length()
-            ro?.takeIf { stamp == roStamp } ?: State(ctx).also { ro = it; roStamp = stamp }
+            ro?.takeIf { stamp == roStamp } ?: State(ctx, shared = true).also { ro = it; roStamp = stamp }
         }
     }
 }

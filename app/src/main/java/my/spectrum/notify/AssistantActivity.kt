@@ -22,6 +22,21 @@ class AssistantActivity : BaseActivity() {
     private lateinit var scroll: ScrollView
     private lateinit var input: android.widget.EditText
 
+    /**
+     * The last few messages, in process memory only (rule 8: never written to disk). A mistaken back-press,
+     * rotation or a switch away and back within KEEP_MS shows them again; when the process dies, so do they.
+     */
+    private class Msg(val mine: Boolean, val text: String, val source: String = "")
+    private companion object {
+        val history = ArrayList<Msg>()
+        var lastQ: String? = null          // the last question, for follow-ups
+        var askFromTo: String? = null      // Oli just asked "Where from?"
+        var at = 0L
+        const val KEEP_MS = 10 * 60 * 1000L
+        fun trim() { while (history.size > 6) history.removeAt(0) }
+        fun add(m: Msg) { history.add(m); at = System.currentTimeMillis(); trim() }
+    }
+
     override fun onResume() {
         super.onResume()
         recreateIfLookChanged()
@@ -64,10 +79,15 @@ class AssistantActivity : BaseActivity() {
             setBackgroundColor(Ui.BG)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
+        // a chat re-opened within KEEP_MS continues where it left off; older or first-open starts fresh
+        val keep = System.currentTimeMillis() - at < KEEP_MS
+        if (!keep) { history.clear(); lastQ = null; askFromTo = null }
         show(Assistant.Reply(
             "Hi, I'm Oli! Ask me about your classes, deadlines, reminders or the UM shuttle. I answer only from what this app has synced, " +
                 "and our chat stays on this phone.",
             suggestions = Assistant.EXAMPLES.take(4)))
+        if (keep) for (m in history) if (m.mine) bubble(m.text, mine = true)
+        else show(Assistant.Reply(m.text, source = m.source))
         intent.getStringExtra("q")?.let { ask(it) }
     }
 
@@ -77,11 +97,6 @@ class AssistantActivity : BaseActivity() {
         input.setText("")
         ask(q)
     }
-
-    /** The last question asked here, for follow-ups; gone when the chat closes, like the rest of it. */
-    private var lastQ: String? = null
-    /** Oli just asked "Where from?" for a trip to this place. */
-    private var askFromTo: String? = null
 
     private fun ask(q: String) {
         val mine = bubble(q, mine = true)
@@ -100,6 +115,8 @@ class AssistantActivity : BaseActivity() {
                 lastQ = if (r.maskQuestion) null else asked
                 askFromTo = r.askFromTo
                 if (r.maskQuestion) mine.text = "•••••• (hidden: it looked like a password)"
+                add(Msg(true, if (r.maskQuestion) "••••••" else asked))
+                add(Msg(false, r.text, r.source))
                 show(r, if (r.maskQuestion) null else asked)
             }
         }.start()
@@ -119,6 +136,9 @@ class AssistantActivity : BaseActivity() {
         scrollDown()
         return t
     }
+
+    /** Oli's own follow-up message, for example "Done." with an Undo button. */
+    fun say(r: Assistant.Reply) = show(r)
 
     /** [asked] = the question this answers, for the small "wrong answer?" link; null for Oli's own follow-ups and hidden questions. */
     private fun show(r: Assistant.Reply, asked: String? = null) {
@@ -165,21 +185,24 @@ class AssistantActivity : BaseActivity() {
                 FeedbackActivity.open(this, "question", "The assistant couldn't answer: \"$q\"")
             })
         }
-        // every answer: a small way to say it was wrong (r.feedback already has the bigger button)
-        if (asked != null && r.feedback == null && !alarm) box.addView(tv("Wrong answer? Tell the developer", Type.CAPTION, Ui.DIM).apply {
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+        // ticket SN-TTW9E: every reply (except emergencies) gets the wrong-answer link under the box, left-aligned
+        val side = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        side.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        if (!alarm && asked != null) side.addView(tv("Wrong answer? Tell the developer", Type.CAPTION, Ui.DIM).apply {
+            gravity = Gravity.TOP or Gravity.START   // text hugs the reply; the 40dp tap area extends below it (SN-CYA4Y)
+            setPadding(dp(4), dp(2), dp(4), 0)
             minHeight = dp(Ui.touch(40))
             background = rippleBg(0, 0, this@AssistantActivity, Radius.SM)
-            contentDescription = "Report a wrong answer to the developer"
+            contentDescription = "Report this answer to the developer"
             setOnClickListener {
                 FeedbackActivity.open(this@AssistantActivity, "question",
                     "The assistant answered wrongly.\nI asked: \"$asked\"\nIt said: \"${r.text.take(300)}\"")
             }
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 0 })
         // Oli's avatar beside each reply
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(avatar(), LinearLayout.LayoutParams(dp(36), dp(36)).apply { rightMargin = dp(8); topMargin = dp(2) })
-        row.addView(box, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(side,LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(10); rightMargin = dp(8)
         })

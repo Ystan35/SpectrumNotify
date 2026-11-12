@@ -12,8 +12,8 @@ android {
         applicationId = "my.spectrum.notify"
         minSdk = 26
         targetSdk = 34
-        versionCode = 101
-        versionName = "0.36.0"
+        versionCode = 102
+        versionName = "0.37.0"
     }
 
     signingConfigs {
@@ -52,4 +52,5 @@ dependencies {
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     // the assistant's on-device model (assets/assistant.tflite, trained in tools/assistant)
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    testImplementation("junit:junit:4.13.2")
 }

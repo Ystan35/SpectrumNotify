@@ -108,7 +108,7 @@ object ShuttleModel {
 
     fun fmt(min: Int): String = String.format("%d:%02d", (min / 60) % 24, min % 60)
 
-    private fun strs(a: JSONArray?): List<String> = if (a == null) emptyList() else (0 until a.length()).map { a.optString(it) }
+    private fun strs(a: JSONArray?): List<String> = a?.strs() ?: emptyList()
     private fun ints(a: JSONArray?): List<Int> = if (a == null) emptyList() else (0 until a.length()).map { a.optInt(it) }
 
     private fun parseSchedule(o: JSONObject?, base: Schedule?): Schedule {

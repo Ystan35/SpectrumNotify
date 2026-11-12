@@ -203,11 +203,8 @@ class SettingsActivity : BaseActivity() {
             val names = listOf("Not set") + occs.map { "Occ $it" }
             val sel = occs.indexOf(current) + 1
             val sp = spinner(names, if (sel >= 0) sel else 0) { pos ->
-                val keep = p.myGroups.split(",").map { it.trim() }
-                    .filter { it.isNotEmpty() && !it.startsWith("$code:", true) }
-                p.myGroups = (if (pos <= 0) keep else keep + "$code:occ${occs[pos - 1]}").joinToString(", ")
-                // the timetable follows: that Occ's classes from the UM list, as Courses does
-                if (pos <= 0) Timetable.clearCatalog(this, code) else if (catOccs.isNotEmpty()) Timetable.autoSetup(this, code, occs[pos - 1])
+                // the same save as the Courses page: group, confirmed mark, UM-list classes, alarms
+                Timetable.setOcc(this, code, if (pos <= 0) "" else occs[pos - 1])
             }
             // one row per course: the short name ("WIX1001 · CM") on the left, a small Occ dropdown on the right (ticket SN-TG4DM)
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }

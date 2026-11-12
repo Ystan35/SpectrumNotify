@@ -47,7 +47,7 @@ object AppLink {
         when (action) {
             "online" -> {
                 Timetable.setCourseMode(activity, code, "online")
-                Scheduler.scheduleAll(activity)
+                Timetable.changed(activity)
                 Toast.makeText(activity, "$name is set to Online: every class has Join class again.", Toast.LENGTH_LONG).show()
             }
             "inperson" -> Toast.makeText(activity, "$name stays in person.", Toast.LENGTH_SHORT).show()

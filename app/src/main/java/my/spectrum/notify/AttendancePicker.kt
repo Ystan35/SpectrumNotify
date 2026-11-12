@@ -42,14 +42,14 @@ object AttendancePicker {
         val chosen = Timetable.attFor(a, course, prefer(kind))
         val cands = candidates(a, cid)
         if (chosen.isNotEmpty()) return cands.firstOrNull { it.second == chosen }?.first ?: "your pasted link"
-        val auto = Checker.attendanceUrl(a, cid, prefer(kind))
+        val auto = Links.attendanceUrl(a, cid, prefer(kind))
         return (cands.firstOrNull { it.second == auto }?.first ?: if (auto.isEmpty()) "none found" else "Spectrum's page") + " (app's choice)"
     }
 
     /** Every attendance page the last check saw in the course, in Spectrum's order: (name, address). */
     private fun candidates(a: Activity, cid: Long): List<Pair<String, String>> {
         val site = Prefs(a).site
-        val labels = State(a).j.optJSONObject("attlabels") ?: return emptyList()
+        val labels = State.readOnly(a).j.optJSONObject("attlabels") ?: return emptyList()
         return labels.keys().asSequence().filter { it.startsWith("$cid:") }.mapNotNull { k ->
             val id = k.substringAfter(':').toLongOrNull() ?: return@mapNotNull null
             val o = labels.optJSONObject(k)
@@ -63,7 +63,7 @@ object AttendancePicker {
     fun open(a: Activity, course: String, cid: Long, kind: String, onDone: () -> Unit) {
         val cands = candidates(a, cid)
         val chosen = Timetable.attFor(a, course, prefer(kind))
-        val auto = Checker.attendanceUrl(a, cid, prefer(kind))
+        val auto = Links.attendanceUrl(a, cid, prefer(kind))
         val autoName = cands.firstOrNull { it.second == auto }?.first ?: if (auto.isEmpty()) "none found" else "Spectrum's page"
         val items = listOf("Let the app choose ($autoName)") + cands.map { it.first } + "Paste a link…"
         val sel = if (chosen.isEmpty()) 0 else cands.indexOfFirst { it.second == chosen }.let { if (it >= 0) it + 1 else items.size - 1 }
@@ -122,6 +122,7 @@ object AttendancePicker {
 
     private fun done(a: Activity, msg: String, onDone: () -> Unit) {
         Toast.makeText(a, msg, Toast.LENGTH_SHORT).show()
+        Timetable.changed(a)
         onDone()
     }
 }

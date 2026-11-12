@@ -31,7 +31,7 @@ object Groups {
 
     /** Group tokens in a text; "Tutorial 3" and "T3" both become t3. */
     fun tokens(text: String?): Set<String> =
-        Checker.groupTokens(text).map { if (it.startsWith("tutorial")) "t" + it.removePrefix("tutorial") else it }.toSet().map { canon(it) }.toSet()
+        Links.groupTokens(text).map { if (it.startsWith("tutorial")) "t" + it.removePrefix("tutorial") else it }.toSet().map { canon(it) }.toSet()
 
     private class Manual(val code: String, val tokens: Set<String>)
 

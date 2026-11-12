@@ -2,6 +2,18 @@
 
 > Entries for 0.9 – 0.25.0 live in the git history (`git log`); this file restarts at 0.25.1.
 
+## 0.37.0 (versionCode 102)
+One place for your class links, alerts only for your Occ, and a hero card you can swipe.
+- **Alerts only for your Occ:** an attendance page that names only other Occs no longer sends you an alert, or shows on Home, the widget, the summaries or Oli. This works for courses where you have set or confirmed your Occ.
+- **One source for links and Online/In person:** the link behind Join class and Attendance, and the Online/In person switch, are now chosen in one place, so Home, the timetable, the widget and Oli always show the same thing. A link you pick or paste yourself is used before an auto-detected one.
+- **Change a link from the hero card:** Join class and Attendance show a small pencil, and a long press lets you change the link. Swipe the card, or use the arrows, to move between classes.
+- **Wrong answer? link:** now sits under the reply box, not inside the reply, and is easier to tap.
+- **Dropdown arrows** sit at the right edge of the box.
+- **Lecturer name on the class card** when the event name does not already say it.
+- **Oli:** "after the lecture, what is the class" now answers with your next class (it was refused as coursework). You can ask Oli to set a meeting link or your Occ, and it asks for a Yes first. "Remind me about X on 14 Nov, 2 days before" keeps the event and the reminder, and "tomorrow" right after midnight is read the way you mean it.
+- **Confirm your Occ:** the dialog opens at every start until each course is confirmed, the setup list says how many are left, and hiding the guide no longer hides that step.
+- **Behind the scenes:** the alert code was split out of one big file, unit tests now run in the build, and the Gradle wrapper is part of the repo.
+
 ## 0.36.0 (versionCode 101)
 Oli does more, asks before it changes anything, and understands more questions.
 - **Oli changes things only after a Yes:** mark a task done or hide it ("mark quiz 2 as done"), and set classes online or in person ("set fop tutorial to online", "set fop and cso to online", "fop to online and cso to offline", on named days or this/next week). With no day it asks how long, one week first.

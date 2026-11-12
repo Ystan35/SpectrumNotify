@@ -829,15 +829,11 @@ fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val v = style(super.getView(position, convertView, parent), 0)
             (v as TextView).apply {
-                // fill the box, so the arrow (drawn at the text's end) sits at the right edge, not after the words
-                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-                // the closed box: snug around its text; the Spinner itself keeps the 48dp touch height
-                setPadding(dp(12), dp(6), dp(10), dp(6))
-                compoundDrawablePadding = dp(4)
+                // the closed box: snug around its text; the Spinner itself keeps the 48dp touch height.
+                // The arrow is drawn by the Spinner's background at the right edge (ticket SN-JVGLF), so leave room for it.
+                setPadding(dp(12), dp(6), dp(36), dp(6))
                 text = getItem(position) ?: ""
-                setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_expand_more, 0)
-                compoundDrawableTintList = android.content.res.ColorStateList.valueOf(Ui.DIM)
             }
             return v
         }
@@ -845,8 +841,15 @@ fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit
     }
     ad.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
     sp.adapter = ad
-    sp.background = roundBg(Ui.BAR, Ui.BORDER_STRONG, this)
+    val arrow = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_expand_more)!!.mutate().apply { setTint(Ui.DIM) }
+    sp.background = android.graphics.drawable.LayerDrawable(arrayOf(roundBg(Ui.BAR, Ui.BORDER_STRONG, this), arrow)).apply {
+        setLayerSize(1, dp(24), dp(24))
+        setLayerGravity(1, android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL)
+        setLayerInsetEnd(1, dp(8))
+    }
     sp.setPopupBackgroundDrawable(roundBg(Ui.BAR, Ui.BORDER, this))
+    // the list opens as wide as the box (it was only as wide as its longest item, narrower than the box and left of it)
+    sp.addOnLayoutChangeListener { v, l, _, r, _, _, _, _, _ -> (v as android.widget.Spinner).dropDownWidth = r - l }
     sp.setSelection(selected, false)
     // [onSelect] only for a real change: Android also reports the starting item once when the spinner is first
     // laid out, which wrote a value nobody picked (wrong Occ saved, or an Occ cleared when it was not in the list)
@@ -1193,3 +1196,27 @@ fun Activity.closeQuickSheet(root: FrameLayout) {
     root.findViewWithTag<View>("quicksheet")?.let { root.removeView(it) }
     root.findViewWithTag<View>("quicksheetdim")?.let { root.removeView(it) }
 }
+
+/** Opens [url] in the browser (an "app:" link acts inside the app); a phone with no browser gets a short message. */
+fun Activity.openUrl(url: String) {
+    if (url.isEmpty()) return
+    AppLink.intent(this, url)?.let { startActivity(it); return }
+    try {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(this, "Cannot open link", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** Distance of [v]'s top edge from [ancestor]'s, through the views in between. */
+fun yIn(v: View, ancestor: View): Int {
+    var y = 0
+    var c: View? = v
+    while (c != null && c !== ancestor) {
+        y += c.top
+        c = c.parent as? View
+    }
+    return y
+}
+
+fun lp(w: Int, h: Int, weight: Float = 0f) = android.widget.LinearLayout.LayoutParams(w, h, weight)

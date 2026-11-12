@@ -192,10 +192,11 @@ object DayTimeline {
                 val name = courseName(s.course, courses.firstOrNull { c -> c.code.equals(s.course, true) }?.name?.takeIf { n -> n.isNotEmpty() }
                     ?: Catalog.find(activity, s.course)?.name ?: s.title)
                 val cid = courses.firstOrNull { c -> c.code.equals(s.course, true) }?.id ?: 0L
-                val (meeting, att, coursePage) = Checker.linksForCourse(
-                    activity, s.course, cid, Checker.groupTokens(s.title),
+                val (meeting, att, coursePage) = Links.linksForCourse(
+                    activity, s.course, cid, Links.groupTokens(s.title),
                     preferLec = when (s.kind) { SlotKind.LECTURE -> true; SlotKind.TUTORIAL -> false; else -> Checker.preferLecOf(s.title) },
                     day = s.day, startMin = s.start, endMin = s.end,
+                    online = Timetable.classMode(activity, s.key, date) == "online",
                 )
                 card.addView(TextView(activity).apply {
                     text = s.course.uppercase(Locale.ROOT) + if (name.isNotEmpty() && !name.equals(s.course, true)) " · $name" else ""
