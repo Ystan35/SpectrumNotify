@@ -848,6 +848,7 @@ fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit
         setLayerInsetEnd(1, dp(8))
     }
     sp.setPopupBackgroundDrawable(roundBg(Ui.BAR, Ui.BORDER, this))
+    sp.minimumHeight = dp(48)   // 48dp touch target (the closed box was about 30dp tall)
     // the list opens as wide as the box (it was only as wide as its longest item, narrower than the box and left of it)
     sp.addOnLayoutChangeListener { v, l, _, r, _, _, _, _, _ -> (v as android.widget.Spinner).dropDownWidth = r - l }
     sp.setSelection(selected, false)

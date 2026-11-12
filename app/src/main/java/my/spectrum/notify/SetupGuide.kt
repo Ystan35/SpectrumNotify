@@ -147,13 +147,18 @@ internal fun MainActivity.confirmOccDialog(manual: Boolean = false) {
         // with a "?" first, position 1 is the first Occ; without it, position 0 is (this used to be off by one)
         val offset = if (opts.firstOrNull() == "?") 1 else 0
         val spinnerSel = if (hasPrediction) choices[i] else 0
+        var describe: (Int) -> Unit = {}
         val sp = spinner(opts, spinnerSel) { pos ->
+            describe(pos)
             if (a.occs.isEmpty()) return@spinner
             choices[i] = pos - offset
             if (choices[i] >= 0) draft.put(a.code, a.occs[choices[i]]) else draft.remove(a.code)
             saveDraft()
         }
         sp.layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
+        // an accessible name that says which course this dropdown is for, and its current value
+        describe = { pos -> sp.contentDescription = "Occ for ${a.code}, " + (if (a.occs.isEmpty()) "not applicable" else if (opts[pos] == "?") "not set" else "Occ ${opts[pos]}") }
+        describe(spinnerSel)
         row.addView(sp, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
         content.addView(row, LinearLayout.LayoutParams(MATCH, WRAP))
     }
