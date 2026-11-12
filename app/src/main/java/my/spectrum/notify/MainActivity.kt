@@ -186,7 +186,6 @@ class MainActivity : BaseActivity() {
         // app title row: THE shared header (same implementation as every page)
         // the greeting is the page title, in the same header as every tab (toolbox + theme switch at its end)
         val topRow = headerRow("", toolbox = true)
-        themeBtn = topRow.findViewWithTag("themeBtn")
         greetTitle = topRow.findViewWithTag<TextView>("headerTitle").apply { textSize = Type.DISPLAY * Ui.fontScale }
         // pinned above the scrolling page, like every other tab's header (it used to scroll away)
         topRow.setPadding(dp(16), dp(10), dp(8), dp(6))
@@ -211,6 +210,7 @@ class MainActivity : BaseActivity() {
             contentDescription = "Check Spectrum now"
             setOnClickListener { startRefresh() }
         }
+        header.addView(themeToggle().also { themeBtn = it }, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))   // quick day/night, no trip to Settings
         header.addView(refreshBtn, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
         content.addView(header, lp(MATCH, WRAP).apply { bottomMargin = dp(8) })
         // shows a check is running, so you are not left counting (ticket SN-N3UAY)
@@ -340,9 +340,9 @@ class MainActivity : BaseActivity() {
         bellDot.visibility = if (unread) View.VISIBLE else View.GONE
     }
 
-    /** Sun/moon on the title row: shows what a tap switches to. */
+    /** Sun/moon next to refresh: shows the current mode. */
     private fun updateThemeBtn() {
-        themeBtn?.setImageResource(if (Ui.dark) R.drawable.ic_sun else R.drawable.ic_moon)
+        themeBtn?.setImageResource(if (Ui.dark) R.drawable.ic_moon else R.drawable.ic_sun)
     }
 
     // ------------------------------------------------------------ rendering
@@ -750,7 +750,12 @@ class MainActivity : BaseActivity() {
                 nav.addView(arrowBtn(R.drawable.ic_chevron_right, "Next class", heroPos < slides.size - 1) { pager.slide(1) }, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
                 navHolder.addView(nav, lp(MATCH, WRAP))
                 val dots = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, 0, 0, 0); clipChildren = false }
+                // at most 5 dots (5 x 48dp always fits); a longer list shows a window that follows the current slide
+                val maxDots = 5
+                val firstDot = if (slides.size <= maxDots) 0 else (heroPos - maxDots / 2).coerceIn(0, slides.size - maxDots)
+                val lastDot = minOf(slides.size, firstDot + maxDots)
                 slides.forEachIndexed { i, sl ->
+                    if (i < firstDot || i >= lastDot) return@forEachIndexed
                     val wrap = FrameLayout(this).apply {
                         isClickable = true
                         contentDescription = "Go to class ${i + 1} of ${slides.size}: ${sl.course}, ${dayLabel(sl.start)}"
@@ -759,7 +764,7 @@ class MainActivity : BaseActivity() {
                     val d = View(this)
                     d.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(if (i == heroPos) Ui.TEXT else Ui.tint(Ui.TEXT, 0x55)) }
                     wrap.addView(d, FrameLayout.LayoutParams(dp(if (i == heroPos) 22 else 10), dp(4), Gravity.CENTER))
-                    dots.addView(wrap, lp(dp(if (slides.size > 7) 40 else 48), dp(48)))   // 48dp touch target (was 44x28)
+                    dots.addView(wrap, lp(dp(Ui.touch(48)), dp(Ui.touch(48))))
                 }
                 navHolder.addView(dots, lp(MATCH, WRAP))
             }

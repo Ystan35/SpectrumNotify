@@ -304,25 +304,36 @@ fun Activity.headerRow(title: String, toolbox: Boolean, back: Boolean = false): 
         setOnClickListener { startActivity(android.content.Intent(this@headerRow, AssistantActivity::class.java)) }
     }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))).apply { leftMargin = dp(4) })
     // tabs change the colour mode in the toolbox (Aa), which leaves room for Oli (ticket SN-NVV67: "Timetable" wrapped)
-    if (!toolbox) titleRow.addView(ImageButton(this).apply {
-        tag = "themeBtn"
-        setImageResource(if (Ui.dark) R.drawable.ic_sun else R.drawable.ic_moon)
-        setColorFilter(Ui.CYAN)
-        background = android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(Ui.tint(Ui.CYAN, 60)), null,
-            roundBg(0xFFFFFFFF.toInt(), 0, this@headerRow, Radius.PILL),
-        )
-        contentDescription = if (Ui.dark) "Switch to light colour mode" else "Switch to dark colour mode"
-        setOnClickListener {
-            val pr = try { Prefs(this@headerRow) } catch (_: Exception) { null }
-            if (pr != null) {
-                pr.themeMode = if (Ui.dark) 1 else 2
-                recreate()
-            }
-        }
-    }, LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))))
+    if (!toolbox) titleRow.addView(themeToggle(), LinearLayout.LayoutParams(dp(Ui.touch(48)), dp(Ui.touch(48))))
     return titleRow
 }
+
+/**
+ * Quick day/night button. Its icon shows the CURRENT mode (sun in light, moon in dark); a tap switches to the other.
+ * It stores the app's own Colour mode (Prefs.themeMode: 1 = light, 2 = dark), the same value Settings > Appearance
+ * edits, so both stay in sync. Colour mode also has 0 = follow the phone: the toggle only switches between light and
+ * dark (from Phone it goes to the opposite of what is showing now); Settings is where Phone is chosen again.
+ */
+fun Activity.themeToggle(): ImageButton = ImageButton(this).apply {
+    tag = "themeBtn"
+    setImageResource(if (Ui.dark) R.drawable.ic_moon else R.drawable.ic_sun)
+    setColorFilter(Ui.CYAN)
+    background = android.graphics.drawable.RippleDrawable(
+        android.content.res.ColorStateList.valueOf(Ui.tint(Ui.CYAN, 60)), null,
+        roundBg(0xFFFFFFFF.toInt(), 0, this@themeToggle, Radius.PILL),
+    )
+    contentDescription = if (Ui.dark) "Switch to light mode" else "Switch to dark mode"
+    setOnClickListener {
+        val pr = try { Prefs(this@themeToggle) } catch (_: Exception) { null }
+        if (pr != null) {
+            pr.themeMode = nextThemeMode(Ui.dark)
+            recreate()
+        }
+    }
+}
+
+/** The Colour mode a day/night tap stores: light (1) while dark is showing, dark (2) while light is showing. */
+fun nextThemeMode(showingDark: Boolean): Int = if (showingDark) 1 else 2
 
 /** Opens the toolbox sheet under [anchor] (the header's Aa); the sheet places itself from the anchor's margins. */
 fun Activity.openToolbox(anchor: View) {
@@ -619,7 +630,8 @@ fun LinearLayout.chips(
                 setAutoSizeTextTypeUniformWithConfiguration(10, (Type.LABEL * Ui.fontScale).toInt().coerceAtLeast(11), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
                 // the chosen state is spoken, not only shown by colour and bold
                 isSelected = i in sel
-                contentDescription = (names?.getOrNull(i) ?: l) + if (i in sel) ", selected" else ""
+                // isSelected already makes TalkBack say "selected"; only override the spoken name when a fuller one is given
+                names?.getOrNull(i)?.let { contentDescription = it }
             }
             row.addView(c, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 if (i > 0) leftMargin = ctx.dp(6)
@@ -856,7 +868,7 @@ fun Activity.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit
         setLayerInsetEnd(1, dp(8))
     }
     sp.setPopupBackgroundDrawable(roundBg(Ui.BAR, Ui.BORDER, this))
-    sp.minimumHeight = dp(48)   // 48dp touch target (the closed box was about 30dp tall)
+    sp.minimumHeight = dp(Ui.touch(48))   // 48dp touch target (the closed box was about 30dp tall)
     // the list opens as wide as the box (it was only as wide as its longest item, narrower than the box and left of it)
     sp.addOnLayoutChangeListener { v, l, _, r, _, _, _, _, _ -> (v as android.widget.Spinner).dropDownWidth = r - l }
     sp.setSelection(selected, false)
